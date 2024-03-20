@@ -426,58 +426,6 @@ All version of the dependencies are defined in the <code>onecx-quarkus3-parent</
 </div>
 </div>
 </details>
-<div class="sect3">
-<h4 id="_database_configuration"><a class="anchor" href="#_database_configuration"></a>Database configuration</h4>
-<div class="paragraph">
-<p>In <code>onecx</code> project we do use the <code>postgresql</code> database for our backend services.</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">quarkus.datasource.db-kind=postgresql
-quarkus.datasource.jdbc.max-size=30
-quarkus.datasource.jdbc.min-size=10
-
-quarkus.hibernate-orm.database.generation=validate
-quarkus.hibernate-orm.jdbc.timezone=UTC
-quarkus.liquibase.migrate-at-start=true
-quarkus.liquibase.validate-on-migrate=true</code></pre>
-</div>
-</div>
-</div>
-<div class="sect3">
-<h4 id="_database_schema_change_management"><a class="anchor" href="#_database_schema_change_management"></a>Database schema change management</h4>
-<div class="paragraph">
-<p>For the database schema change management we do use <a href="https://quarkus.io/guides/">quarkus-liquibase</a> extension. To generate a database changes or validate the database changes we do use <a href="https://github.com/1000kit/tkit-liquibase-plugin">tkit-liquibase-plugin</a> which is configured in the onecx-quarkus3-parent.</p>
-</div>
-<div class="paragraph">
-<p>Quarkus liquibase configuration</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">quarkus.liquibase.migrate-at-start=true
-quarkus.liquibase.validate-on-migrate=true</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>By default, liquibase does not use session lock. To activate the liquibase session lock during the start of our service we do use <code>com.github.blagerweij:liquibase-sessionlock</code> liquibase extension. No configuration is need to this extension.</p>
-</div>
-<div class="paragraph">
-<p>To generate the database changes run following command</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">mvn clean compile -Pdb-diff</code></pre>
-</div>
-</div>
-<div class="paragraph">
-<p>To check if you are missing any changes run following command</p>
-</div>
-<div class="listingblock">
-<div class="content">
-<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">mvn validate -Pdb-check</code></pre>
-</div>
-</div>
-</div>
 </div>
 <div class="sect2">
 <h3 id="_generate_rest_endpoint"><a class="anchor" href="#_generate_rest_endpoint"></a>Generate rest endpoint</h3>
@@ -665,14 +613,20 @@ components:
 </div>
 </div>
 <div class="sect2">
-<h3 id="_implementation"><a class="anchor" href="#_implementation"></a>Implementation</h3>
+<h3 id="_rest_implementation"><a class="anchor" href="#_rest_implementation"></a>REST Implementation</h3>
 <div class="paragraph">
 <p>To implement the <code>RoleRestController</code> we need to create a java class which implements generated interface <code>gen.org.tkit.onecx.example.rs.v1.RoleInternalApi</code>.</p>
 </div>
+<details>
+<summary class="title">RoleRestController</summary>
+<div class="content">
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.ws.rs.core.Response;
+import jakarta.validation.ConstraintViolationException;
+import org.tkit.quarkus.jpa.exceptions.ConstraintException;
+import jakarta.persistence.OptimisticLockException;
 
 import gen.org.tkit.onecx.example.rs.v1.RoleInternalApi;
 import gen.org.tkit.onecx.example.rs.v1.model.CreateRoleRequestDTO;
@@ -721,6 +675,461 @@ public class RoleRestController implements RoleInternalApi {
 </div>
 </div>
 </div>
+</details>
+<div class="paragraph">
+<p>For the backend service we need to define exception mapper methods for following exception:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>jakarta.persistence.OptimisticLockException</code> - this exception is throw when try to store object in the database with old or wrong <code>OPTLOCK</code> number.</p>
+</li>
+<li>
+<p><code>jakarta.validation.ConstraintViolationException</code> - when we activate a validation framework <code>io.quarkus:quarkus-hibernate-validator</code> this exception will be thrown when request does not match to the requirements defined in the OpenApi.</p>
+</li>
+<li>
+<p><code>org.tkit.quarkus.jpa.exceptions.ConstraintException</code> - this exception will be thrown for any database constraints.</p>
+</li>
+</ul>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+With the annotation <code>@ServerExceptionMapper</code> we defined the exception mapper for each <code>Exception</code> in the context of the RestController.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>To map the request <code>DTO</code> object to the <code>JPA</code> model we use the <code>Mapstruct</code>. We define the <code>RoleMapper</code> in our example.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.tkit.quarkus.rs.mappers.OffsetDateTimeMapper;
+
+@Mapper(uses = { OffsetDateTimeMapper.class })
+public interface RoleMapper {
+
+    @Mapping(target = "id", ignore = true)
+    @Mapping(target = "creationDate", ignore = true)
+    @Mapping(target = "creationUser", ignore = true)
+    @Mapping(target = "modificationDate", ignore = true)
+    @Mapping(target = "modificationUser", ignore = true)
+    @Mapping(target = "controlTraceabilityManual", ignore = true)
+    @Mapping(target = "modificationCount", ignore = true)
+    @Mapping(target = "persisted", ignore = true)
+    @Mapping(target = "tenantId", ignore = true)
+    Role create(CreateRoleRequestDTO dto);
+
+    // ... more mapping methods
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The same approach we use for the exception mapper which could be shared between multiple <code>RestController</code> for the same rest interface.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.tkit.quarkus.rs.mappers.OffsetDateTimeMapper;
+
+@Mapper(uses = { OffsetDateTimeMapper.class })
+public interface ExceptionMapper {
+
+    default RestResponse&lt;ProblemDetailResponseDTO&gt; constraint(ConstraintViolationException ex) {
+        var dto = exception(ErrorKeys.CONSTRAINT_VIOLATIONS.name(), ex.getMessage());
+        dto.setInvalidParams(createErrorValidationResponse(ex.getConstraintViolations()));
+        return RestResponse.status(Response.Status.BAD_REQUEST, dto);
+    }
+
+    //.... more mapping methods
+}</code></pre>
+</div>
+</div>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+<code>org.tkit.quarkus.rs.mappers.OffsetDateTimeMapper</code> mapper is predefined a mapstruct mapper for <code>OffsetDateTime</code> and <code>LocalDateTime</code> object.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_jpa_layer_implementation"><a class="anchor" href="#_jpa_layer_implementation"></a>JPA layer implementation</h3>
+<div class="paragraph">
+<p>For our project we will use the <code>tkit-quarkus-jpa</code> and <code>tkit-quarkus-jpa-models</code> extension for Quarkus which have simple API on top of JPA. We have abstract <code>DAO</code> classes and abstract Entity classes which provides basic <code>CRUD</code> operation. For more information please read the extension <a href="https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/index.html">tkit-quarkus-jpa</a> documentation.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependency&gt;
+    &lt;groupId&gt;org.tkit.quarkus.lib&lt;/groupId&gt;
+    &lt;artifactId&gt;tkit-quarkus-jpa&lt;/artifactId&gt;
+&lt;/dependency&gt;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Create User entity class in the <code>org.tkit.onecx.user.domain.models</code> package. The entity class extend the <code>TraceableEntity</code>. In the entity class can use the Lombok annotation <code>@Getter</code> and <code>@Setter</code> to generate the getters and setters.</p>
+</div>
+<details open>
+<summary class="title">Example user entity</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import javax.persistence.Entity;
+import javax.persistence.Table;
+import org.tkit.quarkus.jpa.models.TraceableEntity;
+
+@Entity
+@Table(name = "T_USER")
+public class User extends TraceableEntity {
+
+    @Column(name = "USERNAME")
+    private String username;
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details open>
+<summary class="title">Example user DAO</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.tkit.quarkus.jpa.daos.AbstractDAO;
+import javax.enterprise.context.ApplicationScoped;
+
+@ApplicationScoped
+public class UserDAO extends AbstractDAO&lt;User&gt; {
+
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<div class="sect3">
+<h4 id="_database_configuration"><a class="anchor" href="#_database_configuration"></a>Database configuration</h4>
+<div class="paragraph">
+<p>In <code>onecx</code> project we do use the <code>postgresql</code> database for our backend services.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">quarkus.datasource.db-kind=postgresql
+quarkus.datasource.jdbc.max-size=30
+quarkus.datasource.jdbc.min-size=10
+
+quarkus.hibernate-orm.database.generation=validate
+quarkus.hibernate-orm.jdbc.timezone=UTC
+quarkus.liquibase.migrate-at-start=true
+quarkus.liquibase.validate-on-migrate=true</code></pre>
+</div>
+</div>
+<div class="admonitionblock tip">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-tip" title="Tip"></i>
+</td>
+<td class="content">
+The parameter <code>quarkus.hibernate-orm.log.sql</code> will activate the hibernate logs in the console.
+</td>
+</tr>
+</table>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_database_schema_change_management"><a class="anchor" href="#_database_schema_change_management"></a>Database schema change management</h4>
+<div class="paragraph">
+<p><a href="https://www.liquibase.com/">Liquibase</a> is an open source tool for database schema change management. We will this framework in our example. Liquibase does have abstraction layer xml, json or yaml to support multi databases. Liquibase can generate the changes and compare our Hibernate model with existing database.</p>
+</div>
+<div class="paragraph">
+<p>For the database schema change management we do use <a href="https://quarkus.io/guides/">quarkus-liquibase</a> extension. To generate a database changes or validate the database changes we do use <a href="https://github.com/1000kit/tkit-liquibase-plugin">tkit-liquibase-plugin</a> which is configured in the onecx-quarkus3-parent.</p>
+</div>
+<div class="paragraph">
+<p>Quarkus liquibase configuration</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">quarkus.liquibase.migrate-at-start=true
+quarkus.liquibase.validate-on-migrate=true</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>By default, liquibase does not use session lock. To activate the liquibase session lock during the start of our service we do use <code>com.github.blagerweij:liquibase-sessionlock</code> liquibase extension. No configuration is need to this extension.</p>
+</div>
+<div class="paragraph">
+<p>To generate the database changes run following command</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">mvn clean compile -Pdb-diff</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>To check if you are missing any changes run following command</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-shell hljs" data-lang="shell">mvn validate -Pdb-check</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_jpa_date_time"><a class="anchor" href="#_jpa_date_time"></a>JPA date-time</h4>
+<div class="paragraph">
+<p>First, you need to configure the database server to use the UTC timezone. For example PostgreSQL default is UTC. Second, you need to set hibernate.jdbc.time_zone Hibernate property to the value of UTC. For the Quarkus application we need set key quarkus.hibernate-orm.jdbc.timezone to UTC value in the application.properties.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-properties hljs" data-lang="properties">quarkus.hibernate-orm.jdbc.timezone=UTC</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>The date representation in the database is store in the UTC as long number. Date fields in the JPA entity represents this database date as LocalDateTime. On the another hand the DTO represents the date as ISO text. To get it running we need to create a mapper which will map the LocalDateTime to OffsetDatetime. In the mapping we should not lose the Offset/Zone information.</p>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+The date representation in the JPA entity is the LocalDateTime java type and in the DTO object is the OffsetDateTime java type.
+</td>
+</tr>
+</table>
+</div>
+<details>
+<summary class="title">Example user entity</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@Entity
+@Table(name = "T_USER")
+public class User extends TraceableEntity {
+    private String username;
+    private LocalDateTime date;
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">Example user DTO</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@RegisterForReflection
+public class UserDTO extends TraceableDTO {
+    private String username;
+    private OffsetDateTime date;
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">Example user mapper</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.tkit.quarkus.rs.mappers.OffsetDateTimeMapper;
+
+@Mapper(uses = OffsetDateTimeMapper.class)
+public interface UserMapper {
+
+    UserDTO map(User model);
+
+    User create(UserDTO dto);
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<div class="paragraph">
+<p>In the tests we need to configure the RestAssured to use text representation of the date-time.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public abstract class AbstractTest {
+    static {
+        RestAssured.config = RestAssuredConfig.config().objectMapperConfig(
+            ObjectMapperConfig.objectMapperConfig().jackson2ObjectMapperFactory(
+                (cls, charset) -&gt; {
+                     ObjectMapper objectMapper = new ObjectMapper();
+                     objectMapper.registerModule(new JavaTimeModule());
+                     objectMapper.configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false);
+                     return objectMapper;
+                }
+            )
+        );
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+<div class="sect2">
+<h3 id="_jpa_custom_business_id"><a class="anchor" href="#_jpa_custom_business_id"></a>JPA custom business ID</h3>
+<div class="sect3">
+<h4 id="_postgressql_serial_type"><a class="anchor" href="#_postgressql_serial_type"></a>PostgresSQL SERIAL type</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@GeneratorType(type = BidStringGenerator.class, when = GenerationTime.INSERT)
+@Column(name = "CUSTOM")
+String custom;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_generic_sequence_implementation"><a class="anchor" href="#_generic_sequence_implementation"></a>Generic sequence implementation</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import javax.persistence.Column;
+import org.my.group.BusinessId;
+
+@BusinessId(sequence = "SEQ_MY_ENTITY_BID")
+@Column(name = "bid_anno")
+Long bid;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Follow the implementation of the custom annotation <code>BusinessId</code>.</p>
+</div>
+<details>
+<summary class="title">BusinessId</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.hibernate.annotations.ValueGenerationType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+
+@ValueGenerationType(generatedBy = BusinessIdValueGeneration.class)
+@Retention(RetentionPolicy.RUNTIME)
+public @interface BusinessId {
+
+    String sequence() default "";
+
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">BusinessIdValueGeneration</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.hibernate.tuple.AnnotationValueGeneration;
+import org.hibernate.tuple.GenerationTiming;
+import org.hibernate.tuple.ValueGenerator;
+
+public class BusinessIdValueGeneration implements AnnotationValueGeneration&lt;BusinessId&gt; {
+
+    String sequence;
+
+    @Override
+    public void initialize(BusinessId annotation, Class&lt;?&gt; propertyType) { sequence = annotation.sequence(); }
+
+    @Override
+    public GenerationTiming getGenerationTiming() { return GenerationTiming.INSERT; }
+
+    @Override
+    public ValueGenerator&lt;?&gt; getValueGenerator() { return new BusinessIdGenerator(sequence); }
+
+    @Override
+    public boolean referenceColumnInSql() { return false; }
+
+    @Override
+    public String getDatabaseGeneratedReferencedColumnValue() { return null; }
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<details>
+<summary class="title">BusinessIdGenerator</summary>
+<div class="content">
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import org.hibernate.Session;
+import org.hibernate.internal.SessionFactoryImpl;
+import org.hibernate.jdbc.ReturningWork;
+import org.hibernate.tuple.ValueGenerator;
+
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+
+
+public class BusinessIdGenerator implements ValueGenerator&lt;Long&gt; {
+
+    String sequence;
+
+    BusinessIdGenerator(String sequence) {
+        this.sequence = sequence;
+    }
+
+    @Override
+    public Long generateValue(Session session, Object owner) {
+        SessionFactoryImpl sessionFactory = (SessionFactoryImpl) session.getSessionFactory();
+        String sql = sessionFactory.getJdbcServices().getDialect().getSequenceNextValString(sequence);
+        ReturningWork&lt;Long&gt; seq = connection -&gt; {
+            try (PreparedStatement preparedStatement = connection.prepareStatement(sql);
+                 ResultSet resultSet = preparedStatement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getLong(1);
+            }
+        };
+        return sessionFactory.getCurrentSession().doReturningWork(seq);
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+</details>
+<div class="paragraph">
+<p>We need to add the sequence to the <code>import.sql</code> for the local development.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-sql hljs" data-lang="sql">CREATE SEQUENCE IF NOT EXISTS seq_my_entity_bid;</code></pre>
+</div>
+</div>
+</div>
+<div class="sect3">
+<h4 id="_custom_in_memory_generator"><a class="anchor" href="#_custom_in_memory_generator"></a>Custom in-Memory generator</h4>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@GeneratorType(type = BidStringGenerator.class, when = GenerationTime.INSERT)
+@Column(name = "CUSTOM")
+String custom;</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Follow the implementation of the custom generator <code>BidStringGenerator</code>.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">public class BidStringGenerator implements ValueGenerator&lt;String&gt; {
+
+    @Override
+    public String generateValue(Session session, Object owner) {
+        MyEntity e = (MyEntity) owner;
+        return e.name + "+" + UUID.randomUUID();
+    }
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
 <div class="sect2">
 <h3 id="_tests"><a class="anchor" href="#_tests"></a>Tests</h3>
 <div class="paragraph">
@@ -732,32 +1141,123 @@ public class RoleRestController implements RoleInternalApi {
 <div class="listingblock">
 <div class="content">
 <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;dependencies&gt;
-        &lt;!-- TEST --&gt;
-        &lt;dependency&gt;
-            &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
-            &lt;artifactId&gt;quarkus-junit5&lt;/artifactId&gt;
-            &lt;scope&gt;test&lt;/scope&gt;
-        &lt;/dependency&gt;
-        &lt;dependency&gt;
-            &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
-            &lt;artifactId&gt;quarkus-junit5-mockito&lt;/artifactId&gt;
-            &lt;scope&gt;test&lt;/scope&gt;
-        &lt;/dependency&gt;
-        &lt;dependency&gt;
-            &lt;groupId&gt;io.rest-assured&lt;/groupId&gt;
-            &lt;artifactId&gt;rest-assured&lt;/artifactId&gt;
-            &lt;scope&gt;test&lt;/scope&gt;
-        &lt;/dependency&gt;
-        &lt;dependency&gt;
-            &lt;groupId&gt;org.tkit.quarkus.lib&lt;/groupId&gt;
-            &lt;artifactId&gt;tkit-quarkus-test-db-import&lt;/artifactId&gt;
-            &lt;scope&gt;test&lt;/scope&gt;
-        &lt;/dependency&gt;
+    &lt;!-- TEST --&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+        &lt;artifactId&gt;quarkus-junit5&lt;/artifactId&gt;
+        &lt;scope&gt;test&lt;/scope&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;io.quarkus&lt;/groupId&gt;
+        &lt;artifactId&gt;quarkus-junit5-mockito&lt;/artifactId&gt;
+        &lt;scope&gt;test&lt;/scope&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;io.rest-assured&lt;/groupId&gt;
+        &lt;artifactId&gt;rest-assured&lt;/artifactId&gt;
+        &lt;scope&gt;test&lt;/scope&gt;
+    &lt;/dependency&gt;
+    &lt;dependency&gt;
+        &lt;groupId&gt;org.tkit.quarkus.lib&lt;/groupId&gt;
+        &lt;artifactId&gt;tkit-quarkus-test-db-import&lt;/artifactId&gt;
+        &lt;scope&gt;test&lt;/scope&gt;
+    &lt;/dependency&gt;
 &lt;/dependencies&gt;</code></pre>
 </div>
 </div>
 </div>
 </details>
+<div class="admonitionblock note">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-note" title="Note"></i>
+</td>
+<td class="content">
+The Quarkus tests has support for the injection and mocking. This will work only for the Quarkus JVM tests and not for native image test or integration tests with a docker image. Try to avoid this in our tests to have much more reusable tests. In most cases, the mock service also fakes code to pass the test.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>For our test we will use this pattern for the test classes</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>&lt;Name&gt;RestControllerTest extends AbstractTest</code> - the extended test for the common and unit test. For example: UserRestControllerTest</p>
+</li>
+<li>
+<p><code>&lt;Name&gt;RestControllerTestIT extends &lt;Name&gt;RestControllerTest</code> - the extended test for the integration test. For example: UserRestControllerTestIT</p>
+</li>
+</ul>
+</div>
+<div class="paragraph">
+<p>The 1000kit test extension <code>tkit-quarkus-test-db-import</code> does have support to import test data for the tests during the test execution. We will create our test data as <code>XML</code> data. Store the xml file in the <code>src/test/resources/data</code> directory under name <code>test-internal.xml</code>. The magic is in the <code>@WithDBData</code> annotation which could be used on the <code>Class</code> or <code>Method</code> level. Example of the xml test data file:</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml">&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;dataset&gt;
+    &lt;ROLE guid="r21" optlock="0" name="n1" /&gt;
+    &lt;ROLE guid="r22" optlock="0" name="n2" /&gt;
+&lt;/dataset&gt;</code></pre>
+</div>
+</div>
+<div class="admonitionblock important">
+<table>
+<tr>
+<td class="icon">
+<i class="fa icon-important" title="Important"></i>
+</td>
+<td class="content">
+Only the <code>XML</code> DbUnit <code>FlatXmlDataSet</code> format is supported.
+</td>
+</tr>
+</table>
+</div>
+<div class="paragraph">
+<p>Example of the <code>RoleRestControllerTest</code> class.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">@QuarkusTest
+@TestHTTPEndpoint(RoleRestController.class)
+@WithDBData(value = "data/test-internal.xml", deleteBeforeInsert = true, deleteAfterTest = true, rinseAndRepeat = true)
+class RoleRestControllerTest extends AbstractTest {
+
+    @Test
+    void getRoleByIdTest() {
+
+        // get role by ID
+        var dto = given().contentType(APPLICATION_JSON).get("r12")
+                .then().statusCode(OK.getStatusCode()).contentType(APPLICATION_JSON)
+                .extract().body().as(RoleDTO.class);
+
+        // validate role
+        assertThat(dto).isNotNull();
+        assertThat(dto.getName()).isEqualTo("n2");
+        assertThat(dto.getId()).isEqualTo("r12");
+
+        // not found
+        given().contentType(APPLICATION_JSON).get("___").then().statusCode(NOT_FOUND.getStatusCode());
+    }
+}</code></pre>
+</div>
+</div>
+<div class="paragraph">
+<p>Example of the role rest controller integration test.</p>
+</div>
+<div class="listingblock">
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">import io.quarkus.test.junit.QuarkusIntegrationTest;
+
+@QuarkusIntegrationTest
+class RoleRestControllerTestIT extends RoleRestControllerTest {
+
+}</code></pre>
+</div>
+</div>
 </div>
 <div class="sect2">
 <h3 id="_security"><a class="anchor" href="#_security"></a>Security</h3>
