@@ -1,2 +1,2 @@
 # docs
-onecx documentation
+OneCX Documentation
