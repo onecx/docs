@@ -1,0 +1,492 @@
+= OneCX Microfrontend content bootstrapping
+
+== Overview
+This document aims to explain the details related to Microfrontend's content bootstrapping. Depending on the content's type and expose method there are different requirements needed to be fullfield to ensure the content is loaded correctly by OneCX platform elements.
+
+== Microfrontend's content bootstrapping explained
+// TODO: Add link to MFE loading
+Microfrontend's content loading is an action triggered by the route change (Shell Application's responsibility of loading modules) or by the Slot Component display (Slot Component's responsibility of loading Remote Components). During this action Microfrontend's content, exposed via remote entry file, is loaded and bootstrapped using provided file in xref:webpack.adoc[Webpack configuration].
+
+Depending on the content type and chosen expose method, different adjustments have to be made to ensure correct content bootstrapping. 
+
+=== Content exposed using Angular method
+IMPORTANT: **It is NOT recommended** to use Angular expose method. Doing so restraints the platform from using many frameworks with different versions, which means that all Microfrontends would need to use the same technology and version.
+
+When exposing modules and Remote Components using Angular method, there are two requirements.
+
+. Webpack configuration need to expose the module or component directly. It means that instead of pointing to a **main.ts** file that is bootstrapping the content, **module.ts** and **component.ts** files should be used directly.
+. **main.ts** file of Microfrontend's modules needs to bootstrap the module asynchronously.
++
+**main.ts** content should look similar to:
+[source,typescript]
+import('./bootstrap').catch(err => console.error(err));
++
+**bootstrap.ts** content should look similar to (or any custom bootstrap of your Microfrontend):
++
+[source,typescript]
+....
+import { AppModule } from './app/app.module';
+import { environment } from './environments/environment';
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+import { enableProdMode } from '@angular/core';
+
+if (environment.production) {
+  enableProdMode();
+}
+
+platformBrowserDynamic().bootstrapModule(AppModule)
+  .catch(err => console.error(err));
+....
+
+=== Content exposed using Webcomponent method
+// TODO: Correct link to exact resource for @onecx/angular-webcomponents lib
+xref:implementation-details/mfe-content-loading/webcomponents.adoc[Loading mechanism for modules and Remote Components exposed using Webcomponent method] requires that content is adapted to using Web Components Custom Elements. For both content types, bootstrapping logic needs to register Custom Element in the Custom Elements Registry.
+
+// TODO: Correct link to exact resource for Angular issues
+NOTE: For Angular based content, apart from Custom Element registration it is also required to cover few Angular related issues. For more information on those issues, please refer xref:implementation-details/mfe-content-loading/webcomponents.adoc[here]
+
+// TODO: Correct link to exact resource for @onecx/angular-webcomponents lib
+It is recommended to use xref:implementation-details/mfe-content-loading/webcomponents.adoc[@onecx/angular-webcomponents] library to bootstrap Microfrontend's content using its exposed methods.
+
+==== Module bootstrapping and configuration
+The following requirements need to be fullfield when exposing modules using Webcomponent method:
+
+. Webpack configuration need to expose the *main.ts* file of the module.
+. **main.ts** file of the module needs to bootstrap the module asynchronously.
+// TODO: Correct link to exact resource for Angular issues
+. Module bootstrap has to cover Angular issues (for Angular based modules only)
+. Module class
+.. needs to register an entrypoint as Custom Element in Custom Elements Registry.
+.. needs to adapt routing so Shell registers routing happening within the module.
+.. needs to adapt configuration so services are using correct urls to external resources.
+
+Below, a module setup example (Angular based) for using Webcomponent expose method is presented. Each file's content is going to be explained in details with important context information for other technologies then presented.
+
+.webpack.config.js
+[source, typescript]
+....
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleModule': './src/main.ts'
+  },
+  ...
+})
+....
+
+Webpack configuration is exposing a **main.ts** file.
+
+.src/main.ts
+[source, typescript]
+....
+import('./bootstrap').catch((err) => console.error(err))
+....
+
+**main.ts** file is importing (async action) **bootstrap.ts** file.
+
+.src/bootstrap.ts
+[source, typescript]
+....
+import { bootstrapModule } from '@onecx/angular-webcomponents'
+import { environment } from './environments/environment'
+import { ExampleModule } from './app/module'
+
+bootstrapModule(ExampleModule, 'microfrontend', environment.production)
+....
+
+// TODO: Correct link to exact resource for Angular issues
+**bootstrap.ts** file is bootstrapping the module using @onecx/angular-webcomponents library to ensure that Angular ngZone and platform are shared (Angular requirement only). For other technologies, simply call any asynchronous bootstrap function required.
+
+.src/app/module.ts
+[source, typescript]
+....
+import { HttpClient, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+import { APP_INITIALIZER, DoBootstrap, Injector, NgModule } from '@angular/core'
+import { Router, RouterModule, Routes } from '@angular/router'
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { MissingTranslationHandler, TranslateLoader, TranslateModule } from '@ngx-translate/core'
+import {
+  AppStateService,
+  ConfigurationService,
+  createTranslateLoader,
+  PortalCoreModule,
+  PortalMissingTranslationHandler,
+  PortalApiConfiguration,
+} from '@onecx/portal-integration-angular'
+import { AngularAuthModule } from '@onecx/angular-auth'
+import { createAppEntrypoint, initializeRouter, startsWith } from '@onecx/angular-webcomponents'
+import { addInitializeModuleGuard } from '@onecx/angular-integration-interface'
+import { Configuration } from './shared/generated'
+
+@Component({
+  selector: 'app-root',
+  template: `<router-outlet></router-outlet>`
+})
+export class AppEntrypointComponent {}
+
+export const routes: Routes = [
+  {
+    matcher: startsWith(''),
+    loadChildren: () => import('./feature/feature.module').then((mod) => mod.FeatureModule)
+  },
+  {
+    matcher: startsWith('tracking'),
+    loadChildren: () => import('./tracking/tracking.module').then((mod) => mod.TrackingModule)
+  }
+]
+
+function apiConfigProvider(configService: ConfigurationService, appStateService: AppStateService) {
+  return new PortalApiConfiguration(Configuration, environment.apiPrefix, configService, appStateService)
+}
+
+@NgModule({
+    declarations: [AppEntrypointComponent],
+    imports: [
+        CommonModule,
+        PortalCoreModule.forMicroFrontend(),
+        RouterModule.forRoot(addInitializeModuleGuard(routes)),
+        TranslateModule.forRoot({
+        extend: true,
+        isolate: false,
+        loader: {
+            provide: TranslateLoader,
+            useFactory: createTranslateLoader,
+            deps: [HttpClient, AppStateService]
+        },
+        missingTranslationHandler: {
+            provide: MissingTranslationHandler,
+            useClass: PortalMissingTranslationHandler
+        }
+        }),
+        BrowserModule,
+        AngularAuthModule,
+        BrowserAnimationsModule,
+    ],
+    exports: [],
+    providers: [
+        {
+            provide: Configuration,
+            useFactory: apiConfigProvider,
+            deps: [ConfigurationService, AppStateService]
+        },
+        {
+            provide: APP_INITIALIZER,
+            useFactory: initializeRouter,
+            multi: true,
+            deps: [Router, AppStateService]
+        },
+        provideHttpClient(withInterceptorsFromDi())
+    ]
+})
+export class ExampleModule implements DoBootstrap {
+    constructor(private readonly injector: Injector) {}
+
+    ngDoBootstrap(): void {
+        createAppEntrypoint(AppEntrypointComponent, 'example-component', this.injector)
+    }
+}
+....
+
+**module.ts** file is prepares the module for integration with OneCX platform.
+
+This example showcases the recommended approach of defining modules (Angular based) using Webcomponent method. Here is a list of important features of this example:
+
+Module imports:: 
+* CommonModule, BrowserModule and BrowserAnimationsModule are optional.
+* PortalCoreModule is defined to allow usage of OneCX components and services.
+* TranslateModule is defined to use translation keys within the module.
+// TODO: Add link to auth docs
+* AngularAuthModule is defined to use OneCX authorization mechanisms.
+* RouterModule is defined for routing to feature modules within the exposed module.
+
+Entrypoint component::
+AppEntrypoint is a standard Angular component, which has a `<router-outlet>` element in its template. The `createAppEntrypoint` registers AppEntrypointComponent in Custom Elements Registry, so anytime '<example-component>' is rendered, AppEntypointComponent should be instantiated.
++
+The third parameter, being the module's Injector, is very important. This injector will be used by the instances of AppEntrypointComponent rendered using Web Components technology, meaning that each instance will have everything related to the module already set up. That also means the `<router-outlet>` will be using routes defined for the module.
++
+// TODO: Link to events topic
+The `createAppEntrypoint` method is also responsible for connecting module's router to Shell's router. Everytime the url of the browser changes, Shell is going to publish a new message, via EventsTopic, with information about new url. The `createAppEntrypoint` method subscribes to the EventsTopic and updates the router state accordingly to the received information.
++
+For other technologies then Angular it is recommended to:
++
+--
+* register Custom Element in Custom Elements Registry.
+* provide dependencies to registered Custom Element accordingly to the module.
+* listen to EventsTopic data changes and update the state of module's routing.
+--
+
+Routes matching::
+Each route defined for the module will load a feature module whenever it is activated. Beacuse Webcomponent expose method causes multiple routers to exist (Shell has its own router and every module or Remote Component displayed at a single point of time can have their own), an adjustment to the routes definition has to be made.
++
+The idea of routing in this example is the following:
++
+--
+* User enters 'shell_url/workspace_name/example_base_path' url - FeatureModule is used.
+* User enters 'shell_url/workspace_name/example_base_path/tracking' url - TrakcingModule is used.
+--
++
+With the following url parts meaning:
++
+--
+* shell_url - the Shell Application deployment url, e.g. `localhost:4200/shell.`
+* workspace_name - name of the accessed Workspace, e.g. `admin`.
+* example_base_path - base path of the example Microfrontend (configured via OneCX Core Applications), e.g. `example`.
+--
++
+// TODO: Add link to Microfrontend content loading
+Prior to routing within Microfrontend's module, Shell uses shell_url, workspace_name and example_base_path parts of the url to load the module. Because of this fact, module's router needs to remove those parts from consideration when matching its routes. Usually, `path` property of route is used to control the route activation, but in that case Microfrontend's module needs a way to only match the relevant part of the url.
++
+// TODO: Add link to @onecx/angular-webcomponents functions
+// TODO: Add link to Router matcher
+Using `startsWith` function from `@onecx/angular-webcomponents` for `matcher` property of a route object considers only those url parts relevant to the module. In order for it to work properly, the `initializeRouter` provider has to be added for the module as an app initializer.
++
+During module creation `initializeRouter`:
++
+--
+// TODO: Link to Topic
+* adds Microfrontend information (based on CurrentMfeTopic) to each route.
+* rewrites routes containing `redirectTo` for correct redirection.
+* creates new route (used when routing away from the module):
+** matched when none of the defined routes was matched
+** displays nothing (for a period of time when user routes between Microfrontends)
+--
++
+// TODO: link to statsWith
+The `startsWith` method uses route's Microfrontend information to remove already used parts from consideration when matching routes within the module.
++
+// TODO: link to lib
+To create your own matchers, please consider using `@onecx/angular-webcomponents` library.
++
+For other technologies then Angular it is recommended to:
++
+--
+* Use Microfrontend information from CurrentMfeTopic to only use relevent parts of the url for routing and redirect correctly.
+* Ensure routing away from the module is not causing side-effects.
+--
+
+Configuration::
+All services used within the Microfrontend's module need to know how to make requests to their external resources. Depending on the configuration of Workspace, they need to take that context into consideration when creating url for those resources.
++
+An examplary service might want to call `deployment_url/bff/search` by default. Example Application will most likely contain 3 Apps (MFE, BFF, SVC) and with this call being made MFE App will need to access the BFF. When Application's path within the Workspace is `mfe/example` the call has to be made to `deployment_url/mfe/example/bff/search`.
++
+// TODO: Link to Topic
+The `apiConfigProvider` presented in the example is utilizing `PortalApiConfiguration` class as `Configuration` for the services. It is listening to the CurrentMfeTopic changes and overwriting the basePath accordingly to the received message and all services use that information to construct a valid url.
++
+For other technologies then Angular it is recommended to:
++
+--
+* Listen to CurrentMfeTopic changes and overwrite services configuration to ensure correct resource is accessed.
+--
+
+==== Remote Component bootstrapping and configuration
+The following requirements need to be fullfield when exposing Remote Components using Webcomponent method:
+
+. Webpack configuration need to expose the *main.ts* file of the Remote Component.
+. **main.ts** file of the Remote Component needs to bootstrap the component asynchronously.
+// TODO: Correct link to exact resource for Angular issues
+. Component bootstrap
+.. has to cover Angular issues (for Angular based Remote Components only)
+.. needs to register the component as Custom Element in Custom Elements Registry.
+.. needs to adapt routing so Shell registers routing happening within the Remote Component.
+. Component class needs to use Remote Component initialization mechanism.
+
+Below, a Remote Component setup example (Angular based) for using Webcomponent expose method is presented. Each file's content is going to be explained in details with important context information for other technologies then presented.
+
+.webpack.config.js
+[source, typescript]
+....
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleComponent': './src/app/remotes/example/example.component.main.ts'
+  },
+  ...
+})
+....
+
+Webpack configuration is exposing a **example.component.main.ts** file.
+
+.src/app/remotes/example/example.component.main.ts
+[source, typescript]
+....
+import('./example.component.bootstrap').catch((err) => console.error(err))
+....
+
+**example.component.main.ts** file is importing (async action) **example.component.bootstrap.ts** file.
+
+.src/app/remotes/example/example.component.bootstrap.ts
+[source, typescript]
+....
+import {
+  HttpClient,
+  provideHttpClient,
+  withInterceptorsFromDi,
+} from '@angular/common/http';
+import {
+  APP_INITIALIZER,
+  importProvidersFrom
+} from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
+import {
+  createRemoteComponentTranslateLoader,
+  UserService
+} from '@onecx/portal-integration-angular';
+import { environment } from 'src/environments/environment';
+import { ExampleComponent } from './example.component';
+import {
+  BASE_URL,
+  provideTranslateServiceForRoot,
+} from '@onecx/angular-remote-components';
+import { TranslateLoader } from '@ngx-translate/core';
+import { ReplaySubject } from 'rxjs';
+
+function userProfileInitializer(userService: UserService) {
+  return async () => {
+    await userService.isInitialized;
+  };
+}
+
+bootstrapRemoteComponent(
+  ExampleComponent,
+  'example-remote-component',
+  environment.production,
+  [
+    provideHttpClient(withInterceptorsFromDi()),
+    {
+      provide: BASE_URL,
+      useValue: new ReplaySubject<string>(1),
+    },
+    provideTranslateServiceForRoot({
+      isolate: true,
+      loader: {
+        provide: TranslateLoader,
+        useFactory: createRemoteComponentTranslateLoader,
+        deps: [HttpClient, BASE_URL],
+      },
+    }),
+    importProvidersFrom(
+      AngularAuthModule,
+      BrowserModule,
+      BrowserAnimationsModule,
+    ),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: userProfileInitializer,
+      deps: [UserService],
+      multi: true,
+    },
+  ]
+)
+....
+
+// TODO: Correct link to exact resource for Angular issues
+// TODO: Link to the summary
+**example.component.bootstrap.ts** file is bootstrapping the Remote Component using @onecx/angular-webcomponents library to ensure that Angular ngZone and platform are shared (Angular requirement only). It also connects Shell router with the Remote Component's router (if such exists). The last argument is an array of providers required for component to work. Detailed description of this file can be found in the summary.
+
+.src/app/remotes/example/example.component.ts
+[source, typescript]
+....
+import { CommonModule, Location } from '@angular/common';
+import { Component, Inject, Input } from '@angular/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import {
+  UserService
+} from '@onecx/angular-integration-interface';
+import {
+  AngularRemoteComponentsModule,
+  BASE_URL,
+  ocxRemoteComponent,
+  ocxRemoteWebcomponent,
+  RemoteComponentConfig,
+} from '@onecx/angular-remote-components';
+import {
+  PortalCoreModule
+} from '@onecx/portal-integration-angular';
+import { ReplaySubject } from 'rxjs';
+import { environment } from 'src/environments/environment'
+
+@NgModule({
+  imports: [
+    PortalCoreModule.forMicroFrontend()
+  ]
+})
+export class SharedModule {}
+
+@Component({
+  standalone: true,
+  imports: [
+    AngularAuthModule,
+    AngularRemoteComponentsModule,
+    CommonModule,
+    SharedModule,
+    PortalCoreModule,
+    TranslateModule,
+  ],
+  selector: 'example-comp',
+  template: `<h>Hello from Remote Component</h>`,
+})
+export class ExampleComponent
+  implements ocxRemoteComponent, ocxRemoteWebcomponent
+{
+  permissions: string[] = [];
+
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
+    private readonly userService: UserService,
+    private readonly translateService: TranslateService,
+    private readonly exampleService: ExampleAPIService
+  ) {
+    this.translateService.use(this.userService.lang$.getValue());
+  }
+
+  @Input() set ocxRemoteComponentConfig(config: RemoteComponentConfig) {
+    this.ocxInitRemoteComponent(config);
+  }
+
+  ocxInitRemoteComponent(config: RemoteComponentConfig): void {
+    this.baseUrl.next(config.baseUrl);
+    this.permissions = config.permissions;
+    this.exampleService.configuration = new Configuration({
+      basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
+    })
+  }
+}
+....
+
+**example.component.ts** file is prepares the Remote Component for integration with OneCX platform.
+
+This example showcases the recommended approach of defining Remote Components (Angular based) using Webcomponent method. Here is a list of important features of this example:
+
+Component bootstrap::
+// bootstrapRemoteComponent
+// - creates Application
+// - shares ngZone and platform
+// - connects router
+// - registers component with injector
+// -- here injector is not provided, but when application is created new injector is instantiated (check function)
+// that way providers are already there when component is instantiated
+// providers should have every provider needed for the component
+// special APP_INITIALIZER to get correct user's language
+
+Component definition::
+// Imports - describe
+// - say that for some providers have been prepared
+// For angular -> standalone
+// SharedModule that has PortalCoreModule.forMicrofrontend() to allow using services and components
+
+Configuration::
+// In constructor setting translation language to current users language
+// Interfaces for initialization
+// point to RemoteComponentConfig
+// Explain whats happening
+// For other technologies just implement correct method
+
+
