@@ -1672,8 +1672,8 @@ FAQ &amp; Help - Frequently Asked Questions
 
 Getting Started - Running OneCX locally
 ====================
-| |  This guide assumes that onecx-local-env has already been set up and installed according to the instructions provided in [Setup](#general:setup/installation.adoc). |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| |  This guide assumes that onecx-local-env has already been set up and installed according to the instructions provided in [Setup](setup.html). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- |
 
 This guide provides a quick overview of the steps required to run a local OneCX environment. It includes instructions on starting the environment, accessing OneCX in a browser, and stopping the environment when finished.
 
@@ -1687,6 +1687,10 @@ After setting up `onecx-local-env`, a local OneCX environment can be started by 
 
 This command starts the minimal set of required Docker services and imports the necessary data for them to function. This process may take several minutes, especially on the first run, as Docker images may need to be pulled.
 
+Successful starting
+
+[image$script\_start-onecx.sh.png](%5Fimages/script%5Fstart-onecx.sh.png)
+
 | |  The start-onecx.sh script accepts optional flags to customize its behavior. A list of available flags can be found in the [start-onecx.sh documentation](../advanced/scripts/start.html) or by running ./start-onecx.sh -h. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
@@ -1694,8 +1698,8 @@ This command starts the minimal set of required Docker services and imports the 
 
 After starting the local environment, OneCX can be accessed in a web browser by navigating to
 
-```bash
-http://local-proxy/onecx-shell/admin
+```text
+http://local-proxy/onecx-shell/admin[http://local-proxy/onecx-shell/admin]
 ```
 
 The default login credentials are:
@@ -2942,6 +2946,80 @@ And in your package.json scripts, ensure ngDevMode is set as production in build
 
 This setup ensures that `ngDevMode` is correctly defined for both development and production builds, preventing the error.
 
+Automatic Image Build
+====================
+If you want to develop or test local changes, you can use Docker’s build context to build the image from your local source code each time you run `docker compose`. With the build context from your local application, Docker will automatically build the image.
+
+To use this approach, first update your `hello-world.docker-compose.yaml` to use a `build` section instead of an image reference. Adjust the `context` to your local app path and reference the application’s Dockerfile as shown in the examples below. For the UI it would look like this:
+
+```yaml
+include:
+  - docker-compose.yaml
+services:
+  hello-world-ui:
+    # image: ${HELLO_WORLD_UI}
+    build:
+      context: /path/to/hello-world-ui
+      dockerfile: Dockerfile
+    environment:
+      APP_BASE_HREF: /mfe/helloWorld/
+      APP_ID: hello-world-ui
+      PRODUCT_NAME: hello-world
+    depends_on:
+      hello-world-bff:
+        condition: service_healthy
+    labels:
+      - traefik.http.services.hello-world-ui.loadbalancer.server.port=8080
+      - traefik.http.routers.hello-world-ui.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)
+    networks:
+      - default
+    profiles:
+      - base
+      - hello-world
+      - hello-world-ui
+      - all
+```
+
+If you want to use the build context for the BFF service, it would look like this:
+
+```yaml
+...
+  hello-world-bff:
+    # image: ${HELLO_WORLD_BFF}
+    build:
+      context: /path/to/hello-world-bff
+      dockerfile: Dockerfile
+  ...
+```
+
+In order for the Svc to use the build context, it must be customized in the same way:
+
+```yaml
+...
+  hello-world-svc:
+    # image: ${HELLO_WORLD_SVC}
+    build:
+      context: /path/to/hello-world-svc
+      dockerfile: Dockerfile
+    ...
+```
+
+Now you can import the initial data in the `onecx-local-env` by running:
+
+```sh
+./import-onecx.sh
+```
+
+The corresponding application can now be built, e.g. with `npm run build` for the UI, and the `onecx-local-env` can be started and built with:
+
+```sh
+docker compose -f hello-world.docker-compose.yaml --profile base up -d --build
+```
+
+Your application will now be built and available at `<http://local-proxy/onecx-shell/admin/helloWorld/hello>` in the OneCX Shell. If you make changes in your application, you need to rebuild it with `npm run build` and restart the `onecx-local-env` with the command above.
+
+**This method of running the application may lead to potential caching issues that could prevent changes from being reflected immediately.**
+
 Creating a new OneCX Angular App
 ====================
 ## [](#general-overview)General Overview
@@ -3091,80 +3169,6 @@ npx @onecx/local-env-cli docker hello-world create hello-world helloWorld -e /pa
 ```
 
 **Now that the services are created, the application can be run in the OneCX environment as described [here](running%5Fcustom%5Fapps%5Foverview.html#running-and-testing-applications).**
-
-Automatic Image Build
-====================
-If you want to develop or test local changes, you can use Docker’s build context to build the image from your local source code each time you run `docker compose`. With the build context from your local application, Docker will automatically build the image.
-
-To use this approach, first update your `hello-world.docker-compose.yaml` to use a `build` section instead of an image reference. Adjust the `context` to your local app path and reference the application’s Dockerfile as shown in the examples below. For the UI it would look like this:
-
-```yaml
-include:
-  - docker-compose.yaml
-services:
-  hello-world-ui:
-    # image: ${HELLO_WORLD_UI}
-    build:
-      context: /path/to/hello-world-ui
-      dockerfile: Dockerfile
-    environment:
-      APP_BASE_HREF: /mfe/helloWorld/
-      APP_ID: hello-world-ui
-      PRODUCT_NAME: hello-world
-    depends_on:
-      hello-world-bff:
-        condition: service_healthy
-    labels:
-      - traefik.http.services.hello-world-ui.loadbalancer.server.port=8080
-      - traefik.http.routers.hello-world-ui.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)
-    networks:
-      - default
-    profiles:
-      - base
-      - hello-world
-      - hello-world-ui
-      - all
-```
-
-If you want to use the build context for the BFF service, it would look like this:
-
-```yaml
-...
-  hello-world-bff:
-    # image: ${HELLO_WORLD_BFF}
-    build:
-      context: /path/to/hello-world-bff
-      dockerfile: Dockerfile
-  ...
-```
-
-In order for the Svc to use the build context, it must be customized in the same way:
-
-```yaml
-...
-  hello-world-svc:
-    # image: ${HELLO_WORLD_SVC}
-    build:
-      context: /path/to/hello-world-svc
-      dockerfile: Dockerfile
-    ...
-```
-
-Now you can import the initial data in the `onecx-local-env` by running:
-
-```sh
-./import-onecx.sh
-```
-
-The corresponding application can now be built, e.g. with `npm run build` for the UI, and the `onecx-local-env` can be started and built with:
-
-```sh
-docker compose -f hello-world.docker-compose.yaml --profile base up -d --build
-```
-
-Your application will now be built and available at `<http://local-proxy/onecx-shell/admin/helloWorld/hello>` in the OneCX Shell. If you make changes in your application, you need to rebuild it with `npm run build` and restart the `onecx-local-env` with the command above.
-
-**This method of running the application may lead to potential caching issues that could prevent changes from being reflected immediately.**
 
 Manual Image Build
 ====================
@@ -8787,6 +8791,81 @@ _Adapt in File:_ `<feature>-search.component.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -8898,81 +8977,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 Lazy loading tabs
 ====================
@@ -16254,6 +16258,10 @@ undefined
 
 undefined
 ====================
+
+
+undefined
+====================
 ## [](#%5Fonecx%5Fhelp%5Fbff)onecx-help-bff
 
 ### [](#%5Fdefault%5Fproperties)Default properties
@@ -16364,10 +16372,6 @@ app:
         description: OneCX Help Backend For Frontend
         name: OneCX Help BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -20473,6 +20477,10 @@ requests microservice: read: permission on all GET requests and POST search writ
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -20624,10 +20632,6 @@ undefined
 | \===ttps://github.com/quarkusio/quarkusio.github.io/blob/develop/\_generated-doc/latest/config/quarkus-container-image-docker.adoc\[Link\] | 3.15.1                                                                                             | quarkus-rest-client-oidc-filter                                                                                                                  |            |
 | 3.15.1                                                                                                                                     | \===kus-arc.adoc\[Link\]                                                                           | 3.9.3                                                                                                                                            |            |
 | quarkus-container-image-docker                                                                                                             | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.9.3      |
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -21917,6 +21921,10 @@ tbd
 
 undefined
 ====================
+This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
+
+undefined
+====================
 ## [](#%5Fonecx%5Ftenant%5Fsvc)onecx-tenant-svc
 
 This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
@@ -22007,10 +22015,6 @@ tkit.dataimport.configurations.tenant.stop-at-error=true
 undefined
 ====================
 
-
-undefined
-====================
-This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
 
 undefined
 ====================
@@ -26574,10 +26578,6 @@ TCH requests, where objects are saved or updated
 
 undefined
 ====================
-
-
-undefined
-====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -26738,6 +26738,10 @@ TCH requests, where objects are saved or updated
         spec:
           kcConfig:
             defaultClientScopes: [ ocx-ws:all, ocx-th:read, ocx-ps:read, ocx-ia:read, ocx-pm:read ]
+
+undefined
+====================
+
 
 undefined
 ====================
