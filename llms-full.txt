@@ -6024,6 +6024,233 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
 
+OneCX PortalDialogService
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage dialogs using OneCX libraries.
+
+## [](#importing-portal-dialog-service)Importing PortalDialogService
+
+To properly use PortalDialogService, please import it via the `providePortalDialogService`.
+
+Provide PortalDialogService via the providers array
+
+```javascript
+import {
+  providePortalDialogService
+} from '@onecx/portal-integration-angular';
+
+...
+providers: [
+    providePortalDialogService(),
+]
+...
+```
+
+| |  PortalDialogService should be provided in the **module’s providers array** or in **component’s providers array** in case of standalone components usage. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Inject PortalDialogService via constructor
+
+```javascript
+import {
+  PortalDialogService
+} from '@onecx/portal-integration-angular';
+
+export class MyClass() {
+    constructor() {
+        private portalDialogService: PortalDialogService
+    }
+}
+```
+
+## [](#basic-usage)Basic Usage
+
+To open the dialog use the `openDialog` method of the PortalDialogService. It returns an `Observable`, so make sure that the **call is subscribed to**.
+
+| |  Please, make sure to unsubscribe in case of directly subscribing for an openDialog call. |
+| ------------------------------------------------------------------------------------------- |
+
+__Table 1\. openDialog method arguments__
+| Property name                           | Type                                        | Description                                                                                       |                |               |                                                                                                                             |
+| --------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| title                                   | TranslationKey \| null                      | Translation key for dialog title.                                                                 |                |               |                                                                                                                             |
+| componentOrMessage                      | Type<any> \| Type<DialogResult<T>>          | Component<T>                                                                                      | TranslationKey | DialogMessage | Either a component or a translation key of a message with optional parameters and icon to be displayed next to the message. |
+| primaryButtonTranslationKeyOrDetails    | TranslationKey \| ButtonDialogButtonDetails | Translation key with optional parameters and icon to be displayed next to the text of the button. |                |               |                                                                                                                             |
+| secondaryButtonTranslationKeyOrDetails? | TranslationKey \| ButtonDialogButtonDetails | Translation key with optional parameters and icon to be displayed next to the text of the button. |                |               |                                                                                                                             |
+| extras?                                 | PortalDialogConfig                          | Configuration object allowing for customization of the dialog behavior and visual aspects.        |                |               |                                                                                                                             |
+
+Display dialog with message
+
+```javascript
+this.portalDialogService.openDialog('TITLE_KEY', 'MESSAGE_KEY', 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
+  // operations when dialog has been closed
+})
+```
+
+Display dialog with component
+
+```javascript
+@Component({template: `<div>MyComponentTemplate</div>`})
+class MyComponent {}
+
+this.portalDialogService.openDialog('TITLE_KEY', MyComponent, 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
+  // operations when dialog has been closed
+})
+```
+
+Display dialog with component with inputs
+
+```javascript
+⁣@Component({template: `<div>{{content | translate}}</div>`})
+class MyComponent {
+    @Input() content: string = ''
+}
+
+this.portalDialogService.openDialog('TITLE_KEY', { type: MyComponent, inputs: { content: 'CONTENT_KEY'}}, 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
+  // operations when dialog has been closed
+})
+```
+
+## [](#advanced-usage)Advanced Usage
+
+### [](#control-dialog-result)Control Dialog Result
+
+If its desired to extend the result of the dialog, implement the `DialogResult` interface on the component displayed inside the dialog.
+
+DialogResult component example
+
+```javascript
+@Component({template: `<div>
+<input (change)="onInputChange($event)">
+</div>`})
+export class MyComponent implements DialogResult<string> {
+  dialogResult: string = ''
+  onInputChange(event: any) {
+    this.dialogResult = event.target.value
+  }
+}
+
+portalDialogService.openDialog<string>('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe((result: DialogState<string>) => {
+// result.value === MyComponent.dialogResult (during button click)
+// behavior when dialog closes
+})
+```
+
+### [](#control-dialog-button-click-events)Control Dialog Button Click Events
+
+If its desired to validate the dialog state prior to closing the dialog, implement the `DialogButtonClicked` interface on the component displayed inside the dialog.
+
+The `ocxDialogButtonClicked` method is called every time a primary, secondary or custom button was clicked. The method should return a boolean value (boolean, Observable<boolean>, Promise<boolean>) that determines if the dialog should be closed.
+
+The `DialogState` argument of `ocxDialogButtonClicked` method will contain information about the clicked button. Additionally, for components implementing `DialogResult` interface, it will also contain the dialog state captured on the button click event.
+
+Validate
+
+```javascript
+@Component({template: `<div>
+<input (change)="onInputChange($event)">
+</div>`})
+class MyComponent implements DialogButtonClicked, DialogResult<string> {
+  dialogResult: string = ''
+  onInputChange(event: any) {
+    this.dialogResult = event.target.value
+  }
+
+  ocxDialogButtonClicked(state: DialogState<unknown>) {
+    if (state.button === 'primary') {
+      // behavior on primary button click returning boolean value
+      // close dialog if call was successful
+      return this.service.post(state.result).pipe(map(response) => {
+        return response !== undefined
+      })
+    } else if (state.button === 'secondary') return false // don't close dialog on secondary button click
+
+    return false
+  }
+}
+
+portalDialogService.openDialog<string>('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
+// behavior when dialog closes
+})
+```
+
+### [](#control-dialog-button-enablement)Control Dialog Button Enablement
+
+If its desired to enable the dialog buttons based on the component’s state, implement the `DialogPrimaryButtonDisabled`, `DialogSecondaryButtonDisabled` or `DialogCustomButtonsDisabled` interface on the component displayed inside the dialog.
+
+When interface is implemented by the component, the **respective buttons are disabled by default**.
+
+DialogPrimaryButtonDisabled component example
+
+```javascript
+@Component({template: `<div>content</div>`})
+export class MyComponent implements DialogPrimaryButtonDisabled {
+    // emit true/false to enable/disable primary button
+    @Output() primaryButtonEnabled: EventEmitter<boolean> = new EventEmitter()
+}
+
+portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
+// behavior when dialog closes
+})
+```
+
+DialogSecondaryButtonDisabled component example
+
+```javascript
+@Component({template: `<div>content</div>`})
+export class MyComponent implements DialogSecondaryButtonDisabled {
+    // emit true/false to enable/disable secondary button
+    @Output() secondaryButtonEnabled: EventEmitter<boolean> = new EventEmitter()
+}
+
+portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
+// behavior when dialog closes
+})
+```
+
+DialogCustomButtonsDisabled component example
+
+```javascript
+@Component({template: `<div>content</div>`})
+export class MyComponent implements DialogCustomButtonsDisabled {
+    // emit true/false to enable/disable secondary button
+    // id - id of the custom button to be enabled/disabled
+    @Output() customButtonEnabled: EventEmitter<{
+        id: string;
+        enabled: boolean;
+    }>;
+}
+
+portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
+// behavior when dialog closes
+})
+```
+
+### [](#customize-dialog)Customize Dialog
+
+If it is desired to customize the dialog in other areas then the presented content, it is recommended to use the `openDialog` method call argument called `extras`. Most of the configuration properties are compatible with the [PrimeNg’s DynamicDialog config object](https://primeng.org/dynamicdialog#api.dynamicdialog-config), however there are some extended ones.
+
+#### [](#close-button)Control The Dialog Close Button
+
+To control the existence of the 'X' button (close button) for the dialog, use `showXButton` property.
+
+| |  The 'X' button will be always visible if only one button is used for the dialog. |
+| ----------------------------------------------------------------------------------- |
+
+#### [](#custom-buttons)Add Custom Buttons to The Dialog
+
+To use buttons other than default ones, use `customButtons` property. It is an array of buttons to be added to the dialog. It is possible to control the alignment of the buttons.
+
+#### [](#buttons-autofocus)Control Buttons Autofocus
+
+To control the autofocus of the dialog, use `autoFocusButton` and `autoFocusButtonCustomId` properties. When not provided, the autofocus will not be applied to any button.
+
+#### [](#further-customizations)Further Customizations
+
+For the explanations of further properties, please refer to the [PrimeNg’s DynamicDialog config object documentation](https://primeng.org/dynamicdialog#api.dynamicdialog-config).
+
 OneCX PortalMessageService
 ====================
 This service provides a convenient way to display translated toast messages in an Angular application. It is available via `@onecx/angular-integration-interface`
@@ -6367,81 +6594,6 @@ _Adapt in File:_ `<feature>-search.component.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -6553,6 +6705,81 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 Lazy loading tabs
 ====================
@@ -6740,233 +6967,6 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-OneCX PortalDialogService
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage dialogs using OneCX libraries.
-
-## [](#importing-portal-dialog-service)Importing PortalDialogService
-
-To properly use PortalDialogService, please import it via the `providePortalDialogService`.
-
-Provide PortalDialogService via the providers array
-
-```javascript
-import {
-  providePortalDialogService
-} from '@onecx/portal-integration-angular';
-
-...
-providers: [
-    providePortalDialogService(),
-]
-...
-```
-
-| |  PortalDialogService should be provided in the **module’s providers array** or in **component’s providers array** in case of standalone components usage. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Inject PortalDialogService via constructor
-
-```javascript
-import {
-  PortalDialogService
-} from '@onecx/portal-integration-angular';
-
-export class MyClass() {
-    constructor() {
-        private portalDialogService: PortalDialogService
-    }
-}
-```
-
-## [](#basic-usage)Basic Usage
-
-To open the dialog use the `openDialog` method of the PortalDialogService. It returns an `Observable`, so make sure that the **call is subscribed to**.
-
-| |  Please, make sure to unsubscribe in case of directly subscribing for an openDialog call. |
-| ------------------------------------------------------------------------------------------- |
-
-__Table 1\. openDialog method arguments__
-| Property name                           | Type                                        | Description                                                                                       |                |               |                                                                                                                             |
-| --------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------- | ------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| title                                   | TranslationKey \| null                      | Translation key for dialog title.                                                                 |                |               |                                                                                                                             |
-| componentOrMessage                      | Type<any> \| Type<DialogResult<T>>          | Component<T>                                                                                      | TranslationKey | DialogMessage | Either a component or a translation key of a message with optional parameters and icon to be displayed next to the message. |
-| primaryButtonTranslationKeyOrDetails    | TranslationKey \| ButtonDialogButtonDetails | Translation key with optional parameters and icon to be displayed next to the text of the button. |                |               |                                                                                                                             |
-| secondaryButtonTranslationKeyOrDetails? | TranslationKey \| ButtonDialogButtonDetails | Translation key with optional parameters and icon to be displayed next to the text of the button. |                |               |                                                                                                                             |
-| extras?                                 | PortalDialogConfig                          | Configuration object allowing for customization of the dialog behavior and visual aspects.        |                |               |                                                                                                                             |
-
-Display dialog with message
-
-```javascript
-this.portalDialogService.openDialog('TITLE_KEY', 'MESSAGE_KEY', 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
-  // operations when dialog has been closed
-})
-```
-
-Display dialog with component
-
-```javascript
-@Component({template: `<div>MyComponentTemplate</div>`})
-class MyComponent {}
-
-this.portalDialogService.openDialog('TITLE_KEY', MyComponent, 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
-  // operations when dialog has been closed
-})
-```
-
-Display dialog with component with inputs
-
-```javascript
-⁣@Component({template: `<div>{{content | translate}}</div>`})
-class MyComponent {
-    @Input() content: string = ''
-}
-
-this.portalDialogService.openDialog('TITLE_KEY', { type: MyComponent, inputs: { content: 'CONTENT_KEY'}}, 'PRIMARY_BUTTON_KEY', 'SECONDARY_BUTTON_KEY').subscribe((stateOnClose) => {
-  // operations when dialog has been closed
-})
-```
-
-## [](#advanced-usage)Advanced Usage
-
-### [](#control-dialog-result)Control Dialog Result
-
-If its desired to extend the result of the dialog, implement the `DialogResult` interface on the component displayed inside the dialog.
-
-DialogResult component example
-
-```javascript
-@Component({template: `<div>
-<input (change)="onInputChange($event)">
-</div>`})
-export class MyComponent implements DialogResult<string> {
-  dialogResult: string = ''
-  onInputChange(event: any) {
-    this.dialogResult = event.target.value
-  }
-}
-
-portalDialogService.openDialog<string>('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe((result: DialogState<string>) => {
-// result.value === MyComponent.dialogResult (during button click)
-// behavior when dialog closes
-})
-```
-
-### [](#control-dialog-button-click-events)Control Dialog Button Click Events
-
-If its desired to validate the dialog state prior to closing the dialog, implement the `DialogButtonClicked` interface on the component displayed inside the dialog.
-
-The `ocxDialogButtonClicked` method is called every time a primary, secondary or custom button was clicked. The method should return a boolean value (boolean, Observable<boolean>, Promise<boolean>) that determines if the dialog should be closed.
-
-The `DialogState` argument of `ocxDialogButtonClicked` method will contain information about the clicked button. Additionally, for components implementing `DialogResult` interface, it will also contain the dialog state captured on the button click event.
-
-Validate
-
-```javascript
-@Component({template: `<div>
-<input (change)="onInputChange($event)">
-</div>`})
-class MyComponent implements DialogButtonClicked, DialogResult<string> {
-  dialogResult: string = ''
-  onInputChange(event: any) {
-    this.dialogResult = event.target.value
-  }
-
-  ocxDialogButtonClicked(state: DialogState<unknown>) {
-    if (state.button === 'primary') {
-      // behavior on primary button click returning boolean value
-      // close dialog if call was successful
-      return this.service.post(state.result).pipe(map(response) => {
-        return response !== undefined
-      })
-    } else if (state.button === 'secondary') return false // don't close dialog on secondary button click
-
-    return false
-  }
-}
-
-portalDialogService.openDialog<string>('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
-// behavior when dialog closes
-})
-```
-
-### [](#control-dialog-button-enablement)Control Dialog Button Enablement
-
-If its desired to enable the dialog buttons based on the component’s state, implement the `DialogPrimaryButtonDisabled`, `DialogSecondaryButtonDisabled` or `DialogCustomButtonsDisabled` interface on the component displayed inside the dialog.
-
-When interface is implemented by the component, the **respective buttons are disabled by default**.
-
-DialogPrimaryButtonDisabled component example
-
-```javascript
-@Component({template: `<div>content</div>`})
-export class MyComponent implements DialogPrimaryButtonDisabled {
-    // emit true/false to enable/disable primary button
-    @Output() primaryButtonEnabled: EventEmitter<boolean> = new EventEmitter()
-}
-
-portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
-// behavior when dialog closes
-})
-```
-
-DialogSecondaryButtonDisabled component example
-
-```javascript
-@Component({template: `<div>content</div>`})
-export class MyComponent implements DialogSecondaryButtonDisabled {
-    // emit true/false to enable/disable secondary button
-    @Output() secondaryButtonEnabled: EventEmitter<boolean> = new EventEmitter()
-}
-
-portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
-// behavior when dialog closes
-})
-```
-
-DialogCustomButtonsDisabled component example
-
-```javascript
-@Component({template: `<div>content</div>`})
-export class MyComponent implements DialogCustomButtonsDisabled {
-    // emit true/false to enable/disable secondary button
-    // id - id of the custom button to be enabled/disabled
-    @Output() customButtonEnabled: EventEmitter<{
-        id: string;
-        enabled: boolean;
-    }>;
-}
-
-portalDialogService.openDialog('TITLE_KEY', { type: MyComponent }, 'PRIMARY_KEY', 'SECONDARY_KEY').subscribe(() => {
-// behavior when dialog closes
-})
-```
-
-### [](#customize-dialog)Customize Dialog
-
-If it is desired to customize the dialog in other areas then the presented content, it is recommended to use the `openDialog` method call argument called `extras`. Most of the configuration properties are compatible with the [PrimeNg’s DynamicDialog config object](https://primeng.org/dynamicdialog#api.dynamicdialog-config), however there are some extended ones.
-
-#### [](#close-button)Control The Dialog Close Button
-
-To control the existence of the 'X' button (close button) for the dialog, use `showXButton` property.
-
-| |  The 'X' button will be always visible if only one button is used for the dialog. |
-| ----------------------------------------------------------------------------------- |
-
-#### [](#custom-buttons)Add Custom Buttons to The Dialog
-
-To use buttons other than default ones, use `customButtons` property. It is an array of buttons to be added to the dialog. It is possible to control the alignment of the buttons.
-
-#### [](#buttons-autofocus)Control Buttons Autofocus
-
-To control the autofocus of the dialog, use `autoFocusButton` and `autoFocusButtonCustomId` properties. When not provided, the autofocus will not be applied to any button.
-
-#### [](#further-customizations)Further Customizations
-
-For the explanations of further properties, please refer to the [PrimeNg’s DynamicDialog config object documentation](https://primeng.org/dynamicdialog#api.dynamicdialog-config).
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -11100,92 +11100,6 @@ Please refer to the [GroupByCountDiagram Component](#latest@guides:angular:cookb
 
 undefined
 ====================
-## [](#%5Fconfigure%5Fthe%5Fsearch%5Fcriteria%5Fand%5Fparameters)Configure the search criteria and parameters
-
-After generating the search page, you can add filter criteria. These criteria must be defined in the BFF’s OpenAPI spec and represented in TypeScript for use in the UI. Users enter criteria via HTML input fields placed at the top of the page.
-
-### [](#action-1)ACTION S1: Add additional properties to search request schema
-
-The `Search<FeatureName>Request` component in the OpenAPI yaml must be adapted.
-
-You should have a [Search<Feature>Request](../glossary.html#feature) defined in the OpenAPI specification. By modifying the [Search<Feature>Request](../glossary.html#feature), you can add additional parameters to your search request.
-
-_Adapt in File:_ `<feature>-bff.yaml`
-
-Example:
-
-```yml
-Search<Feature>Request:
-      type: object
-      properties:
-        pageNumber:
-          type: integer
-          format: int32
-          default: 0
-          description: 'The number of the page.'
-        pageSize:
-          type: integer
-          format: int32
-          default: 100
-          maximum: 1000
-          description: 'The size of the page.'
-        id:
-          type: string
-        exampleProperty:
-          type: string
-```
-
-Please refer to the [adding search criteria general cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc) for more information.
-
-| |  Run the command **npm run apigen** after adapting the OpenAPI to transform the changes into typescript code. |
-| --------------------------------------------------------------------------------------------------------------- |
-
-| |  Remove the "ACTION" comment after working on this task |
-| --------------------------------------------------------- |
-
-### [](#action-2)ACTION S2: Search criteria representation in zod
-
-The criteria you added in "Action S1" now have to be added to the [<feature>SearchCriteriasSchema](../glossary.html#feature). Assure the keys and types match the ones you defined in the OpenAPI specification.
-
-Refer to the [adding search criteria parameters cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#parameters) for more information.
-
-| |  Remove the "ACTION" comment after working on this task |
-| --------------------------------------------------------- |
-
-### [](#action-3)ACTION S3: HTML input fields for search criteria
-
-To make the search criteria visible and usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.
-
-Please refer to the [adding search criteria html cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#html) for more information.
-
-#### [](#examples-for-different-input-fields)Examples for different input fields
-
-Depending on what kind of input fields you want to add, the implementation differs. You can add different types of input fields, like `Text`, `Calendar`, `Dropdown`, `MultiSelect`, `AutoComplete`. Refer to the [adding search criteria examples for different input fields cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#examples-for-different-input-fields).
-
-### [](#action-4)ACTION S4: Add translations
-
-_Adapt in File:_ `de.json` / `en.json`
-
-Please ensure that all input field labels have the necessary translations added.
-
-Example
-
-```json
-  {
-    "EXAMPLE_FEATURE_SEARCH.CRITERIA.ID": "Example input field label"
-  }
-```
-
-Translations are needed for your input fields, additional labels or dropdown values.
-
-Refer to the [Multi-Language Cookbook](#latest@guides:angular:cookbook/multi-language/multi-language.adoc) for more information.
-
----
-
-Now you can continue with the next section [Configure search results](configure-search-results.html)
-
-undefined
-====================
 ## [](#%5Fconfigure%5Fthe%5Fsearch%5Fresults)Configure the search results.
 
 To configure the search results, the following actions must be taken.
@@ -11332,6 +11246,92 @@ Refer to the [Multi-Language Cookbook](#latest@guides:angular:cookbook/multi-lan
 
 | |  Remove the "ACTION" comment after working on this task |
 | --------------------------------------------------------- |
+
+undefined
+====================
+## [](#%5Fconfigure%5Fthe%5Fsearch%5Fcriteria%5Fand%5Fparameters)Configure the search criteria and parameters
+
+After generating the search page, you can add filter criteria. These criteria must be defined in the BFF’s OpenAPI spec and represented in TypeScript for use in the UI. Users enter criteria via HTML input fields placed at the top of the page.
+
+### [](#action-1)ACTION S1: Add additional properties to search request schema
+
+The `Search<FeatureName>Request` component in the OpenAPI yaml must be adapted.
+
+You should have a [Search<Feature>Request](../glossary.html#feature) defined in the OpenAPI specification. By modifying the [Search<Feature>Request](../glossary.html#feature), you can add additional parameters to your search request.
+
+_Adapt in File:_ `<feature>-bff.yaml`
+
+Example:
+
+```yml
+Search<Feature>Request:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+          format: int32
+          default: 0
+          description: 'The number of the page.'
+        pageSize:
+          type: integer
+          format: int32
+          default: 100
+          maximum: 1000
+          description: 'The size of the page.'
+        id:
+          type: string
+        exampleProperty:
+          type: string
+```
+
+Please refer to the [adding search criteria general cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc) for more information.
+
+| |  Run the command **npm run apigen** after adapting the OpenAPI to transform the changes into typescript code. |
+| --------------------------------------------------------------------------------------------------------------- |
+
+| |  Remove the "ACTION" comment after working on this task |
+| --------------------------------------------------------- |
+
+### [](#action-2)ACTION S2: Search criteria representation in zod
+
+The criteria you added in "Action S1" now have to be added to the [<feature>SearchCriteriasSchema](../glossary.html#feature). Assure the keys and types match the ones you defined in the OpenAPI specification.
+
+Refer to the [adding search criteria parameters cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#parameters) for more information.
+
+| |  Remove the "ACTION" comment after working on this task |
+| --------------------------------------------------------- |
+
+### [](#action-3)ACTION S3: HTML input fields for search criteria
+
+To make the search criteria visible and usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.
+
+Please refer to the [adding search criteria html cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#html) for more information.
+
+#### [](#examples-for-different-input-fields)Examples for different input fields
+
+Depending on what kind of input fields you want to add, the implementation differs. You can add different types of input fields, like `Text`, `Calendar`, `Dropdown`, `MultiSelect`, `AutoComplete`. Refer to the [adding search criteria examples for different input fields cookbook](#latest@guides:angular:ngrx/cookbook/adding-search-criteria/general.adoc#examples-for-different-input-fields).
+
+### [](#action-4)ACTION S4: Add translations
+
+_Adapt in File:_ `de.json` / `en.json`
+
+Please ensure that all input field labels have the necessary translations added.
+
+Example
+
+```json
+  {
+    "EXAMPLE_FEATURE_SEARCH.CRITERIA.ID": "Example input field label"
+  }
+```
+
+Translations are needed for your input fields, additional labels or dropdown values.
+
+Refer to the [Multi-Language Cookbook](#latest@guides:angular:cookbook/multi-language/multi-language.adoc) for more information.
+
+---
+
+Now you can continue with the next section [Configure search results](configure-search-results.html)
 
 undefined
 ====================
@@ -17734,6 +17734,76 @@ undefined
 | [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
 | [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
 
+OneCX Tenant Management
+====================
+![overview](_images/overview.png) 
+
+Figure 1\. Tenant UI
+
+## [](#%5Foverview)Overview
+
+The Tenant Management Solution is designed to efficiently manage multiple tenants within a single platform. It provides comprehensive tools for administrators to oversee tenant-specific configurations, ensuring each tenant has a tailored and secure environment that meets their unique needs. Key Features includes:
+
+**Tenant Configuration**:
+
+* Custom Settings: Allows administrators to configure settings specific to each tenant, including branding, themes, and access controls.
+* Theme Management: Supports the application of different themes for each tenant, allowing for a unique visual identity that aligns with their specific branding and preferences.
+
+**Security and Compliance**:
+
+* Data Isolation: Ensures that each tenant’s data is isolated and secure, preventing unauthorized access between tenants.
+* Compliance Management: Helps maintain compliance with industry standards and regulations by providing tools for auditing and reporting.
+
+**Customization**:
+
+* Customizable Features: Offers the ability to customize features and functionalities to meet the specific needs of each tenant.
+
+## [](#%5Fbenefits)Benefits
+
+* **Efficient Management**: Streamlines the management of multiple tenants, reducing administrative overhead and complexity.
+* **Enhanced Security**: Ensures robust security measures are in place to protect tenant data and maintain compliance.
+* **Improved Performance**: Provides tools to monitor and optimize performance, ensuring a high-quality user experience for all tenants.
+* **Flexibility**: Offers a high degree of customization and scalability, allowing the solution to adapt to the evolving needs of each tenant.
+* **Unique Tenant Experiences**: The ability to provide different themes for each tenant ensures that each one can have a distinct look and feel, enhancing their user experience.
+
+## [](#%5Flicence)Licence
+
+This software is licensed under the Apache License, Version 2.0\. You may obtain a copy of the license in the corresponding LICENSE file or visit the [Apache website](https://www.apache.org/licenses/LICENSE-2.0) for more information.
+
+## [](#%5Fcontributing)Contributing
+
+We welcome contributions from the community. If you would like to contribute to the development of OneCX Tenant Management Software, please follow our contribution guidelines (tbd).
+
+## [](#%5Fissue%5Ftracking)Issue Tracking
+
+All OneCX Tenant issues are tracked and maintained at the [issue tracking tool](https://xyz.com).
+
+## [](#%5Fstructure%5Foverview)Structure Overview
+
+OneCX Tenant Software is a comprehensive solution for managing Tenants in a user-friendly and efficient manner. It is a solution that consists of three main components: a backend service, a user interface and a backend-for-frontend (BFF) layer.
+
+The three components of the OneCX Tenant Software are as follows:
+
+1. Tenant User Interface (UI) The user interface component is based on Angular, a popular JavaScript framework for building dynamic web applications. It offers a user-friendly and intuitive interface for interacting with the Tenant system. Users can perform actions such as searching and editing of Tenants.
+2. Tenant Backend for Frontend (BFF) The BFF layer acts as an intermediary between the frontend user interface and the backend service. It handles tasks such as data aggregation, transformation, and composition to provide an optimized API for the UI. The BFF layer is designed to enhance performance and simplify the integration of the frontend with the backend service.
+3. Tenant Backend Service (SVC) This component provides the core functionality. It handles tasks such as storage, retrieval and editing of Tenants. The backend is built cloud native using Quarkus.
+
+Interfaces are based on the TM-Forum standard [TMF 667](https://github.com/tmforum-apis/TMF667%5FDocument).
+
+## [](#%5Fgetting%5Fstarted)Getting Started
+
+To get started with OneCX Tenant Software, please refer to the following installation and setup instructions specific to each component:
+
+* [OneCX Tenant UI (User Interface) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-ui/index.html)
+* [OneCX Tenant BFF (Backend for Frontend) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-bff/index.html)
+* [OneCX Tenant SVC (Backend) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-svc/index.html)
+
+For detailed usage instructions and API documentation, please refer to the respective documentation files for each component.
+
+## [](#%5Froadmap)Roadmap
+
+tbd
+
 undefined
 ====================
 ## [](#%5Fonecx%5Ftenant%5Fui)onecx-tenant-ui
@@ -18601,8 +18671,11 @@ Follow the instructions in [Integrate Docker Images](local-images.html) to integ
 | |  This is the recommended approach for integrating additional microservices. For integrating locally running microfrontends, use the method described above. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-Integrate Docker Images
+Extending the default environment
 ====================
+| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It will be updated in the near future. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 If you need to extend this environment with your own containers or import additional data, please utilize preferred version folder and its `docker-compose` and `imports` files and follow the guidelines from the respective version-specific documentation.
 
 Please under no circumstances use the root `docker-compose.yaml` file or the root `imports` folder for your own extensions, as these files can change between versions and may break your setup.
@@ -18645,11 +18718,8 @@ const PROXY_CONFIG = {
   }
 ```
 
-Extending the default environment
+Integrate Docker Images
 ====================
-| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It will be updated in the near future. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 If you need to extend this environment with your own containers or import additional data, please utilize preferred version folder and its `docker-compose` and `imports` files and follow the guidelines from the respective version-specific documentation.
 
 Please under no circumstances use the root `docker-compose.yaml` file or the root `imports` folder for your own extensions, as these files can change between versions and may break your setup.
@@ -19809,24 +19879,6 @@ add tmp folder e.g. with
 
 mkdir /mnt/c/tmp
 
-undefined
-====================
-## [](#%5Fonecx%5Fcore)onecx-core
-
-### [](#%5Finstallation)Installation
-
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-core` extension first to your build file.
-
-For instance, with Maven, add the following dependency to your POM file:
-
-```xml
-<dependency>
-    <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-core</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
-
 One-CX Quarkus Extensions
 ====================
 ## [](#%5Finstallation)Installation
@@ -19861,6 +19913,24 @@ Include the component in your project by including the corresponding dependency.
 * [Onecx OpenApi Generator](onecx-openapi-generator.html)
 * [Onecx Validator](onecx-validator.html)
 * [Onecx Operator](onecx-operator.html)
+
+undefined
+====================
+## [](#%5Fonecx%5Fcore)onecx-core
+
+### [](#%5Finstallation)Installation
+
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-core` extension first to your build file.
+
+For instance, with Maven, add the following dependency to your POM file:
+
+```xml
+<dependency>
+    <groupId>org.tkit.onecx.quarkus</groupId>
+    <artifactId>onecx-core</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
 
 undefined
 ====================
@@ -20098,57 +20168,6 @@ For instance, with Maven, add the following dependency to your POM file:
 
 undefined
 ====================
-## [](#%5Fonecx%5Fpermissions)onecx-permissions
-
-### [](#%5Finstallation)Installation
-
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-permission` extension first to your build file.
-
-For instance, with Maven, add the following dependency to your POM file:
-
-```xml
-<dependency>
-    <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-permission</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
-
-### [](#%5Fusage)Usage
-
-1. First you need to add the maven dependency shown at the top
-2. Then you can use @PermissionsAllowed annotation
-
-```java
-    @GET
-    @Path("write")
-    @PermissionsAllowed(value = "onecx:resource#action")
-    public Response adminWrite() {
-        return Response.ok("OK").build();
-    }
-```
-
-### [](#%5Fconfiguration)Configuration
-
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
-| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
-| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
-| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
-| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
-| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
-| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
-| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
-| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
-| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
-| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
-| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
-| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
-
-undefined
-====================
 ## [](#%5Fonecx%5Fparameters)onecx-parameters
 
 ## [](#%5Finstallation)Installation
@@ -20272,42 +20291,54 @@ in this respective order.
 
 undefined
 ====================
-## [](#%5Fonecx%5Fvalidator)onecx-validator
+## [](#%5Fonecx%5Fpermissions)onecx-permissions
 
 ### [](#%5Finstallation)Installation
 
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-validator` extension first to your build file.
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-permission` extension first to your build file.
 
 For instance, with Maven, add the following dependency to your POM file:
 
 ```xml
 <dependency>
     <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-validator</artifactId>
+    <artifactId>onecx-permission</artifactId>
     <version>2.0.0</version>
 </dependency>
 ```
 
 ### [](#%5Fusage)Usage
 
-#### [](#%5Fconstraints)Constraints
+1. First you need to add the maven dependency shown at the top
+2. Then you can use @PermissionsAllowed annotation
 
-| |  Constraints are generated automatically from the open-api definition file. See [Constraints](onecx-openapi-generator.html#%5Fconstraints) |
-| -------------------------------------------------------------------------------------------------------------------------------------------- |
-
-##### [](#%5Fsize)@Size
-
-`@org.tkit.onecx.quarkus.validator.constraints.Size` constraints annotation validate the numeric value between min and max attribute. Additional to these constraints contain parameter key which cloud be optionally mapped to the [onecx-parameters](onecx-parameters.html) backend service and this enables dynamic validation of the parameter.
+```java
+    @GET
+    @Path("write")
+    @PermissionsAllowed(value = "onecx:resource#action")
+    public Response adminWrite() {
+        return Response.ok("OK").build();
+    }
+```
 
 ### [](#%5Fconfiguration)Configuration
 
  Configuration property fixed at build time - All other configuration properties are overridable at runtime
 
-| Configuration property                                                                                                                                                                                                                                                                                                                                         | Type               | Default                                             |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------- |
-| [onecx.validator.values.enabled](#onecx-validator%5Fonecx-validator-values-enabled) Whether parameter-svc is enabled in case the parameter extension is present. Environment variable: ONECX\_VALIDATOR\_VALUES\_ENABLED                                                                                                                                       | boolean            | true                                                |
-| [onecx.validator.values.mapping."mapping"](#onecx-validator%5Fonecx-validator-values-mapping-mapping) Key to parameter-name mapping Environment variable: ONECX\_VALIDATOR\_VALUES\_MAPPING\_\_MAPPING\_                                                                                                                                                       | Map<String,String> |                                                     |
-| [onecx.validator.size.template](#onecx-validator%5Fonecx-validator-size-template) Template for the constraint violations error message 6 parameters required: %1$s, %2$s, %3$s, %4$s, %5$d, %6$d %1$s = provider %2$s = key %3$s = parameter %4$s = message %5$d = min-size value %6$d = max-size value Environment variable: ONECX\_VALIDATOR\_SIZE\_TEMPLATE | string             | Parameter: %3$s Boundaries: %5$d Bytes - %6$d Bytes |
+| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
+| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
+| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
+| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
+| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
+| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
+| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
+| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
+| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
+| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
+| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
+| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
 
 undefined
 ====================
@@ -20348,6 +20379,45 @@ To activate multi-tenancy also for hibernate, add the following maven dependency
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ---------------------------- |
 | [onecx.tenant.cache-enabled](#onecx-tenant%5Fonecx-tenant-cache-enabled) Enable or disable cache for the token Environment variable: ONECX\_TENANT\_CACHE\_ENABLED                                                                                                                          | boolean | true                         |
 | [onecx.tenant.service.client.url](#onecx-tenant%5Fonecx-tenant-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_tenant.url Environment variable: ONECX\_TENANT\_SERVICE\_CLIENT\_URL | string  | http://onecx-tenant-svc:8080 |
+
+undefined
+====================
+## [](#%5Fonecx%5Fvalidator)onecx-validator
+
+### [](#%5Finstallation)Installation
+
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-validator` extension first to your build file.
+
+For instance, with Maven, add the following dependency to your POM file:
+
+```xml
+<dependency>
+    <groupId>org.tkit.onecx.quarkus</groupId>
+    <artifactId>onecx-validator</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+### [](#%5Fusage)Usage
+
+#### [](#%5Fconstraints)Constraints
+
+| |  Constraints are generated automatically from the open-api definition file. See [Constraints](onecx-openapi-generator.html#%5Fconstraints) |
+| -------------------------------------------------------------------------------------------------------------------------------------------- |
+
+##### [](#%5Fsize)@Size
+
+`@org.tkit.onecx.quarkus.validator.constraints.Size` constraints annotation validate the numeric value between min and max attribute. Additional to these constraints contain parameter key which cloud be optionally mapped to the [onecx-parameters](onecx-parameters.html) backend service and this enables dynamic validation of the parameter.
+
+### [](#%5Fconfiguration)Configuration
+
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                                                                                                         | Type               | Default                                             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | --------------------------------------------------- |
+| [onecx.validator.values.enabled](#onecx-validator%5Fonecx-validator-values-enabled) Whether parameter-svc is enabled in case the parameter extension is present. Environment variable: ONECX\_VALIDATOR\_VALUES\_ENABLED                                                                                                                                       | boolean            | true                                                |
+| [onecx.validator.values.mapping."mapping"](#onecx-validator%5Fonecx-validator-values-mapping-mapping) Key to parameter-name mapping Environment variable: ONECX\_VALIDATOR\_VALUES\_MAPPING\_\_MAPPING\_                                                                                                                                                       | Map<String,String> |                                                     |
+| [onecx.validator.size.template](#onecx-validator%5Fonecx-validator-size-template) Template for the constraint violations error message 6 parameters required: %1$s, %2$s, %3$s, %4$s, %5$d, %6$d %1$s = provider %2$s = key %3$s = parameter %4$s = message %5$d = min-size value %6$d = max-size value Environment variable: ONECX\_VALIDATOR\_SIZE\_TEMPLATE | string             | Parameter: %3$s Boundaries: %5$d Bytes - %6$d Bytes |
 
 undefined
 ====================
@@ -22512,76 +22582,6 @@ To enable toast messages by using the `OneCXShellToastComponent`, it must be con
 3. The component will automatically subscribe to the `PortalMessageService` message stream
 
 Once configured in the extensions slot, any micro frontend can send messages through the `PortalMessageService`, and they will be displayed as toast notifications to the user.
-
-OneCX Tenant Management
-====================
-![overview](_images/overview.png) 
-
-Figure 1\. Tenant UI
-
-## [](#%5Foverview)Overview
-
-The Tenant Management Solution is designed to efficiently manage multiple tenants within a single platform. It provides comprehensive tools for administrators to oversee tenant-specific configurations, ensuring each tenant has a tailored and secure environment that meets their unique needs. Key Features includes:
-
-**Tenant Configuration**:
-
-* Custom Settings: Allows administrators to configure settings specific to each tenant, including branding, themes, and access controls.
-* Theme Management: Supports the application of different themes for each tenant, allowing for a unique visual identity that aligns with their specific branding and preferences.
-
-**Security and Compliance**:
-
-* Data Isolation: Ensures that each tenant’s data is isolated and secure, preventing unauthorized access between tenants.
-* Compliance Management: Helps maintain compliance with industry standards and regulations by providing tools for auditing and reporting.
-
-**Customization**:
-
-* Customizable Features: Offers the ability to customize features and functionalities to meet the specific needs of each tenant.
-
-## [](#%5Fbenefits)Benefits
-
-* **Efficient Management**: Streamlines the management of multiple tenants, reducing administrative overhead and complexity.
-* **Enhanced Security**: Ensures robust security measures are in place to protect tenant data and maintain compliance.
-* **Improved Performance**: Provides tools to monitor and optimize performance, ensuring a high-quality user experience for all tenants.
-* **Flexibility**: Offers a high degree of customization and scalability, allowing the solution to adapt to the evolving needs of each tenant.
-* **Unique Tenant Experiences**: The ability to provide different themes for each tenant ensures that each one can have a distinct look and feel, enhancing their user experience.
-
-## [](#%5Flicence)Licence
-
-This software is licensed under the Apache License, Version 2.0\. You may obtain a copy of the license in the corresponding LICENSE file or visit the [Apache website](https://www.apache.org/licenses/LICENSE-2.0) for more information.
-
-## [](#%5Fcontributing)Contributing
-
-We welcome contributions from the community. If you would like to contribute to the development of OneCX Tenant Management Software, please follow our contribution guidelines (tbd).
-
-## [](#%5Fissue%5Ftracking)Issue Tracking
-
-All OneCX Tenant issues are tracked and maintained at the [issue tracking tool](https://xyz.com).
-
-## [](#%5Fstructure%5Foverview)Structure Overview
-
-OneCX Tenant Software is a comprehensive solution for managing Tenants in a user-friendly and efficient manner. It is a solution that consists of three main components: a backend service, a user interface and a backend-for-frontend (BFF) layer.
-
-The three components of the OneCX Tenant Software are as follows:
-
-1. Tenant User Interface (UI) The user interface component is based on Angular, a popular JavaScript framework for building dynamic web applications. It offers a user-friendly and intuitive interface for interacting with the Tenant system. Users can perform actions such as searching and editing of Tenants.
-2. Tenant Backend for Frontend (BFF) The BFF layer acts as an intermediary between the frontend user interface and the backend service. It handles tasks such as data aggregation, transformation, and composition to provide an optimized API for the UI. The BFF layer is designed to enhance performance and simplify the integration of the frontend with the backend service.
-3. Tenant Backend Service (SVC) This component provides the core functionality. It handles tasks such as storage, retrieval and editing of Tenants. The backend is built cloud native using Quarkus.
-
-Interfaces are based on the TM-Forum standard [TMF 667](https://github.com/tmforum-apis/TMF667%5FDocument).
-
-## [](#%5Fgetting%5Fstarted)Getting Started
-
-To get started with OneCX Tenant Software, please refer to the following installation and setup instructions specific to each component:
-
-* [OneCX Tenant UI (User Interface) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-ui/index.html)
-* [OneCX Tenant BFF (Backend for Frontend) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-bff/index.html)
-* [OneCX Tenant SVC (Backend) - Getting Started](https://onecx.github.io/docs/onecx-tenant/current/onecx-tenant-svc/index.html)
-
-For detailed usage instructions and API documentation, please refer to the respective documentation files for each component.
-
-## [](#%5Froadmap)Roadmap
-
-tbd
 
 undefined
 ====================
@@ -25178,6 +25178,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -25284,10 +25288,6 @@ app:
         description: OneCX User Profile Backend For Frontend
         name: OneCX User Profile BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
