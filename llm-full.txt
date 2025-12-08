@@ -504,6 +504,107 @@ For more details regarding the usage of the CLI, see the [onecx-local-env-cli RE
 
 Now all necessary files are created and you can run your application in the OneCX environment as described in [Running and Testing Applications](running%5Fcustom%5Fapps%5Foverview.html#running-and-testing-applications).
 
+Enable Hot Reload
+====================
+For development purposes, you can enable hot reload in your local environment. This allows you to see changes in the application immediately without rebuilding the image. For that we need to adjust the routing configuration in the traefik configurations of the docker image by replacing the labels section of the hello-world-bff service in the `hello-world.docker-compose.yaml` with the following lines.
+
+```yaml
+- "traefik.http.routers.local_mfe.entrypoints=web"
+- "traefik.http.routers.local_mfe.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)"
+- "traefik.http.routers.local_mfe.service=local_mfe@file"
+```
+
+The value of `PathPrefix` in the traefik label should match the value of APP\_BASE\_HREF in the environment section of your docker-compose.yaml. Now, routing is handled directly to your locally running application instead of the Docker container.
+
+To make sure, that traefik can access the local application, enhance the `npm start` script in the applications `package.json` with `--host 0.0.0.0 --disable-host-check`.
+
+Additionally the PROXY\_CONFIG in the `proxy.config.js` of the UI application needs to be updated like this. Note that the path needs to be adjusted according to the `PathPrefix` value in the traefik label.
+
+```javascript
+const PROXY_CONFIG = {
+  '/mfe/helloWorld': {
+    target: 'http://localhost:4200/',
+    secure: false,
+    pathRewrite: {
+      '^.*/mfe/helloWorld': '',
+    },
+    changeOrigin: true,
+    logLevel: 'debug',
+    bypass: bypassFn,
+  }
+}
+```
+
+If your app runs on the standard port 4200, you can start your application with `npm start`, restart your containers with `docker compose --profile base up -d` and every change in the application should be reflected immediately under `<http://local-proxy/onecx-shell/admin/helloWorld/hello>`.
+
+## [](#note-different-ports)Note for different ports
+
+If your application uses a **port other than 4200**, you need to first update the port in the `url` field of the `local_mfe` service in the `./init-data/traefik/traefik-services.yml` file within your `onecx-local-env`. Set the port to match the one your application is running on.
+
+```yaml
+local_mfe:
+    loadBalancer:
+      servers:
+      - url: "http://host.docker.internal:4200/"
+```
+
+Now you can start your application with `npm start` and restart your containers with `docker compose --profile base up -d`. Every change in the application should be reflected immediately under `<http://local-proxy/onecx-shell/admin/helloWorld/hello>`.
+
+If you want to run multiple applications on different ports, see the [Running Multiple Local Apps Simultaneously](run%5Fmultiple%5Fapps.html) section.
+
+## [](#troubleshooting)Troubleshooting
+
+### [](#local-changes-not-visible)Local Changes are not Visible
+
+If your local changes are not visible in the OneCX Shell, it could be due to issues with the traefik configurations with the global UI container, that might be still running. To resolve this, stop the container with `docker compose stop hello-world-ui`, so that only your local container is running.
+
+### [](#angular-ngdevmode-error)Angular ngDevMode is not defined Error
+
+When running your Angular application, you may see the following error in the browser console:
+
+`hook.js:608 ERROR ReferenceError: ngDevMode is not defined`
+
+This error occurs when the global variable `ngDevMode`, which Angular uses to enable development mode features, is missing from the runtime environment. This is often due to Webpack not injecting the variable during the build process.
+
+**How to fix:**
+
+To resolve this, ensure that `ngDevMode` is defined in your Webpack configuration. You can do this by using the `DefinePlugin` to set the value based on your environment.
+
+First set the environment variable in your Dockerfile:
+
+```dockerfile
+ENV NODE_ENV production
+```
+
+Then add the following code to the webpack.config.js:
+
+```javascript
+const webpack = require('webpack');
+const isProduction = process.env.NODE_ENV === 'production';
+
+module.exports = {
+  ...
+  plugins: [
+    new webpack.DefinePlugin({
+      ngDevMode: JSON.stringify(!isProduction)
+    }),
+    ...
+  ],
+  ...
+};
+```
+
+And in your package.json scripts, ensure ngDevMode is set as production in build time:
+
+```json
+"scripts": {
+  "start": "nx serve --host 0.0.0.0 --disable-host-check",
+  "build": "NODE_ENV=production nx build"
+}
+```
+
+This setup ensures that `ngDevMode` is correctly defined for both development and production builds, preventing the error.
+
 Manually Creating Import Files and Docker Compose Entry
 ====================
 You can set up the custom application in OneCX by manually creating the required JSON files in the imports folder and updating the container definitions in the onecx-local-env repository.
@@ -786,107 +887,6 @@ hello-world.docker-compose.yaml
 ```
 
 Now all necessary files are created and you can run your application in the OneCX environment as described in [Running and Testing Applications](running%5Fcustom%5Fapps%5Foverview.html#running-and-testing-applications).
-
-Enable Hot Reload
-====================
-For development purposes, you can enable hot reload in your local environment. This allows you to see changes in the application immediately without rebuilding the image. For that we need to adjust the routing configuration in the traefik configurations of the docker image by replacing the labels section of the hello-world-bff service in the `hello-world.docker-compose.yaml` with the following lines.
-
-```yaml
-- "traefik.http.routers.local_mfe.entrypoints=web"
-- "traefik.http.routers.local_mfe.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)"
-- "traefik.http.routers.local_mfe.service=local_mfe@file"
-```
-
-The value of `PathPrefix` in the traefik label should match the value of APP\_BASE\_HREF in the environment section of your docker-compose.yaml. Now, routing is handled directly to your locally running application instead of the Docker container.
-
-To make sure, that traefik can access the local application, enhance the `npm start` script in the applications `package.json` with `--host 0.0.0.0 --disable-host-check`.
-
-Additionally the PROXY\_CONFIG in the `proxy.config.js` of the UI application needs to be updated like this. Note that the path needs to be adjusted according to the `PathPrefix` value in the traefik label.
-
-```javascript
-const PROXY_CONFIG = {
-  '/mfe/helloWorld': {
-    target: 'http://localhost:4200/',
-    secure: false,
-    pathRewrite: {
-      '^.*/mfe/helloWorld': '',
-    },
-    changeOrigin: true,
-    logLevel: 'debug',
-    bypass: bypassFn,
-  }
-}
-```
-
-If your app runs on the standard port 4200, you can start your application with `npm start`, restart your containers with `docker compose --profile base up -d` and every change in the application should be reflected immediately under `<http://local-proxy/onecx-shell/admin/helloWorld/hello>`.
-
-## [](#note-different-ports)Note for different ports
-
-If your application uses a **port other than 4200**, you need to first update the port in the `url` field of the `local_mfe` service in the `./init-data/traefik/traefik-services.yml` file within your `onecx-local-env`. Set the port to match the one your application is running on.
-
-```yaml
-local_mfe:
-    loadBalancer:
-      servers:
-      - url: "http://host.docker.internal:4200/"
-```
-
-Now you can start your application with `npm start` and restart your containers with `docker compose --profile base up -d`. Every change in the application should be reflected immediately under `<http://local-proxy/onecx-shell/admin/helloWorld/hello>`.
-
-If you want to run multiple applications on different ports, see the [Running Multiple Local Apps Simultaneously](run%5Fmultiple%5Fapps.html) section.
-
-## [](#troubleshooting)Troubleshooting
-
-### [](#local-changes-not-visible)Local Changes are not Visible
-
-If your local changes are not visible in the OneCX Shell, it could be due to issues with the traefik configurations with the global UI container, that might be still running. To resolve this, stop the container with `docker compose stop hello-world-ui`, so that only your local container is running.
-
-### [](#angular-ngdevmode-error)Angular ngDevMode is not defined Error
-
-When running your Angular application, you may see the following error in the browser console:
-
-`hook.js:608 ERROR ReferenceError: ngDevMode is not defined`
-
-This error occurs when the global variable `ngDevMode`, which Angular uses to enable development mode features, is missing from the runtime environment. This is often due to Webpack not injecting the variable during the build process.
-
-**How to fix:**
-
-To resolve this, ensure that `ngDevMode` is defined in your Webpack configuration. You can do this by using the `DefinePlugin` to set the value based on your environment.
-
-First set the environment variable in your Dockerfile:
-
-```dockerfile
-ENV NODE_ENV production
-```
-
-Then add the following code to the webpack.config.js:
-
-```javascript
-const webpack = require('webpack');
-const isProduction = process.env.NODE_ENV === 'production';
-
-module.exports = {
-  ...
-  plugins: [
-    new webpack.DefinePlugin({
-      ngDevMode: JSON.stringify(!isProduction)
-    }),
-    ...
-  ],
-  ...
-};
-```
-
-And in your package.json scripts, ensure ngDevMode is set as production in build time:
-
-```json
-"scripts": {
-  "start": "nx serve --host 0.0.0.0 --disable-host-check",
-  "build": "NODE_ENV=production nx build"
-}
-```
-
-This setup ensures that `ngDevMode` is correctly defined for both development and production builds, preventing the error.
 
 Creating a new OneCX Angular App
 ====================
@@ -2759,173 +2759,6 @@ The name of the remote entry file (usually `remoteEntry.js`).
 * [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
 * [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
 
-OneCX Permissions
-====================
-## [](#overview)Overview
-
-In [OneCX permission management](../../../../onecx-permission/current/general/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../libraries/angular-integration-interface.html#user-service) is available for permission checking.
-
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
-
-* can use the [User Service](../libraries/angular-integration-interface.html#user-service) to check permissions.
-
-## [](#permissions-overview)Permissions Overview
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g., USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g., admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-## [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-## [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
-
-OneCX Theming
-====================
-## [](#overview)Overview
-
-In an OneCX application theming is handled by the OneCX shell in collaboration with the OneCX Theme Management application.
-
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
-
-* should use theme variables to theme its content.
-
-## [](#theme-appliance)Theme Appliance
-
-In OneCX each workspace can use different theme for its pages. Each theme defines a set of the same CSS variables that are available on each pages with different values. The availability of those CSS variables is handled by the OneCX shell based on the accessed workspace. It means that **[OneCX compatible](migrations/vanilla-to-onecx/index.html) application does not have to do anything to apply the theme**. The only responsibility is to use theme variables.
-
-## [](#theme-variables)Theme Variables
-
-Theme variables are CSS variables available on the page for any application.
-
-Below, is a list of all theme variables available on the page:
-
-Basic Variables
-
-| CSS variable        | Description                                            |
-| ------------------- | ------------------------------------------------------ |
-| \--primary-color    | Primary color of non-text content.                     |
-| \--secondary-color  | Secondary color of non-text content.                   |
-| \--content-bg-color | Default background color of non-text content.          |
-| \--hover-bg-color   | Default background color on hover of non-text content. |
-
-Text-related Variables
-
-| CSS variable            | Description                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------------------- |
-| \--font-family          | Default font family for text content.                                                     |
-| \--font-size            | Default font size for text content.                                                       |
-| \--text-color           | Primary font text color.                                                                  |
-| \--text-secondary-color | Secondary font text color for elements in lower design hierarchy, usually less prominent. |
-
-Button-related Variables
-
-| CSS variable        | Description                                        |
-| ------------------- | -------------------------------------------------- |
-| \--button-hover-bg  | Background color of a button in hover state.       |
-| \--button-active-bg | Background color of a button in active state.      |
-| \--danger-button-bg | Background color of a button with danger severity. |
-
-Message-related Variables
-
-| CSS variable          | Description                                          |
-| --------------------- | ---------------------------------------------------- |
-| \--info-message-bg    | Background color of a message with info severity.    |
-| \--success-message-bg | Background color of a message with success severity. |
-| \--warning-message-bg | Background color of a message with warning severity. |
-| \--error-message-bg   | Background color of a message with error severity.   |
-
-Misc Variables
-
-| CSS variable                | Description                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------- |
-| \--divider-color            | Color of divider HTML elements, such as <hr> or component borders.                     |
-| \--body-bg-color            | Background color of the document’s body, used for the content pane’s background color. |
-| \--overlay-content-bg-color | Background color of the overlays,                                                      |
-
-Topbar Variables
-
-| CSS variable                       | Description                                                          |
-| ---------------------------------- | -------------------------------------------------------------------- |
-| \--topbar-bg-color                 | Background color of the topbar.                                      |
-| \--topbar-left-bg-color            | Background color of the topbar’s left side.                          |
-| \--topbar-text-color               | Color of the text in the topbar.                                     |
-| \--topbar-item-text-color          | Color of the text of the items located in the topbar.                |
-| \--topbar-item-text-hover-bg-color | Background color for the items located in the topbar on hover state. |
-| \--topbar-menu-button-bg-color     | Background color of the vertical menu hiding toggle.                 |
-| \--logo-color                      | Color of the topbar’s logo.                                          |
-
-Sidebar Variables
-
-| CSS variable                   | Description                                                                                         |
-| ------------------------------ | --------------------------------------------------------------------------------------------------- |
-| \--menu-bg-color               | Background color of the sidebar (left side of the shell).                                           |
-| \--menu-text-color             | Text color of the menu, located in the sidebar (left side of the shell).                            |
-| \--menu-item-text-color        | Text color of the menu item, located in the sidebar (left side of the shell).                       |
-| \--menu-item-bg-color          | Background color of the menu item, located in the sidebar (left side of the shell).                 |
-| \--menu-item-hover-bg-color    | Background color of the menu item in hover state, located in the sidebar (left side of the shell).  |
-| \--menu-active-item-text-color | Text color of the menu item in active state, located in the sidebar (left side of the shell).       |
-| \--menu-active-item-bg-color   | Background color of the menu item in active state, located in the sidebar (left side of the shell). |
-
-## [](#utilizing-theme-variables)Utilizing Theme Variables
-
-When creating styles for UI components it’s important to consider whether a style should be theme-aware. Example of a stylesheet using a theme variable:
-
-styles.css
-
-```css
-button {
-    background-color: var(--primary-color);
-}
-```
-
-The example above will set background color for each button element to the value corresponding to the `--primary-color` theme variable value.
-
-OneCX Toast Messages
-====================
-## [](#overview)Overview
-
-In OneCX toast messages display is handled via [PortalMessageService](service/portal-message-service/index.html).
-
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
-
-* should use [PortalMessageService](service/portal-message-service/index.html) to display toast messages
-* should not contain any toast component (in OneCX shell is in charge of displaying toast messages)
-
-## [](#display-toast-message)Display Toast Message
-
-Details about the usage can be found in the [PortalMessageService documentation](service/portal-message-service/index.html).
-
 Angular Guidelines
 ====================
 This chapter gives guidance which guidelines should be followed during the development.
@@ -3103,6 +2936,173 @@ For the developing the Quarkus application we need to install these tools:
 ### [](#useful-links)Useful links
 
 * [Storybook](https://storybook.js.org/)
+
+OneCX Permissions
+====================
+## [](#overview)Overview
+
+In [OneCX permission management](../../../../onecx-permission/current/general/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../libraries/angular-integration-interface.html#user-service) is available for permission checking.
+
+[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+
+* can use the [User Service](../libraries/angular-integration-interface.html#user-service) to check permissions.
+
+## [](#permissions-overview)Permissions Overview
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g., USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g., admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+## [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+## [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
+
+OneCX Theming
+====================
+## [](#overview)Overview
+
+In an OneCX application theming is handled by the OneCX shell in collaboration with the OneCX Theme Management application.
+
+[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+
+* should use theme variables to theme its content.
+
+## [](#theme-appliance)Theme Appliance
+
+In OneCX each workspace can use different theme for its pages. Each theme defines a set of the same CSS variables that are available on each pages with different values. The availability of those CSS variables is handled by the OneCX shell based on the accessed workspace. It means that **[OneCX compatible](migrations/vanilla-to-onecx/index.html) application does not have to do anything to apply the theme**. The only responsibility is to use theme variables.
+
+## [](#theme-variables)Theme Variables
+
+Theme variables are CSS variables available on the page for any application.
+
+Below, is a list of all theme variables available on the page:
+
+Basic Variables
+
+| CSS variable        | Description                                            |
+| ------------------- | ------------------------------------------------------ |
+| \--primary-color    | Primary color of non-text content.                     |
+| \--secondary-color  | Secondary color of non-text content.                   |
+| \--content-bg-color | Default background color of non-text content.          |
+| \--hover-bg-color   | Default background color on hover of non-text content. |
+
+Text-related Variables
+
+| CSS variable            | Description                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------- |
+| \--font-family          | Default font family for text content.                                                     |
+| \--font-size            | Default font size for text content.                                                       |
+| \--text-color           | Primary font text color.                                                                  |
+| \--text-secondary-color | Secondary font text color for elements in lower design hierarchy, usually less prominent. |
+
+Button-related Variables
+
+| CSS variable        | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| \--button-hover-bg  | Background color of a button in hover state.       |
+| \--button-active-bg | Background color of a button in active state.      |
+| \--danger-button-bg | Background color of a button with danger severity. |
+
+Message-related Variables
+
+| CSS variable          | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| \--info-message-bg    | Background color of a message with info severity.    |
+| \--success-message-bg | Background color of a message with success severity. |
+| \--warning-message-bg | Background color of a message with warning severity. |
+| \--error-message-bg   | Background color of a message with error severity.   |
+
+Misc Variables
+
+| CSS variable                | Description                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| \--divider-color            | Color of divider HTML elements, such as <hr> or component borders.                     |
+| \--body-bg-color            | Background color of the document’s body, used for the content pane’s background color. |
+| \--overlay-content-bg-color | Background color of the overlays,                                                      |
+
+Topbar Variables
+
+| CSS variable                       | Description                                                          |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| \--topbar-bg-color                 | Background color of the topbar.                                      |
+| \--topbar-left-bg-color            | Background color of the topbar’s left side.                          |
+| \--topbar-text-color               | Color of the text in the topbar.                                     |
+| \--topbar-item-text-color          | Color of the text of the items located in the topbar.                |
+| \--topbar-item-text-hover-bg-color | Background color for the items located in the topbar on hover state. |
+| \--topbar-menu-button-bg-color     | Background color of the vertical menu hiding toggle.                 |
+| \--logo-color                      | Color of the topbar’s logo.                                          |
+
+Sidebar Variables
+
+| CSS variable                   | Description                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| \--menu-bg-color               | Background color of the sidebar (left side of the shell).                                           |
+| \--menu-text-color             | Text color of the menu, located in the sidebar (left side of the shell).                            |
+| \--menu-item-text-color        | Text color of the menu item, located in the sidebar (left side of the shell).                       |
+| \--menu-item-bg-color          | Background color of the menu item, located in the sidebar (left side of the shell).                 |
+| \--menu-item-hover-bg-color    | Background color of the menu item in hover state, located in the sidebar (left side of the shell).  |
+| \--menu-active-item-text-color | Text color of the menu item in active state, located in the sidebar (left side of the shell).       |
+| \--menu-active-item-bg-color   | Background color of the menu item in active state, located in the sidebar (left side of the shell). |
+
+## [](#utilizing-theme-variables)Utilizing Theme Variables
+
+When creating styles for UI components it’s important to consider whether a style should be theme-aware. Example of a stylesheet using a theme variable:
+
+styles.css
+
+```css
+button {
+    background-color: var(--primary-color);
+}
+```
+
+The example above will set background color for each button element to the value corresponding to the `--primary-color` theme variable value.
+
+OneCX Toast Messages
+====================
+## [](#overview)Overview
+
+In OneCX toast messages display is handled via [PortalMessageService](service/portal-message-service/index.html).
+
+[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+
+* should use [PortalMessageService](service/portal-message-service/index.html) to display toast messages
+* should not contain any toast component (in OneCX shell is in charge of displaying toast messages)
+
+## [](#display-toast-message)Display Toast Message
+
+Details about the usage can be found in the [PortalMessageService documentation](service/portal-message-service/index.html).
 
 OneCX angular-integration-interface Library
 ====================
@@ -12757,30 +12757,6 @@ http:
 3. BFF → Keycloak (authentication)
 4. BFF → Backend Services (with token)
 
-Extending the default Environment
-====================
-OneCX functions as a collection of microservices and microfrontends. The OneCX Shell orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the OneCX network.
-
-There are several ways to expand the OneCX local environment
-
-## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
-
-If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
-
-Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
-
-| |  This is the recommended procedure for integrating a locally running microfrontend. Please use this method. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-## [](#adding-a-custom-docker-compose-file)Adding a custom docker-compose file
-
-To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
-
-Follow the instructions in [Integrate Docker Images](local-images.html) to integrate your images into OneCX.
-
-| |  This is the recommended approach for integrating additional microservices. For integrating locally running microfrontends, use the method described above. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 Extending the default environment
 ====================
 | |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It will be updated in the near future. |
@@ -12827,6 +12803,30 @@ const PROXY_CONFIG = {
     bypass: bypassFn,
   }
 ```
+
+Extending the default Environment
+====================
+OneCX functions as a collection of microservices and microfrontends. The OneCX Shell orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the OneCX network.
+
+There are several ways to expand the OneCX local environment
+
+## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
+
+If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
+
+Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
+
+| |  This is the recommended procedure for integrating a locally running microfrontend. Please use this method. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+## [](#adding-a-custom-docker-compose-file)Adding a custom docker-compose file
+
+To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
+
+Follow the instructions in [Integrate Docker Images](local-images.html) to integrate your images into OneCX.
+
+| |  This is the recommended approach for integrating additional microservices. For integrating locally running microfrontends, use the method described above. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Integrate Docker Images
 ====================
