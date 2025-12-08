@@ -1,0 +1,281 @@
+[#manual-application-setup]
+= Manually Creating Import Files and Docker Compose Entry
+
+You can set up the custom application in OneCX by manually creating the required JSON files in the imports folder and updating the container definitions in the onecx-local-env repository.
+
+[#creating-import-files]
+== Create Import Files
+
+=== 1. Add Assignments
+First, we need to add the permission assignments for our application by adding the following code under `assignments` in *imports > assignments > onecx.json*.
+
+.onecx.json
+[source,json]
+----
+"hello-world": {
+  "hello-world-ui": {
+    "onecx-admin": {
+      "HELLO": [
+        "CREATE",
+        "EDIT",
+        "DELETE",
+        "SAVE",
+        "IMPORT",
+        "EXPORT",
+        "VIEW",
+        "SEARCH",
+        "BACK"
+      ]
+    }
+  },
+  "onecx-hello-world-bff": {
+    "onecx-admin": {
+      "hello": [
+        "read",
+        "write",
+        "delete"
+      ]
+    }
+  }
+}
+----
+
+[#create-microfrontend-file]
+=== 2. Create Microfrontend File
+Then we need to define our application by creating the following file in *imports > product-store > microfrontends*.
+
+NOTE: The file name must match the shown pattern consisting of *product name* (here: hello-world), *microservice*(hello-world-ui) and *UI component*(main).
+
+.hello-world_hello-world-ui_main.microfrontend.json
+[source,json]
+----
+{
+  "appVersion": "xxx",
+  "appName": "hello-world",
+  "description": "OneCX HelloWorld Module",
+  "remoteBaseUrl": "/mfe/helloWorld/",
+  "remoteEntry": "/mfe/helloWorld/remoteEntry.js",
+  "note": "OneCX HelloWorld UI module auto import via MF operator",
+  "exposedModule": "./HelloWorldModule",
+  "technology": "WEBCOMPONENTMODULE",
+  "remoteName": "hello-world",
+  "tagName": "hello-world-webcomponent",
+  "type": "MODULE",
+  "deprecated": false,
+  "undeployed": false
+}
+----
+
+* The `appName` matches the product name.
+* The `remoteBaseUrl` should match the routing path in your app's helm `values.yaml`.
+* The `exposedModule` should match the module name, that is exposed in your app's webpack config.
+* The `tagName` can be found in the remoteModule ts file in the ngDoBootstrap() function.
+
+[#create-permissions-file]
+=== 3. Create Permissions File
+We also need to add the permissions for our application by creating the following file in *imports > product-store > permissions*.
+
+NOTE: The file name must match the shown pattern consisting of *product name* (here: hello-world) and *microservice*(hello-world-ui).
+
+.hello-world_hello-world-ui.json
+[source,json]
+----
+{
+  "name": "hello-world-ui",
+  "permissions": [
+    {
+      "resource": "HELLO",
+      "action": "CREATE"
+    },
+    {
+      "resource": "HELLO",
+      "action": "EDIT"
+    },
+    {
+      "resource": "HELLO",
+      "action": "DELETE"
+    },
+    {
+      "resource": "HELLO",
+      "action": "SAVE"
+    },
+    {
+      "resource": "HELLO",
+      "action": "IMPORT"
+    },
+    {
+      "resource": "HELLO",
+      "action": "EXPORT"
+    },
+    {
+      "resource": "HELLO",
+      "action": "VIEW"
+    },
+    {
+      "resource": "HELLO",
+      "action": "SEARCH"
+    }
+  ]
+}
+----
+
+The permissions need to match the permissions defined in your applications `values.yaml`.
+
+[#create-microservice-file]
+=== 4. Create Microservice File
+Then the UI microservice needs to be defined by creating the following file in *imports > product-store > microservices*.
+
+NOTE: The file name must match the shown pattern consisting of *product name* (here: hello-world) and *microservice*(hello-world-ui).
+
+.hello-world_hello-world-ui.json
+[source,json]
+----
+{
+    "version": "xxx",
+    "description": "hello-world-ui",
+    "name": "hello-world-ui",
+    "type": "ui"
+}
+----
+
+* The name needs to match the name of the microservice.
+
+For BFF and SVC microservices, similar files need to be created in the same folder. The same pattern as for the UI applies, just replace *microservice* with the corresponding product names "hello-world-bff" and "hello-world-svc" and type to "bff" or "svc".
+
+[#create-product-definition]
+=== 5. Create Product Definition
+We also need to add the product definition by creating the following file in *imports > product-store > products*.
+
+NOTE: The file name must match the *product name* (here: hello-world).
+
+.hello-world.json
+[source,json]
+----
+{
+    "version": "xxx",
+    "description": "hello-world",
+    "basePath": "/hello-world",
+    "displayName": "hello-world",
+    "iconName": "pi-briefcase"
+}
+----
+
+* The `basePath` defines the URL path where the application will be accessible later.
+
+[#register-application-in-workspace]
+=== 6. Register Application in Workspace
+To register the application in the workspace, we can add it to the `products` array in the `onecx_admin.json` file located in *imports > workspace*.
+
+.onecx_admin.json
+[source,json]
+----
+{
+    "productName": "hello-world",
+    "baseUrl": "/hello-world",
+    "microfrontends": [
+        {
+            "appId": "hello-world-ui",
+            "basePath": "/"
+        }
+    ]
+},
+----
+
+* The `productName`, `basePath` and `appId` should match the values we used in the files we created before.
+
+[#creating-docker-compose]
+== Create Docker Compose Entry
+Now we need to add the container definition for our application by creating a new `hello-world.docker-compose.yaml` at the same level as the `docker-compose.yaml`. This file should define the image, environment variables, labels for traefik, network, and profiles. For our Hello World app, it looks like this:
+
+.hello-world.docker-compose.yaml
+[source,yaml]
+----
+include:
+  - docker-compose.yaml
+services:
+  hello-world-ui:
+    image: ${HELLO_WORLD_UI}
+    environment:
+      APP_BASE_HREF: /mfe/helloWorld/
+      APP_ID: hello-world-ui
+      PRODUCT_NAME: hello-world
+    depends_on:
+      hello-world-bff:
+        condition: service_healthy
+    labels:
+      - traefik.http.services.hello-world-ui.loadbalancer.server.port=8080
+      - traefik.http.routers.hello-world-ui.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)
+    networks:
+      - default
+    profiles:
+      - base
+      - hello-world
+      - hello-world-ui
+      - all
+----
+
+* The environment variables should match the values we defined in the import files. (APP_BASE_HREF should match remoteBaseUrl in the microfrontend file)
+* The `labels` section configures traefik for routing. The service will be accessible via port 8080 (the default exposed port for nginx) and the `PathPrefix` value should match the `APP_BASE_HREF`.
+* The `profiles` section specifies which profiles the service can be started with. For further explanation of the profiles see the link:https://onecx.github.io/docs/onecx-local-env/current/general/versions/v2/v2.html[onecx-local-env documentation].
+
+Under the `services` section, you can also define the BFF and SVC of your application in a similar way as the hello-world-ui service:
+
+.hello-world.docker-compose.yaml
+[source,yaml]
+----
+  hello-world-bff:
+    image: ${HELLO_WORLD_BFF}
+    environment:
+      ONECX_PERMISSIONS_PRODUCT_NAME: hello-world
+    healthcheck:
+      test: curl --head -fsS http://localhost:8080/q/health
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      hello-world-svc:
+        condition: service_healthy
+    labels:
+      - traefik.http.services.hello-world-bff.loadbalancer.server.port=8080
+      - traefik.http.routers.hello-world-bff.rule=Host(`hello-world-bff`)
+    env_file:
+      - common.env
+      - bff.env
+    networks:
+      - default
+    profiles:
+      - base
+      - hello-world
+      - hello-world-ui
+      - all      
+  hello-world-svc:
+    image: ${HELLO_WORLD_SVC}
+    environment:
+      QUARKUS_DATASOURCE_USERNAME: hello_world
+      QUARKUS_DATASOURCE_PASSWORD: hello_world
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgresdb:5432/hello_world?sslmode=disable
+    healthcheck:
+      test: curl --head -fsS http://localhost:8080/q/health
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      postgresdb:
+        condition: service_healthy
+    labels:
+      - traefik.http.services.hello-world-svc.loadbalancer.server.port=8080
+      - traefik.http.routers.hello-world-svc.rule=Host(`hello-world-svc`)
+    env_file:
+      - common.env
+      - svc.env
+    networks:
+      - default
+    profiles:
+      - base
+      - hello-world
+      - all
+----
+
+Now all necessary files are created and you can run your application in the OneCX environment as described in xref:./running_custom_apps_overview.adoc#running-and-testing-applications[Running and Testing Applications].
+
+
