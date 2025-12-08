@@ -1,0 +1,114 @@
+[#enable-hot-reload]
+= Enable Hot Reload
+
+For development purposes, you can enable hot reload in your local environment. This allows you to see changes in the application immediately without rebuilding the image. 
+For that we need to adjust the routing configuration in the traefik configurations of the docker image by replacing the labels section of the hello-world-bff service in the `hello-world.docker-compose.yaml` with the following lines.
+
+[source,yaml]
+----
+- "traefik.http.routers.local_mfe.entrypoints=web"
+- "traefik.http.routers.local_mfe.rule=Host(`local-proxy`)&&PathPrefix(`/mfe/helloWorld/`)"
+- "traefik.http.routers.local_mfe.service=local_mfe@file"
+----
+
+The value of `PathPrefix` in the traefik label should match the value of APP_BASE_HREF in the environment section of your docker-compose.yaml.
+Now, routing is handled directly to your locally running application instead of the Docker container.
+
+To make sure, that traefik can access the local application, enhance the `npm start` script in the applications `package.json` with `--host 0.0.0.0 --disable-host-check`.
+
+Additionally the PROXY_CONFIG in the `proxy.config.js` of the UI application needs to be updated like this. Note that the path needs to be adjusted according to the `PathPrefix` value in the traefik label.
+
+[source,javascript]
+----
+const PROXY_CONFIG = {
+  '/mfe/helloWorld': {
+    target: 'http://localhost:4200/',
+    secure: false,
+    pathRewrite: {
+      '^.*/mfe/helloWorld': '',
+    },
+    changeOrigin: true,
+    logLevel: 'debug',
+    bypass: bypassFn,
+  }
+}
+----
+
+If your app runs on the standard port 4200, you can start your application with `npm start`, restart your containers with `docker compose --profile base up -d` and every change in the application should be reflected immediately under `http://local-proxy/onecx-shell/admin/helloWorld/hello`.
+
+[#note-different-ports]
+== Note for different ports
+
+If your application uses a *port other than 4200*, you need to first update the port in the `url` field of the `local_mfe` service in the `./init-data/traefik/traefik-services.yml` file within your `onecx-local-env`. Set the port to match the one your application is running on.
+
+[source,yaml]
+----
+local_mfe:
+    loadBalancer:
+      servers:
+      - url: "http://host.docker.internal:4200/"
+----
+
+Now you can start your application with `npm start` and restart your containers with `docker compose --profile base up -d`. Every change in the application should be reflected immediately under `http://local-proxy/onecx-shell/admin/helloWorld/hello`.
+
+If you want to run multiple applications on different ports, see the xref:./run_multiple_apps.adoc[Running Multiple Local Apps Simultaneously] section.
+
+[#troubleshooting]
+== Troubleshooting
+
+[#local-changes-not-visible]
+=== Local Changes are not Visible
+
+If your local changes are not visible in the OneCX Shell, it could be due to issues with the traefik configurations with the global UI container, that might be still running. To resolve this, stop the container with `docker compose stop hello-world-ui`, so that only your local container is running.
+
+[#angular-ngdevmode-error]
+=== Angular ngDevMode is not defined Error
+
+When running your Angular application, you may see the following error in the browser console:
+
+`hook.js:608 ERROR ReferenceError: ngDevMode is not defined`
+
+This error occurs when the global variable `ngDevMode`, which Angular uses to enable development mode features, is missing from the runtime environment. This is often due to Webpack not injecting the variable during the build process.
+
+*How to fix:*
+
+To resolve this, ensure that `ngDevMode` is defined in your Webpack configuration. You can do this by using the `DefinePlugin` to set the value based on your environment.
+
+First set the environment variable in your Dockerfile:
+
+[source,dockerfile]
+----
+ENV NODE_ENV production
+----
+
+Then add the following code to the webpack.config.js:
+
+[source,javascript]
+----
+const webpack = require('webpack');
+const isProduction = process.env.NODE_ENV === 'production';
+
+module.exports = {
+  ...
+  plugins: [
+    new webpack.DefinePlugin({
+      ngDevMode: JSON.stringify(!isProduction)
+    }),
+    ...
+  ],
+  ...
+};
+----
+
+And in your package.json scripts, ensure ngDevMode is set as production in build time:
+
+[source,json]
+----
+"scripts": {
+  "start": "nx serve --host 0.0.0.0 --disable-host-check",
+  "build": "NODE_ENV=production nx build"
+}
+----
+
+This setup ensures that `ngDevMode` is correctly defined for both development and production builds, preventing the error.
+
