@@ -7997,6 +7997,215 @@ Few of thousand useful links:
 * [Kubernetes](https://kubernetes.io/)
 * [Docker](https://www.docker.com/)
 
+Project structure
+====================
+| |  The source code of the sample application is located in the documentation repository [Base example](https://github.com/onecx/docs-guides-quarkus/tree/main/docs/modules/quarkus/examples/quarkus/base/example) |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fonecx%5Fquarkus%5Fproject%5Fstructure)OneCx Quarkus project structure
+
+OneCx Quarkus project is [Maven](https://maven.apache.org/) project.We use default maven structure which includes: java code and resources, helm templates and dockerfile.
+
+```java
+.github                         // github configuration
+src                             // source code directory
+  main                          // main resources
+     docker                     // docker configuration
+        Dockerfile.jvm          // JVM docker image
+        Dockerfile.native       // Native docker image
+     helm                       // helm template
+        Chart.yaml              // helm chart for application
+        values.yaml             // helm chart values for the application
+     openapi                    // openapi definitions
+        example-openapi.yaml    // example api definition
+     java                       // java source code
+     resources                  // application resources
+       application.properties   // quarkus configuration
+  test                          // test resources
+     java                       // java tests
+     resources                  // test resources
+pom.xml                         // maven project configuration
+```
+
+The helm template are in the `src/main/helm` and dockerfile is in the `src/main/docker` directory.
+
+GitHub project configuration is defined in the `.github` directory. For more information please check next chapter [Project GitHub Actions](quarkus-github-actions.html)
+
+| |  Onecx Quarkus project GitHub Actions [Project GitHub Actions](quarkus-github-actions.html) setup. |
+| ---------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fmaven%5Fconfiguration)Maven configuration
+
+Onecx project are using
+
+```xml
+<parent>
+    <groupId>org.tkit.onecx</groupId>
+    <artifactId>onecx-quarkus3-parent</artifactId>
+    <version>0.67.0</version>
+</parent>
+```
+
+## [](#%5Fjava%5Fnaming%5Fconvention)Java naming convention
+
+![Diagram](_images/diag-1ec88c3f3f581782c2edae77bff812148dc2028e.svg) 
+
+Basically all our microservice consist of 3 main layers
+
+* Boundary components providing REST api ( or AMQP, Events, …​) to outside world.
+* IntermediateService which implements business logic. These components are often omitted.
+* Entity services are components taking care of data management, basically fetching storing the data from/to database
+* Client services which are
+
+Java classes:
+
+Validation request sequence:
+
+![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
+
+Create user request sequence:
+
+![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
+
+* RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
+* Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
+* Mapper - Object mapper for mapping DTO to internal models and vice versa. For example: `UserMapper`.
+* DAO - Data access object (JPA entity wrapper) For example: `UserDAO`
+
+Each project should have own package which contains the domain of the project. All projects in the `onecx` context start with a package `org.tkit.onecx` and package `<artefactId | simplified>`
+
+For example our Maven project:
+
+* groupId = `org.tkit.onecx`
+* artefactId = `onecx-quarkus-example`
+
+```shell
+src
+    main
+        java
+            org.tkit.onecx.quarkus.example
+```
+
+Microservice package structure:
+
+```java
+domain.models                       // JPA entities
+domain.criteria                     // JPA criteria
+domain.daos                         // DAO and search criteria for the entities
+domain.services                     // Common intermediate shared domain services
+rs                                  // common rs classes (CORSFilter, JaxRSActivator..)
+rs.internal.controllers             // REST controllers
+rs.internal.mappers                 // internal DTOs mappers
+rs.internal.services                // internal intermediate services
+rs.external.<version>.controllers            // REST controllers
+rs.external.<version>.logs                   // log mappers
+rs.external.<version>.mappers                // external DTOs mappers
+rs.external.<version>.services               // Intermediate services for the rest <version> interface
+```
+
+Our [org.tkit.onecx](#example$quarkus/base/example/src/main/java/org/tkit/onecx) package of our example application.
+
+```java
+org.tkit.onecx
+    quarkus
+        example
+            domain
+                models              // JPA entities
+                daos                // DAO for the entities
+                services            // DAO for the entities
+            rs                      //common rs classes (CORSFilter, JaxRSActivator..)
+                controllers         // REST controllers
+                internal
+                mappers             // internal DTOs mappers
+                external
+                    <version>
+                        controllers // REST controllers
+                        mappers     // external DTOs mappers
+```
+
+| |  For the rest-controllers we need to have two types of the rest endpoints: internal - which are us only for the internal domain, for example for UI <version \| external> - these REST controllers are external interfaces to rest of the world. For these we need to have version. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fdocker)Docker
+
+In the project we have defined two docker files, one for java base docker image and one for native build docker image. The source code for the base docker image can be found in the GitHub repositories [docker-quarkus-native](https://github.com/onecx/docker-quarkus-jvm) and [docker-quarkus-jvm](https://github.com/onecx/docker-quarkus-jvm).
+
+The two `Dockerfiles` look like this:
+
+Dockerfile.jvm definition
+
+```dockerfile
+FROM ghcr.io/onecx/docker-quarkus-jvm:0.15.0
+
+COPY --chown=185 target/quarkus-app/lib/ /deployments/lib/
+COPY --chown=185 target/quarkus-app/*.jar /deployments/
+COPY --chown=185 target/quarkus-app/app/ /deployments/app/
+COPY --chown=185 target/quarkus-app/quarkus/ /deployments/quarkus/
+USER 185
+```
+
+Dockerfile.native definition
+
+```dockerfile
+FROM ghcr.io/onecx/docker-quarkus-native:0.10.0
+
+COPY --chown=1001:root target/*-runner /work/application
+```
+
+| |  Docker build configuration is defined in the maven parent project. |
+| --------------------------------------------------------------------- |
+
+| |  For more information about Quarkus docker extension, please check the official documentation [quarkus-container-image-docker](https://quarkus.io/guides/container-image). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fhelm)Helm
+
+In the `src/main/helm` we muss define `Chart.yaml` in version `v2` and `values.yaml`. The alias for every onecx quarkus application is `app`. The GitHub pipeline will replace the chart `version` and `appVersion` during the build with current service version.
+
+Chart.yaml
+
+```yaml
+apiVersion: v2
+name: onecx-quarkus-example
+version: 0.0.0
+appVersion: 0.0.0
+description: Onecx quarkus example
+keywords:
+  - example
+sources:
+  - https://github.com/onecx/onecx-quarkus-example
+maintainers:
+  - name: Tkit Developer
+    email: tkit_dev@1000kit.org
+dependencies:
+  - name: helm-quarkus-app
+    alias: app
+    version: ^0
+    repository: oci://ghcr.io/onecx/charts
+```
+
+values.yaml
+
+```yaml
+app:
+ name: svc
+ db:
+   enabled: true
+ image:
+  repository: "onecx/onecx-quarkus-example"
+```
+
+In our example we did activate the `database` configuration `app.db.enabled: true`.
+
+| |  For product base delivery helm-of-helm we do need to specify the app.name, which is the name of the component in the product (for example svc, bff, operator). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  For more details of the helm template configuration check the repository of [helm-quarkus-app](https://github.com/onecx/helm-quarkus-app) |
+| -------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Helm documentation [helm](https://helm.sh/docs/). |
+| ---------------------------------------------------- |
+
 Backend for frontends (bff)
 ====================
 ## [](#%5Fproject%5Fsetup)Project setup
@@ -8888,218 +9097,43 @@ permissions.json
 ]
 ```
 
-Project structure
-====================
-| |  The source code of the sample application is located in the documentation repository [Base example](https://github.com/onecx/docs-guides-quarkus/tree/main/docs/modules/quarkus/examples/quarkus/base/example) |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fonecx%5Fquarkus%5Fproject%5Fstructure)OneCx Quarkus project structure
-
-OneCx Quarkus project is [Maven](https://maven.apache.org/) project.We use default maven structure which includes: java code and resources, helm templates and dockerfile.
-
-```java
-.github                         // github configuration
-src                             // source code directory
-  main                          // main resources
-     docker                     // docker configuration
-        Dockerfile.jvm          // JVM docker image
-        Dockerfile.native       // Native docker image
-     helm                       // helm template
-        Chart.yaml              // helm chart for application
-        values.yaml             // helm chart values for the application
-     openapi                    // openapi definitions
-        example-openapi.yaml    // example api definition
-     java                       // java source code
-     resources                  // application resources
-       application.properties   // quarkus configuration
-  test                          // test resources
-     java                       // java tests
-     resources                  // test resources
-pom.xml                         // maven project configuration
-```
-
-The helm template are in the `src/main/helm` and dockerfile is in the `src/main/docker` directory.
-
-GitHub project configuration is defined in the `.github` directory. For more information please check next chapter [Project GitHub Actions](quarkus-github-actions.html)
-
-| |  Onecx Quarkus project GitHub Actions [Project GitHub Actions](quarkus-github-actions.html) setup. |
-| ---------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fmaven%5Fconfiguration)Maven configuration
-
-Onecx project are using
-
-```xml
-<parent>
-    <groupId>org.tkit.onecx</groupId>
-    <artifactId>onecx-quarkus3-parent</artifactId>
-    <version>0.67.0</version>
-</parent>
-```
-
-## [](#%5Fjava%5Fnaming%5Fconvention)Java naming convention
-
-![Diagram](_images/diag-1ec88c3f3f581782c2edae77bff812148dc2028e.svg) 
-
-Basically all our microservice consist of 3 main layers
-
-* Boundary components providing REST api ( or AMQP, Events, …​) to outside world.
-* IntermediateService which implements business logic. These components are often omitted.
-* Entity services are components taking care of data management, basically fetching storing the data from/to database
-* Client services which are
-
-Java classes:
-
-Validation request sequence:
-
-![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
-
-Create user request sequence:
-
-![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
-
-* RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
-* Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
-* Mapper - Object mapper for mapping DTO to internal models and vice versa. For example: `UserMapper`.
-* DAO - Data access object (JPA entity wrapper) For example: `UserDAO`
-
-Each project should have own package which contains the domain of the project. All projects in the `onecx` context start with a package `org.tkit.onecx` and package `<artefactId | simplified>`
-
-For example our Maven project:
-
-* groupId = `org.tkit.onecx`
-* artefactId = `onecx-quarkus-example`
-
-```shell
-src
-    main
-        java
-            org.tkit.onecx.quarkus.example
-```
-
-Microservice package structure:
-
-```java
-domain.models                       // JPA entities
-domain.criteria                     // JPA criteria
-domain.daos                         // DAO and search criteria for the entities
-domain.services                     // Common intermediate shared domain services
-rs                                  // common rs classes (CORSFilter, JaxRSActivator..)
-rs.internal.controllers             // REST controllers
-rs.internal.mappers                 // internal DTOs mappers
-rs.internal.services                // internal intermediate services
-rs.external.<version>.controllers            // REST controllers
-rs.external.<version>.logs                   // log mappers
-rs.external.<version>.mappers                // external DTOs mappers
-rs.external.<version>.services               // Intermediate services for the rest <version> interface
-```
-
-Our [org.tkit.onecx](#example$quarkus/base/example/src/main/java/org/tkit/onecx) package of our example application.
-
-```java
-org.tkit.onecx
-    quarkus
-        example
-            domain
-                models              // JPA entities
-                daos                // DAO for the entities
-                services            // DAO for the entities
-            rs                      //common rs classes (CORSFilter, JaxRSActivator..)
-                controllers         // REST controllers
-                internal
-                mappers             // internal DTOs mappers
-                external
-                    <version>
-                        controllers // REST controllers
-                        mappers     // external DTOs mappers
-```
-
-| |  For the rest-controllers we need to have two types of the rest endpoints: internal - which are us only for the internal domain, for example for UI <version \| external> - these REST controllers are external interfaces to rest of the world. For these we need to have version. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fdocker)Docker
-
-In the project we have defined two docker files, one for java base docker image and one for native build docker image. The source code for the base docker image can be found in the GitHub repositories [docker-quarkus-native](https://github.com/onecx/docker-quarkus-jvm) and [docker-quarkus-jvm](https://github.com/onecx/docker-quarkus-jvm).
-
-The two `Dockerfiles` look like this:
-
-Dockerfile.jvm definition
-
-```dockerfile
-FROM ghcr.io/onecx/docker-quarkus-jvm:0.15.0
-
-COPY --chown=185 target/quarkus-app/lib/ /deployments/lib/
-COPY --chown=185 target/quarkus-app/*.jar /deployments/
-COPY --chown=185 target/quarkus-app/app/ /deployments/app/
-COPY --chown=185 target/quarkus-app/quarkus/ /deployments/quarkus/
-USER 185
-```
-
-Dockerfile.native definition
-
-```dockerfile
-FROM ghcr.io/onecx/docker-quarkus-native:0.10.0
-
-COPY --chown=1001:root target/*-runner /work/application
-```
-
-| |  Docker build configuration is defined in the maven parent project. |
-| --------------------------------------------------------------------- |
-
-| |  For more information about Quarkus docker extension, please check the official documentation [quarkus-container-image-docker](https://quarkus.io/guides/container-image). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fhelm)Helm
-
-In the `src/main/helm` we muss define `Chart.yaml` in version `v2` and `values.yaml`. The alias for every onecx quarkus application is `app`. The GitHub pipeline will replace the chart `version` and `appVersion` during the build with current service version.
-
-Chart.yaml
-
-```yaml
-apiVersion: v2
-name: onecx-quarkus-example
-version: 0.0.0
-appVersion: 0.0.0
-description: Onecx quarkus example
-keywords:
-  - example
-sources:
-  - https://github.com/onecx/onecx-quarkus-example
-maintainers:
-  - name: Tkit Developer
-    email: tkit_dev@1000kit.org
-dependencies:
-  - name: helm-quarkus-app
-    alias: app
-    version: ^0
-    repository: oci://ghcr.io/onecx/charts
-```
-
-values.yaml
-
-```yaml
-app:
- name: svc
- db:
-   enabled: true
- image:
-  repository: "onecx/onecx-quarkus-example"
-```
-
-In our example we did activate the `database` configuration `app.db.enabled: true`.
-
-| |  For product base delivery helm-of-helm we do need to specify the app.name, which is the name of the component in the product (for example svc, bff, operator). |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  For more details of the helm template configuration check the repository of [helm-quarkus-app](https://github.com/onecx/helm-quarkus-app) |
-| -------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Helm documentation [helm](https://helm.sh/docs/). |
-| ---------------------------------------------------- |
-
 undefined
 ====================
 ## [](#%5Fquarkus%5Fgithub%5Factions)Quarkus GitHub Actions
+
+K8s operator (operator)
+====================
+## [](#%5Fproject%5Fsetup)Project setup
+
+Now that [project structure](project-structure.html) is set up for the Onecx Quarkus project, we can configure the k8s operator and extend the project configuration.
+
+### [](#%5Fparent%5Fconfiguration)Parent configuration
+
+Project maven parent configuration, artifactId and project version.
+
+| |  More information about maven parent pom pattern [Apache Maven Pom Documentation](https://maven.apache.org/guides/introduction/introduction-to-the-pom.html) |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Maven parent configuration 
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.tkit.onecx</groupId>
+        <artifactId>onecx-quarkus3-parent</artifactId>
+        <version>0.62.0</version>
+    </parent>
+
+    <artifactId>onecx-example-svc</artifactId>
+    <version>999-SNAPSHOT</version>
+
+</project>
+```
 
 REST API
 ====================
@@ -9191,40 +9225,6 @@ Example error response
 * [Microsoft rest API guidelines](https://github.com/microsoft/api-guidelines/blob/vNext/Guidelines.md)
 * [REST](https://en.wikipedia.org/wiki/Representational%5Fstate%5Ftransfer)
 * [RFC](https://datatracker.ietf.org/doc/html/rfc7807)
-
-K8s operator (operator)
-====================
-## [](#%5Fproject%5Fsetup)Project setup
-
-Now that [project structure](project-structure.html) is set up for the Onecx Quarkus project, we can configure the k8s operator and extend the project configuration.
-
-### [](#%5Fparent%5Fconfiguration)Parent configuration
-
-Project maven parent configuration, artifactId and project version.
-
-| |  More information about maven parent pom pattern [Apache Maven Pom Documentation](https://maven.apache.org/guides/introduction/introduction-to-the-pom.html) |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Maven parent configuration 
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-
-    <modelVersion>4.0.0</modelVersion>
-
-    <parent>
-        <groupId>org.tkit.onecx</groupId>
-        <artifactId>onecx-quarkus3-parent</artifactId>
-        <version>0.62.0</version>
-    </parent>
-
-    <artifactId>onecx-example-svc</artifactId>
-    <version>999-SNAPSHOT</version>
-
-</project>
-```
 
 Backend service (svc)
 ====================
@@ -10487,30 +10487,6 @@ The required configuration files for the enabled validation checks will be gener
 
 undefined
 ====================
-### [](#%5Fcreate%5Fcreateupdate%5Fdialogs)Create Create/Update Dialogs
-
-The fastest way to create a create and update dialogs in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/nx-plugin:create-update <feature>
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](glossary.html#feature).
-
-| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, the following actions must be taken:
-
-1. [Extend schema and form fields](create-update/extend-form-fields.html)
-2. [Commit the changes](create-update/commit-changes.html)
-
-| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](#latest@guides:angular:cookbook/service/portal-dialog-service/index.adoc). |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
 ### [](#%5Fautomated%5Fcode%5Fmodification%5Fin%5Fyour%5Fapplication)Automated Code Modification in Your Application
 
 #### [](#%5Foverview)Overview
@@ -10550,6 +10526,30 @@ If a replacement fails, you may find a comment like this in your code:
 1. Open the affected file.
 2. Follow the instructions in the comment to manually apply the required change.
 3. If unsure, consult the development team or refer to the feature documentation.
+
+undefined
+====================
+### [](#%5Fcreate%5Fcreateupdate%5Fdialogs)Create Create/Update Dialogs
+
+The fastest way to create a create and update dialogs in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/nx-plugin:create-update <feature>
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](glossary.html#feature).
+
+| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, the following actions must be taken:
+
+1. [Extend schema and form fields](create-update/extend-form-fields.html)
+2. [Commit the changes](create-update/commit-changes.html)
+
+| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](#latest@guides:angular:cookbook/service/portal-dialog-service/index.adoc). |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -10668,28 +10668,6 @@ components:
 
 undefined
 ====================
-### [](#%5Fcheck%5Fyour%5Ftechnical%5Fsetup)Check your technical setup
-
-| |  Check your npm version and please update if necessary Your npm version should be >= 10.2.4 |
-| --------------------------------------------------------------------------------------------- |
-
-npm --version
-
-| |  Check your node version and please update if necessary Your node version should be 20.11.0 |
-| --------------------------------------------------------------------------------------------- |
-
-node  --version
-
-| |  Check your nx version and please update if necessary Nx version should be Local: v19.6.4 Global: v20.0.6 |
-| ----------------------------------------------------------------------------------------------------------- |
-
-nx  --version
-
-| |  How to install the nx CLI npm install –global nx@latest If you face any issues, try the following steps: rm -rf node\_modules npm cache verify npm install -g @nrwl/cli npm install |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
 ### [](#%5Fcreate%5Fa%5Fnew%5Fonecx%5Fapp)Create a new OneCX app
 
 The fastest way to create a new OneCX app is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
@@ -10711,6 +10689,28 @@ After running the generator take the following actions:
 2. [Commit the changes](basic-onecx-app/commit-changes.html)
 
 Next you might want to generate a feature as this is a preqrequisite to generate a search / details page and more.
+
+undefined
+====================
+### [](#%5Fcheck%5Fyour%5Ftechnical%5Fsetup)Check your technical setup
+
+| |  Check your npm version and please update if necessary Your npm version should be >= 10.2.4 |
+| --------------------------------------------------------------------------------------------- |
+
+npm --version
+
+| |  Check your node version and please update if necessary Your node version should be 20.11.0 |
+| --------------------------------------------------------------------------------------------- |
+
+node  --version
+
+| |  Check your nx version and please update if necessary Nx version should be Local: v19.6.4 Global: v20.0.6 |
+| ----------------------------------------------------------------------------------------------------------- |
+
+nx  --version
+
+| |  How to install the nx CLI npm install –global nx@latest If you face any issues, try the following steps: rm -rf node\_modules npm cache verify npm install -g @nrwl/cli npm install |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -10783,24 +10783,6 @@ undefined
 ### [](#%5Fcheck%5Ffor%5Ffurther%5Factions)Check for further ACTIONS
 
 Please check if the string 'ACTION' is present in any of the files within the output folder, and if it is, follow the instructions described therein.
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  Build & test & run your application Please run the following commands to make sure that the application builds, that the tests are running and that the application starts: npm run build npm run test npm start |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Run your application on another port if needed (4211 is an example) nx serve --port=4211 |
-| ------------------------------------------------------------------------------------------- |
-
-| |  After the Application is started, make sure: items in the data view have an delete icon that opens the delete dialog. |
-| ------------------------------------------------------------------------------------------------------------------------ |
-
-| |  Commit your changes Please commit your changes with the following commit message if the build and the tests passed: feat: delete added for <nameOfTheProduct> Please replace _nameOfTheProduct_ with the real name of your product. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-To ensure clarity and consistency, please follow the naming schema for commit messages. For further details and guidelines, please refer to [Conventional Commits](https://www.conventionalcommits.org).
 
 undefined
 ====================
@@ -10925,6 +10907,24 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](#latest@guides:angular:cookbook/service/portal-dialog-service/index.adoc). |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  Build & test & run your application Please run the following commands to make sure that the application builds, that the tests are running and that the application starts: npm run build npm run test npm start |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Run your application on another port if needed (4211 is an example) nx serve --port=4211 |
+| ------------------------------------------------------------------------------------------- |
+
+| |  After the Application is started, make sure: items in the data view have an delete icon that opens the delete dialog. |
+| ------------------------------------------------------------------------------------------------------------------------ |
+
+| |  Commit your changes Please commit your changes with the following commit message if the build and the tests passed: feat: delete added for <nameOfTheProduct> Please replace _nameOfTheProduct_ with the real name of your product. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+To ensure clarity and consistency, please follow the naming schema for commit messages. For further details and guidelines, please refer to [Conventional Commits](https://www.conventionalcommits.org).
 
 undefined
 ====================
@@ -11610,33 +11610,6 @@ The generated Java source code contains the additional Quarkus annotation `org.t
 
 undefined
 ====================
-## [](#%5Fonecx%5Foperator)onecx-operator
-
-### [](#%5Finstallation)Installation
-
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-operator` extension first to your build file.
-
-For instance, with Maven, add the following dependency to your POM file:
-
-```xml
-<dependency>
-    <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-operator</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
-
-### [](#%5Fconfiguration)Configuration
-
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                          | Type   | Default                  |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
-| [onecx.operator.touched.annotation-at](#onecx-operator%5Fonecx-operator-touched-annotation-at) Annotation name to set if resource was touched at Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_AT | string | org.tkit.onecx.touchedAt |
-| [onecx.operator.touched.annotation-by](#onecx-operator%5Fonecx-operator-touched-annotation-by) Annotation name to set if resource was touched by Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_BY | string | org.tkit.onecx.touchedBy |
-
-undefined
-====================
 ## [](#%5Fonecx%5Fparameters)onecx-parameters
 
 ## [](#%5Finstallation)Installation
@@ -11757,6 +11730,33 @@ in this respective order.
 | [onecx.parameters.history.update-schedule](#onecx-parameters%5Fonecx-parameters-history-update-schedule) Update history scheduler configuration in milliseconds. Environment variable: ONECX\_PARAMETERS\_HISTORY\_UPDATE\_SCHEDULE                                                                                | long               | 900000                          |
 | [onecx.parameters.items."parameters"](#onecx-parameters%5Fonecx-parameters-items-parameters) Parameters configuration Environment variable: ONECX\_PARAMETERS\_ITEMS\_\_PARAMETERS\_                                                                                                                               | Map<String,String> |                                 |
 | [onecx.parameters.tenant.enabled](#onecx-parameters%5Fonecx-parameters-tenant-enabled) Enable or disable multi-tenancy. Environment variable: ONECX\_PARAMETERS\_TENANT\_ENABLED                                                                                                                                   | boolean            | true                            |
+
+undefined
+====================
+## [](#%5Fonecx%5Foperator)onecx-operator
+
+### [](#%5Finstallation)Installation
+
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-operator` extension first to your build file.
+
+For instance, with Maven, add the following dependency to your POM file:
+
+```xml
+<dependency>
+    <groupId>org.tkit.onecx.quarkus</groupId>
+    <artifactId>onecx-operator</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+### [](#%5Fconfiguration)Configuration
+
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                          | Type   | Default                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
+| [onecx.operator.touched.annotation-at](#onecx-operator%5Fonecx-operator-touched-annotation-at) Annotation name to set if resource was touched at Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_AT | string | org.tkit.onecx.touchedAt |
+| [onecx.operator.touched.annotation-by](#onecx-operator%5Fonecx-operator-touched-annotation-by) Annotation name to set if resource was touched by Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_BY | string | org.tkit.onecx.touchedBy |
 
 undefined
 ====================
@@ -13416,13 +13416,17 @@ Integrate several Apps
 Integrate the following apps:
 
 * **workspace** ⇒ on standard port **5025**
-* **user-profile** ⇒ on port **5027**  
-Since no path is specified, the default path is used: **/mfe/<name-of-microfrontend>**  
-```bash  
-./toggle-mfes.sh  -a workspace user-profile:5027  
-```  
-![script toggle mfes.sh activate](../_images/scripts/script_toggle-mfes.sh_activate.png)  
-Figure 3\. Successful integrated Microfrontends
+* **user-profile** ⇒ on port **5027**
+
+Since no path is specified, the default path is used: **/mfe/<name-of-microfrontend>**
+
++
+
+```bash
+./toggle-mfes.sh  -a workspace user-profile:5027
+```
+
+\+ .Successful integrated Microfrontends image::scripts/script\_toggle-mfes.sh\_activate.png\[\]
 
 Integrate OneCX Shell
 
@@ -13434,7 +13438,7 @@ The integration of the shell requires a special path mapping. Hereby the path is
 
 ![script toggle mfes.sh activate shell](../_images/scripts/script_toggle-mfes.sh_activate-shell.png) 
 
-Figure 4\. Successful integrated OneCX Shell
+Figure 3\. Successful integrated OneCX Shell
 
 Deintegrate my App
 
@@ -13446,7 +13450,7 @@ The **\-d** option allows you to undo an integration. The same rule applies to t
 
 ![script toggle mfes.sh deactivate](../_images/scripts/script_toggle-mfes.sh_deactivate.png) 
 
-Figure 5\. Successful deintegration
+Figure 4\. Successful deintegration
 
 Deintegrate ALL Apps
 
@@ -13458,7 +13462,7 @@ The Traefik configurations are being cleaned up: All specific configuration file
 
 ![script toggle mfes.sh cleanup](../_images/scripts/script_toggle-mfes.sh_cleanup.png) 
 
-Figure 6\. Reset all Microfrontend configurations in Traefik
+Figure 5\. Reset all Microfrontend configurations in Traefik
 
 Update local Docker images
 ====================
@@ -25626,37 +25630,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 3.6.0    |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 3.6.0    |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0    |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0    |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0    |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0    |
-| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/1.7.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 1.7.0    |
-| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 3.6.0    |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0    |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1 |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1 |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.20.2.1 |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1 |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1 |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.20.2.1 |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1 |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |          |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.20.2.1 |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1 |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1 |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1 |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0    |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |          |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1 |
-| \===curity                             | 0.34.0                                                                                             |                                                                                                                                                  |          |
-| tkit-quarkus-oidc-health               | 2.40.0                                                                                             |                                                                                                                                                  |          |
-
-undefined
-====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -25763,6 +25736,37 @@ app:
 ```
 
 cription: OneCX Workspace Backend Service name: OneCX Workspace SVC
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 3.6.0    |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 3.6.0    |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0    |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0    |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0    |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0    |
+| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/1.7.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 1.7.0    |
+| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 3.6.0    |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0    |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1 |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1 |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.20.2.1 |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1 |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1 |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.20.2.1 |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1 |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |          |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.20.2.1 |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1 |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1 |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1 |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0    |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |          |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1 |
+| \===curity                             | 0.34.0                                                                                             |                                                                                                                                                  |          |
+| tkit-quarkus-oidc-health               | 2.40.0                                                                                             |                                                                                                                                                  |          |
 
 undefined
 ====================
