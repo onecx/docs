@@ -3903,136 +3903,6 @@ The [WorkspaceService](#cookbook/service/workspace-service/index.adoc) provides 
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
-Enable OneCX app to run in standalone
-====================
-The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
-
-Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
-
-## [](#steps)Steps
-
-The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
-
-To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
-
-### [](#install-dependecies)Install `@onecx/standalone-shell`
-
-In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
-
-```console
-npm i @onecx/standalone-shell
-```
-
-### [](#rename-entrypoint-files)Rename existing entrypoint files
-
-To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
-
-### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
-
-When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
-
-Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
-
-```none
-<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
-```
-
-Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
-
-### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
-
-Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
-
-```none
-// Example providers and imports
-
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { CommonModule } from '@angular/common'
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
-
-export const commonProviders = [
-  provideHttpClient(withInterceptorsFromDi()),
-  ...
-]
-
-export const commonImports = [
-  BrowserModule,
-  BrowserAnimationsModule,
-  CommonModule,
-  ...
-]
-
-export class RemoteModule implements DoBootstrap {
-  ...
-}
-```
-
-### [](#update-index-html)Use `AppComponent` selector in `index.html`
-
-To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
-
-### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
-
-To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
-
-The newly created bootstrap file must contain the following code:
-
-```none
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
-import { AppModule } from './app/app.module'
-
-platformBrowserDynamic()
-  .bootstrapModule(AppModule)
-  .catch((err) => console.error(err))
-```
-
-The newly created main file should import the bootstrap files and handle potential errors:
-
-```none
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
-
-### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
-
-To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-    isolate: false,  
-    loader: {  
-      provide: TranslateLoader,  
-      useFactory: createTranslateLoader,  
-      deps: [HttpClient]  
-    }  
-  }),  
-  ...  
-],
-4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-### [](#verify-standalone-mode)Verify that the app is running in standalone
-
-After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
-
 Migrate vanilla Angular apps to OneCX
 ====================
 The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
@@ -4419,6 +4289,136 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
 
+Enable OneCX app to run in standalone
+====================
+The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
+
+Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
+
+## [](#steps)Steps
+
+The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
+
+To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
+
+### [](#install-dependecies)Install `@onecx/standalone-shell`
+
+In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
+
+```console
+npm i @onecx/standalone-shell
+```
+
+### [](#rename-entrypoint-files)Rename existing entrypoint files
+
+To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
+
+### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
+
+When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
+
+Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
+
+```none
+<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
+```
+
+Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
+
+### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
+
+Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
+
+```none
+// Example providers and imports
+
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+
+export const commonProviders = [
+  provideHttpClient(withInterceptorsFromDi()),
+  ...
+]
+
+export const commonImports = [
+  BrowserModule,
+  BrowserAnimationsModule,
+  CommonModule,
+  ...
+]
+
+export class RemoteModule implements DoBootstrap {
+  ...
+}
+```
+
+### [](#update-index-html)Use `AppComponent` selector in `index.html`
+
+To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
+
+### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
+
+To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
+
+The newly created bootstrap file must contain the following code:
+
+```none
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
+import { AppModule } from './app/app.module'
+
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch((err) => console.error(err))
+```
+
+The newly created main file should import the bootstrap files and handle potential errors:
+
+```none
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
+
+### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
+
+To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+    isolate: false,  
+    loader: {  
+      provide: TranslateLoader,  
+      useFactory: createTranslateLoader,  
+      deps: [HttpClient]  
+    }  
+  }),  
+  ...  
+],
+4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+### [](#verify-standalone-mode)Verify that the app is running in standalone
+
+After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
+
 Calendar
 ====================
 ## [](#goal)Goal: Add Calendar Input
@@ -4540,81 +4540,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-Dropdown
-====================
-## [](#goal)Goal: Add Dropdown Input
-
-Add a Dropdown as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .string()
-        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-dropdown
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              appendTo="body"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              [showClear]="true"
-        ></p-dropdown>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -4726,6 +4651,81 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+Dropdown
+====================
+## [](#goal)Goal: Add Dropdown Input
+
+Add a Dropdown as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .string()
+        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-dropdown
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              appendTo="body"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              [showClear]="true"
+        ></p-dropdown>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 MultiSelect
 ====================
@@ -12454,101 +12454,6 @@ These applications are available within the OneCX Local Environment:
 * [Welcome](../onecx-welcome/index.html)
 * [Workspace](../onecx-workspace/index.html)
 
-Troubleshooting Common Errors
-====================
-This page provides information for how to troubleshoot common problems and errors.
-
-## [](#starting-with-status-code-000-on-imports)Starting with Status Code "000" on Imports
-
-The issue occurs when the script [import-onecx.sh](scripts/import.html) is executed (importing OneCX data)
-
-![status code 000 import onecx.sh](_images/issues/status-code-000-import-onecx.sh.png) 
-
-Figure 1\. Status code 000 on initial imports
-
-Solution
-
-* Check if the hosts files is up-to-date. See [Setup hosts](setup.html#hosts) instructions.
-
-## [](#failed-services-on-start-up)Failed Services on Start up
-
-The problem occurs when some services cannot be started successfully even after several attempts and timeouts.
-
-![incomplete onecx start](_images/issues/incomplete-onecx-start.png) 
-
-Figure 2\. Message: Failed Services on Start up
-
-Solution 
-
-```bash
-* Start again
-```
-
-## [](#missing-menu-in-browser)Missing Menu in Browser
-
-The problem occurs sometimes after succesful starting the services
-
-![missing menu on start](_images/issues/missing-menu-on-start.png) 
-
-Figure 3\. Message: Missing Menu in Browser
-
-Solution 
-
-```bash
-* Remove Browser Cache & Cookies
-* Refresh browser
-```
-
-## [](#bad-gateway-in-browser)Bad gateway in Browser
-
-The problem occurs sometimes after succesful starting the services
-
-![bad gateway on mfe start](_images/issues/bad-gateway-on-mfe-start.png) 
-
-Figure 4\. Message: Bad gateway in Browser
-
-Solution 
-
-```bash
-* Start again
-* Refresh browser
-```
-
-## [](#error-response-from-daemon-failed-to-set-up-container-networking)Error response from daemon: Failed to set up container networking
-
-The problem occurs when during start up there are collisions between Docker networks.
-
-![docker deamon failed to setup container networking](_images/issues/docker-deamon_failed-to-setup-container-networking.png) 
-
-Figure 5\. Message: Failed to set up networking
-
-Solution 
-
-* Remove all Docker networks with  
-```bash  
-docker network prune  
-```
-* Start again
-
-## [](#cannot-successful-pull-the-latest-version-onecx-local-env)Cannot successful pull the latest version onecx-local-env
-
-The issue occurs if the repository is updated with `git pull` (get latest version of onecx-local-env)
-
-![untracked files on pull.sh](_images/issues/untracked-files-on-pull.sh.png) 
-
-Figure 6\. Message: Untracked local files on pulling
-
-![traefik active created by root.sh](_images/issues/traefik-active_created-by-root.sh.png) 
-
-Figure 7\. The directory init\_data/traefik/active was created by root
-
-Solution 
-
-* Remove the active directory of Traefik manually by execution of  
-   * `sudo rm -rf init_data/traefik/active`
-* Reset the local repo (all other changes will be lost)  
-   * `git reset --hard origin/main`
-
 Set up OneCX Local Environment
 ====================
 This guide provides instructions for setting up and installing **onecx-local-env**, the local development environment for OneCX. It covers prerequisites, installation steps and initial configuration required to get **onecx-local-env** up and running on your local machine. Once setup is done the environment can be started, see [Getting Started](getting-started.html).
@@ -12711,6 +12616,101 @@ If the entries are not present in the WSL2 **hosts** file, they need to be added
 ## [](#next-step)Next Step
 
 After completing the steps outlined in this guide, **onecx-local-env** is now set up and ready to run a local OneCX environment. Instructions on how to start, access, and stop the local environment can be found in the [Getting Started](getting-started.html) guide.
+
+Troubleshooting Common Errors
+====================
+This page provides information for how to troubleshoot common problems and errors.
+
+## [](#starting-with-status-code-000-on-imports)Starting with Status Code "000" on Imports
+
+The issue occurs when the script [import-onecx.sh](scripts/import.html) is executed (importing OneCX data)
+
+![status code 000 import onecx.sh](_images/issues/status-code-000-import-onecx.sh.png) 
+
+Figure 1\. Status code 000 on initial imports
+
+Solution
+
+* Check if the hosts files is up-to-date. See [Setup hosts](setup.html#hosts) instructions.
+
+## [](#failed-services-on-start-up)Failed Services on Start up
+
+The problem occurs when some services cannot be started successfully even after several attempts and timeouts.
+
+![incomplete onecx start](_images/issues/incomplete-onecx-start.png) 
+
+Figure 2\. Message: Failed Services on Start up
+
+Solution 
+
+```bash
+* Start again
+```
+
+## [](#missing-menu-in-browser)Missing Menu in Browser
+
+The problem occurs sometimes after succesful starting the services
+
+![missing menu on start](_images/issues/missing-menu-on-start.png) 
+
+Figure 3\. Message: Missing Menu in Browser
+
+Solution 
+
+```bash
+* Remove Browser Cache & Cookies
+* Refresh browser
+```
+
+## [](#bad-gateway-in-browser)Bad gateway in Browser
+
+The problem occurs sometimes after succesful starting the services
+
+![bad gateway on mfe start](_images/issues/bad-gateway-on-mfe-start.png) 
+
+Figure 4\. Message: Bad gateway in Browser
+
+Solution 
+
+```bash
+* Start again
+* Refresh browser
+```
+
+## [](#error-response-from-daemon-failed-to-set-up-container-networking)Error response from daemon: Failed to set up container networking
+
+The problem occurs when during start up there are collisions between Docker networks.
+
+![docker deamon failed to setup container networking](_images/issues/docker-deamon_failed-to-setup-container-networking.png) 
+
+Figure 5\. Message: Failed to set up networking
+
+Solution 
+
+* Remove all Docker networks with  
+```bash  
+docker network prune  
+```
+* Start again
+
+## [](#cannot-successful-pull-the-latest-version-onecx-local-env)Cannot successful pull the latest version onecx-local-env
+
+The issue occurs if the repository is updated with `git pull` (get latest version of onecx-local-env)
+
+![untracked files on pull.sh](_images/issues/untracked-files-on-pull.sh.png) 
+
+Figure 6\. Message: Untracked local files on pulling
+
+![traefik active created by root.sh](_images/issues/traefik-active_created-by-root.sh.png) 
+
+Figure 7\. The directory init\_data/traefik/active was created by root
+
+Solution 
+
+* Remove the active directory of Traefik manually by execution of  
+   * `sudo rm -rf init_data/traefik/active`
+* Reset the local repo (all other changes will be lost)  
+   * `git reset --hard origin/main`
 
 undefined
 ====================
@@ -12975,108 +12975,28 @@ Frequently Asked Questions
 
 OneCX Data
 ====================
-The OneCX Local Environment contains data required for initial [startup](../scripts/start.html). This data is [imported](../scripts/import.html) after the services have started.
+The OneCX Local Environment contains data required for initial [startup](../scripts/start.html). This data is usually automatically [imported](../scripts/import.html) after the services have started.
 
-This is an overview of the file and folder structure related to data imports in the OneCX Local Environment. It also explains the purpose of each file and folder, and provides guidelines for adding new files.
+This is an overview of the data and how its organized.
 
-## [](#folder-structure)Folder Structure
+__Table 1\. OneCX Default Data__
+| Data Type               | Description                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Assignments             | Relationship between roles and permissions. Managed in [Permission Management](../../onecx-permission/index.html).             |
+| Parameters              | Used by some applications and managed in [Parameter Management](../../onecx-parameter/index.html).                             |
+| Permissions             | Declared and used in applications. Managed in [Permission Management](../../onecx-permission/index.html).                      |
+| Products (Applications) | Application data (components, slots etc.). Managed in [Application Store](../../onecx-product-store/index.html).               |
+| Tenants                 | Represents a customer or organizational unit using OneCX. Managed in [Tenant Management](../../onecx-tenant/index.html).       |
+| Themes                  | Used to customize the look and feel of OneCX for a tenant. Managed in [Theme Management](../../onecx-theme/index.html).        |
+| Workspaces              | Represents a customer or organizational unit using OneCX. Managed in [Workspace Management](../../onecx-workspace/index.html). |
 
-The `imports` directory contains all the data and scripts required for importing default data into the OneCX Local Environment. Below is the folder structure:
+## [](#how-the-data-are-organized-and-imported)How the Data are organized and imported
 
-* `assignments/`  
-   * Contains scripts and JSON files for importing role-to-permission assignments.
-* `parameters/`  
-   * Contains scripts and JSON files for importing application parameters.
-* `permissions/`  
-   * Contains scripts and JSON files for importing permissions.
-* `product-store/`  
-   * Contains scripts and subfolders for importing product-related data:  
-         * `microfrontends/`  
-                  * Contains JSON files defining microfrontend configurations.  
-         * `microservices/`  
-                  * Contains JSON files defining microservice configurations.  
-         * `products/`  
-                  * Contains JSON files defining product configurations.  
-         * `slots/`  
-                  * Contains JSON files defining slot configurations.
-* `tenant/`  
-   * Contains scripts and JSON files for importing tenant data.
-* `theme/`  
-   * Contains scripts and JSON files for importing themes.
-* `workspace/`  
-   * Contains scripts and JSON files for importing workspace data.
+The directory **onecx-data** in the **onecx-local-env** repository contains all data files and scripts needed to import data into the OneCX Local Environment.
 
-## [](#convention-and-file-list)Convention and file list
+The [import-onecx.sh](../scripts/import.html) script is used to import data needed by the OneCX services. It can be run from the root directory of the **onecx-local-env** repository. It starts several scripts that import data for the different services. All data files are in JSON format and usually related to a tenant or an application.
 
-### [](#assignments)Assignments
-
-* `import-assignments.sh`: Bash script to import role-to-permission assignments.  
-   * Uses: Permission Service.
-* `onecx.json`: JSON file defining assignments for various roles and permissions.
-
-### [](#parameters)Parameters
-
-* `import-parameters.sh`: Bash script to import application parameters.  
-   * Uses: Parameter Service.
-* `<product_name>_<app_id>.json`: Define parameters for specific applications.  
-   * Example: `onecx-parameter_onecx-parameter-bff.json`.
-
-### [](#permissions)Permissions
-
-* `import-permissions.sh`: Bash script to import permissions.  
-   * Uses: Permission Service.
-* `<product_name>_<app_id>.json`: Define permissions for specific applications.  
-   * Example: `onecx-help_onecx-help-ui.json`.
-
-### [](#product-store)Product Store
-
-#### [](#microfrontends)Microfrontends
-
-* `import-microfrontends.sh`: Bash script to import microfrontends.  
-   * Uses: Product Store Service.
-* `<product_name>_<app_id>_<microfrontend_name>.json`: Define microfrontend configurations.  
-   * Example: `onecx-help_onecx-help-ui_help-item-editor.json`.
-
-#### [](#microservices)Microservices
-
-* `import-microservices.sh`: Bash script to import microservices.  
-   * Uses: Product Store Service.
-* `<product_name>_<app_id>.json`: Define microservice.  
-   * Example: `onecx-help_onecx-help-bff.json`.
-
-#### [](#products)Products
-
-* `import-products.sh`: Bash script to import products.  
-   * Uses: Product Store Service.
-* `<product_name>.json`: Define product configurations.  
-   * Example: `onecx-help.json`.
-
-#### [](#slots)Slots
-
-* `import-slots.sh`: Bash script to import slots.  
-   * Uses: Product Store Service.
-* `<product_name>_<app_id>_<slot_name>.json`: Define slot configurations.  
-   * Example: `onecx-help_onecx-help-ui_onecx-help-search-header-left.json`.
-
-### [](#tenant)Tenant
-
-* `import-tenants.sh`: Bash script to import tenant data.  
-   * Uses: Tenant Service.
-* `tenant-import.json`: JSON file defining tenant configurations.
-
-### [](#theme)Theme
-
-* `import-themes.sh`: Bash script to import themes.  
-   * Uses: Theme Service.
-* `<tenant_id>_<theme_name>.json`: Define theme configurations.  
-   * Example: `onecx_OneCX.json`.
-
-### [](#workspace)Workspace
-
-* `import-workspaces.sh`: Bash script to import workspace data.  
-   * Uses: Workspace Service.
-* `<tenant_id>_<workspace_name>.json`: Define workspace configurations.  
-   * Example: `onecx_admin.json`.
+The import scripts are using node.js for reading the data, split them in batches and call the respective service APIs to import the data. Each script is responsible for importing a specific type of data, e.g., workspaces, themes, permissions, etc.
 
 ## [](#adding-new-files)Adding New Files
 
@@ -15890,6 +15810,10 @@ This software is licensed under the Apache License, Version 2.0\. You may obtain
 
 undefined
 ====================
+
+
+undefined
+====================
 ## [](#%5Fonecx%5Fdata%5Forchestrator%5Foperator)onecx-data-orchestrator-operator
 
 ### [](#%5Fconfiguration)Configuration
@@ -15992,10 +15916,6 @@ app:
         description: OneCX Data Orchestrator Operator
         name: OneCX Data Orchestrator Operator
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -18697,15 +18617,6 @@ app:
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                 | Type   | Default        |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------- |
-| [onecx.parameter.scheduler.duration](#onecx-parameter-svc%5Fonecx-parameter-scheduler-duration) Scheduler duration in days Environment variable: ONECX\_PARAMETER\_SCHEDULER\_DURATION | string | 7              |
-| [onecx.parameter.scheduler.expression](#onecx-parameter-svc%5Fonecx-parameter-scheduler-expression) Scheduler expression Environment variable: ONECX\_PARAMETER\_SCHEDULER\_EXPRESSION | string | 0 15 2 \* \* ? |
-
-undefined
-====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 3.6.0   |
@@ -18750,6 +18661,15 @@ undefined
 | 0.34.0                                                                                                                                   |
 | quarkus-scheduler                                                                                                                        |
 | 3.15.1                                                                                                                                   |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                 | Type   | Default        |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------------- |
+| [onecx.parameter.scheduler.duration](#onecx-parameter-svc%5Fonecx-parameter-scheduler-duration) Scheduler duration in days Environment variable: ONECX\_PARAMETER\_SCHEDULER\_DURATION | string | 7              |
+| [onecx.parameter.scheduler.expression](#onecx-parameter-svc%5Fonecx-parameter-scheduler-expression) Scheduler expression Environment variable: ONECX\_PARAMETER\_SCHEDULER\_EXPRESSION | string | 0 15 2 \* \* ? |
 
 undefined
 ====================
