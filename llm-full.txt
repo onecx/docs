@@ -621,7 +621,7 @@ If the application is not showing up and errors like `t is not a function` are i
 * make sure that the builder used in the project is compatible with the Angular version used  
    * e.g., for Angular 18 and ngx-build-plus package use version `^18.0.0`
 
-OneCX Portal UI Libs
+OneCX UI Libraries
 ====================
 The [OneCX Portal UI Libraries](https://github.com/onecx/onecx-portal-ui-libs) ecosystem consists of multiple specialized libraries that work together to provide everything needed to build portal applications within the OneCX platform.
 
@@ -2491,6 +2491,116 @@ Those files should contain code that takes care of all the setup required to dis
 * [OneCX Remote Components](../onecx-docs-overview/architecture-overview/remote-components.html)
 * [Web Components](webcomponents.html)
 
+OneCX Microfrontend Configuration with Webpack
+====================
+## [](#overview)Overview
+
+This document aims to explain the details related to Microfrontend’s configuration. It is required to utilize [Webpack technology](https://webpack.js.org) to expose Microfrontend’s content via a remote entry file, so the Shell and other Microfrontends (e.g. via Slot Components) are able to load and use it. Webpack is a powerful module bundler for JavaScript, which takes modules with dependencies and generates static assets representing those modules. Since Webpack version five, [Module Federation technology](https://webpack.js.org/concepts/module-federation/), integrated with Webpack, is used to achieve these goals.
+
+| |  For Angular based Microfrontends, consider using [@angular-architects/module-federation package](https://www.npmjs.com/package/@angular-architects/module-federation). This package is used internally by OneCX to load remote modules and is recommended for Angular based applications. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#microfrontend-configuration-with-webpack-explained)Microfrontend Configuration with Webpack Explained
+
+Each Microfrontend integrated with OneCX needs to have a configuration file for Webpack (usually called `webpack.config.js`), utilizing Module Federation to expose remote modules. For both module and Remote Components, a remote module needs to be exposed.
+
+### [](#important-elements-of-webpack-configuration)Important Elements of Webpack Configuration
+
+Webpack configuration is going to contain important configuration describing the Microfrontend. This configuration is used by Webpack to create and expose a remote entry file containing the whole code required to load remote modules in other Applications using Module Federation.
+
+Below, a Webpack configuration example of an Angular based Microfrontend is presented.
+
+```typescript
+const { ModifyEntryPlugin } = require('@angular-architects/module-federation/src/utils/modify-entry-plugin')
+const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleModule': './src/main.ts',
+    './ExampleComponent': './src/remotes/example/example.component.main.ts'
+  },
+  shared: share({
+    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/forms': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/common': { requiredVersion: 'auto', includeSecondaries: { skip: ['@angular/common/http/testing'] } },
+    '@angular/common/http': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/platform-browser': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/router': { requiredVersion: 'auto', includeSecondaries: true },
+    '@ngx-translate/core': { requiredVersion: 'auto' },
+    primeng: { requiredVersion: 'auto', includeSecondaries: true },
+    rxjs: { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-auth': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-remote-components': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-testing': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-webcomponents': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/keycloak-auth': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/ngrx-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/portal-integration-angular': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/portal-layout-styles': { requiredVersion: 'auto', includeSecondaries: true }
+  }),
+
+  sharedMappings: []
+})
+
+module.exports = config
+
+const plugins = config.plugins.filter((plugin) => !(plugin instanceof ModifyEntryPlugin))
+
+module.exports = {
+  ...config,
+  plugins,
+  output: { uniqueName: 'example-ui', publicPath: 'auto' },
+  experiments: { ...config.experiments, topLevelAwait: true },
+  optimization: { runtimeChunk: false, splitChunks: false }
+}
+```
+
+The most important elements of Webpack configurations are:
+
+Exposed content
+
+Each Microfrontend can expose multiple modules and Remote Components. Every separate module and Remote Component needs to be defined as a separate, unique entry representing a remote module. Each entry is a Key-Value Pair:
+
+Key
+
+Name of the exposed module.
+
+Value
+
+File to be used for module bootstrap.
+
+In the Angular example, there are two remote modules defined:
+
+* **ExampleModule** \- Microfrontend’s remote module pointing to Microfrontend’s main.ts file.
+* **ExampleComponent** \- Remote Component’s remote module pointing to component’s main.ts file.
+
+| |  [Module Federation](https://webpack.js.org/concepts/module-federation/) considers any exposed content as a **remote module**. In the OneCX context, Microfrontends expose two types of content, being modules and Remote Components. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Shared resources
+
+Each Microfrontend can define packages that can be shared with others. Every Microfrontend can specify what packages and with what versions are allowed to be shared. In the OneCX context, it is important to ensure the correct package sharing configuration dependent on the used packages used functionalities within the Microfrontend’s exposed content.
+
+In the Angular example, there are multiple packages shared. All of them are related to OneCX. For the detailed explanation on package sharing with OneCX, please refer here. For even more information on how package sharing works, please refer [here](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation).
+
+Remote name
+
+The unique name of the Microfrontend.
+
+Remote entry file name
+
+The name of the remote entry file (usually `remoteEntry.js`).
+
+### [](#related-resources)Related Resources
+
+* [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
+* [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
+
 Web Components in OneCX
 ====================
 ## [](#overview)Overview
@@ -2661,116 +2771,6 @@ __Table 4\. createAppEntrypoint arguments__
 * [Microfrontend content loading](microfrontend-content-loading.html)
 * Remote Component with Webcomponent method integration
 * Module with Webcomponent method integration
-
-OneCX Microfrontend Configuration with Webpack
-====================
-## [](#overview)Overview
-
-This document aims to explain the details related to Microfrontend’s configuration. It is required to utilize [Webpack technology](https://webpack.js.org) to expose Microfrontend’s content via a remote entry file, so the Shell and other Microfrontends (e.g. via Slot Components) are able to load and use it. Webpack is a powerful module bundler for JavaScript, which takes modules with dependencies and generates static assets representing those modules. Since Webpack version five, [Module Federation technology](https://webpack.js.org/concepts/module-federation/), integrated with Webpack, is used to achieve these goals.
-
-| |  For Angular based Microfrontends, consider using [@angular-architects/module-federation package](https://www.npmjs.com/package/@angular-architects/module-federation). This package is used internally by OneCX to load remote modules and is recommended for Angular based applications. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#microfrontend-configuration-with-webpack-explained)Microfrontend Configuration with Webpack Explained
-
-Each Microfrontend integrated with OneCX needs to have a configuration file for Webpack (usually called `webpack.config.js`), utilizing Module Federation to expose remote modules. For both module and Remote Components, a remote module needs to be exposed.
-
-### [](#important-elements-of-webpack-configuration)Important Elements of Webpack Configuration
-
-Webpack configuration is going to contain important configuration describing the Microfrontend. This configuration is used by Webpack to create and expose a remote entry file containing the whole code required to load remote modules in other Applications using Module Federation.
-
-Below, a Webpack configuration example of an Angular based Microfrontend is presented.
-
-```typescript
-const { ModifyEntryPlugin } = require('@angular-architects/module-federation/src/utils/modify-entry-plugin')
-const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
-const config = withModuleFederationPlugin({
-  name: 'example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ExampleModule': './src/main.ts',
-    './ExampleComponent': './src/remotes/example/example.component.main.ts'
-  },
-  shared: share({
-    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/forms': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/common': { requiredVersion: 'auto', includeSecondaries: { skip: ['@angular/common/http/testing'] } },
-    '@angular/common/http': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/platform-browser': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/router': { requiredVersion: 'auto', includeSecondaries: true },
-    '@ngx-translate/core': { requiredVersion: 'auto' },
-    primeng: { requiredVersion: 'auto', includeSecondaries: true },
-    rxjs: { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/accelerator': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-auth': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-remote-components': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-testing': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-webcomponents': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/keycloak-auth': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/ngrx-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/portal-integration-angular': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/portal-layout-styles': { requiredVersion: 'auto', includeSecondaries: true }
-  }),
-
-  sharedMappings: []
-})
-
-module.exports = config
-
-const plugins = config.plugins.filter((plugin) => !(plugin instanceof ModifyEntryPlugin))
-
-module.exports = {
-  ...config,
-  plugins,
-  output: { uniqueName: 'example-ui', publicPath: 'auto' },
-  experiments: { ...config.experiments, topLevelAwait: true },
-  optimization: { runtimeChunk: false, splitChunks: false }
-}
-```
-
-The most important elements of Webpack configurations are:
-
-Exposed content
-
-Each Microfrontend can expose multiple modules and Remote Components. Every separate module and Remote Component needs to be defined as a separate, unique entry representing a remote module. Each entry is a Key-Value Pair:
-
-Key
-
-Name of the exposed module.
-
-Value
-
-File to be used for module bootstrap.
-
-In the Angular example, there are two remote modules defined:
-
-* **ExampleModule** \- Microfrontend’s remote module pointing to Microfrontend’s main.ts file.
-* **ExampleComponent** \- Remote Component’s remote module pointing to component’s main.ts file.
-
-| |  [Module Federation](https://webpack.js.org/concepts/module-federation/) considers any exposed content as a **remote module**. In the OneCX context, Microfrontends expose two types of content, being modules and Remote Components. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Shared resources
-
-Each Microfrontend can define packages that can be shared with others. Every Microfrontend can specify what packages and with what versions are allowed to be shared. In the OneCX context, it is important to ensure the correct package sharing configuration dependent on the used packages used functionalities within the Microfrontend’s exposed content.
-
-In the Angular example, there are multiple packages shared. All of them are related to OneCX. For the detailed explanation on package sharing with OneCX, please refer here. For even more information on how package sharing works, please refer [here](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation).
-
-Remote name
-
-The unique name of the Microfrontend.
-
-Remote entry file name
-
-The name of the remote entry file (usually `remoteEntry.js`).
-
-### [](#related-resources)Related Resources
-
-* [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
-* [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
 
 OneCX Permissions
 ====================
@@ -9748,33 +9748,6 @@ The generated Java source code contains the additional Quarkus annotation `org.t
 
 undefined
 ====================
-## [](#%5Fonecx%5Foperator)onecx-operator
-
-### [](#%5Finstallation)Installation
-
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-operator` extension first to your build file.
-
-For instance, with Maven, add the following dependency to your POM file:
-
-```xml
-<dependency>
-    <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-operator</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
-
-### [](#%5Fconfiguration)Configuration
-
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                          | Type   | Default                  |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
-| [onecx.operator.touched.annotation-at](#onecx-operator%5Fonecx-operator-touched-annotation-at) Annotation name to set if resource was touched at Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_AT | string | org.tkit.onecx.touchedAt |
-| [onecx.operator.touched.annotation-by](#onecx-operator%5Fonecx-operator-touched-annotation-by) Annotation name to set if resource was touched by Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_BY | string | org.tkit.onecx.touchedBy |
-
-undefined
-====================
 ## [](#%5Fonecx%5Fparameters)onecx-parameters
 
 ## [](#%5Finstallation)Installation
@@ -9895,6 +9868,33 @@ in this respective order.
 | [onecx.parameters.history.update-schedule](#onecx-parameters%5Fonecx-parameters-history-update-schedule) Update history scheduler configuration in milliseconds. Environment variable: ONECX\_PARAMETERS\_HISTORY\_UPDATE\_SCHEDULE                                                                                | long               | 900000                          |
 | [onecx.parameters.items."parameters"](#onecx-parameters%5Fonecx-parameters-items-parameters) Parameters configuration Environment variable: ONECX\_PARAMETERS\_ITEMS\_\_PARAMETERS\_                                                                                                                               | Map<String,String> |                                 |
 | [onecx.parameters.tenant.enabled](#onecx-parameters%5Fonecx-parameters-tenant-enabled) Enable or disable multi-tenancy. Environment variable: ONECX\_PARAMETERS\_TENANT\_ENABLED                                                                                                                                   | boolean            | true                            |
+
+undefined
+====================
+## [](#%5Fonecx%5Foperator)onecx-operator
+
+### [](#%5Finstallation)Installation
+
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-operator` extension first to your build file.
+
+For instance, with Maven, add the following dependency to your POM file:
+
+```xml
+<dependency>
+    <groupId>org.tkit.onecx.quarkus</groupId>
+    <artifactId>onecx-operator</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+### [](#%5Fconfiguration)Configuration
+
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                          | Type   | Default                  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------ |
+| [onecx.operator.touched.annotation-at](#onecx-operator%5Fonecx-operator-touched-annotation-at) Annotation name to set if resource was touched at Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_AT | string | org.tkit.onecx.touchedAt |
+| [onecx.operator.touched.annotation-by](#onecx-operator%5Fonecx-operator-touched-annotation-by) Annotation name to set if resource was touched by Environment variable: ONECX\_OPERATOR\_TOUCHED\_ANNOTATION\_BY | string | org.tkit.onecx.touchedBy |
 
 undefined
 ====================
@@ -20092,6 +20092,20 @@ name: OneCX Permission SVC
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                   | Type               | Default                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------ |
+| [onecx.permission.token.verified](#onecx-permission-svc%5Fonecx-permission-token-verified) Verified permission token Environment variable: ONECX\_PERMISSION\_TOKEN\_VERIFIED                                                                                            | boolean            | false                          |
+| [onecx.permission.token.issuer.public-key-location.suffix](#onecx-permission-svc%5Fonecx-permission-token-issuer-public-key-location-suffix) Issuer public key location suffix. Environment variable: ONECX\_PERMISSION\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_SUFFIX    | string             | /protocol/openid-connect/certs |
+| [onecx.permission.token.issuer.public-key-location.enabled](#onecx-permission-svc%5Fonecx-permission-token-issuer-public-key-location-enabled) Issuer public key location enabled Environment variable: ONECX\_PERMISSION\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_ENABLED | boolean            | false                          |
+| [onecx.permission.token.claim.separator](#onecx-permission-svc%5Fonecx-permission-token-claim-separator) Claim separator Environment variable: ONECX\_PERMISSION\_TOKEN\_CLAIM\_SEPARATOR                                                                                | string             |                                |
+| [onecx.permission.token.claim.path](#onecx-permission-svc%5Fonecx-permission-token-claim-path) Claim path Environment variable: ONECX\_PERMISSION\_TOKEN\_CLAIM\_PATH                                                                                                    | string             | realm\_access/roles            |
+| [onecx.permission.template.role-mapping."role-mapping"](#onecx-permission-svc%5Fonecx-permission-template-role-mapping-role-mapping) Role mapping for the template import Environment variable: ONECX\_PERMISSION\_TEMPLATE\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_            | Map<String,String> |                                |
+| [onecx.permission.template.tenants](#onecx-permission-svc%5Fonecx-permission-template-tenants) Template import tenants Environment variable: ONECX\_PERMISSION\_TEMPLATE\_TENANTS                                                                                        | list of string     | default                        |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
@@ -20122,20 +20136,6 @@ undefined
 | \===ion                                | 3.20.2.1                                                                                           |                                                                                                                                                  |         |
 | \===tion                               | 3.15.3                                                                                             |                                                                                                                                                  |         |
 | tkit-quarkus-oidc-health               | 2.40.0                                                                                             |                                                                                                                                                  |         |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                                                   | Type               | Default                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------ |
-| [onecx.permission.token.verified](#onecx-permission-svc%5Fonecx-permission-token-verified) Verified permission token Environment variable: ONECX\_PERMISSION\_TOKEN\_VERIFIED                                                                                            | boolean            | false                          |
-| [onecx.permission.token.issuer.public-key-location.suffix](#onecx-permission-svc%5Fonecx-permission-token-issuer-public-key-location-suffix) Issuer public key location suffix. Environment variable: ONECX\_PERMISSION\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_SUFFIX    | string             | /protocol/openid-connect/certs |
-| [onecx.permission.token.issuer.public-key-location.enabled](#onecx-permission-svc%5Fonecx-permission-token-issuer-public-key-location-enabled) Issuer public key location enabled Environment variable: ONECX\_PERMISSION\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_ENABLED | boolean            | false                          |
-| [onecx.permission.token.claim.separator](#onecx-permission-svc%5Fonecx-permission-token-claim-separator) Claim separator Environment variable: ONECX\_PERMISSION\_TOKEN\_CLAIM\_SEPARATOR                                                                                | string             |                                |
-| [onecx.permission.token.claim.path](#onecx-permission-svc%5Fonecx-permission-token-claim-path) Claim path Environment variable: ONECX\_PERMISSION\_TOKEN\_CLAIM\_PATH                                                                                                    | string             | realm\_access/roles            |
-| [onecx.permission.template.role-mapping."role-mapping"](#onecx-permission-svc%5Fonecx-permission-template-role-mapping-role-mapping) Role mapping for the template import Environment variable: ONECX\_PERMISSION\_TEMPLATE\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_            | Map<String,String> |                                |
-| [onecx.permission.template.tenants](#onecx-permission-svc%5Fonecx-permission-template-tenants) Template import tenants Environment variable: ONECX\_PERMISSION\_TEMPLATE\_TENANTS                                                                                        | list of string     | default                        |
 
 undefined
 ====================
@@ -22036,15 +22036,6 @@ quarkus.openapi-generator.codegen.spec.onecx_parameter_svc_v1_yaml.enable-securi
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                         | Type    | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
-| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
-| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
-
-undefined
-====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
@@ -22074,6 +22065,15 @@ undefined
 |===th
 
 | | | 2.40.0
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                         | Type    | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
+| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
 
 undefined
 ====================
@@ -26696,30 +26696,7 @@ TCH requests, where objects are saved or updated
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/1.7.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 1.7.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
-| quarkus-rest-client-oidc-filter        | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
-| \===th                                 | 2.40.0                                                                                             |                                                                                                                                                  |            |
+
 
 undefined
 ====================
@@ -26886,7 +26863,30 @@ TCH requests, where objects are saved or updated
 
 undefined
 ====================
-
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/1.7.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 1.7.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
+| quarkus-rest-client-oidc-filter        | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
+| \===th                                 | 2.40.0                                                                                             |                                                                                                                                                  |            |
 
 undefined
 ====================
