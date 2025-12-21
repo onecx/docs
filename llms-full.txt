@@ -13549,355 +13549,6 @@ Frequently Asked Questions
 ====================
 …​coming soon
 
-OneCX Data
-====================
-parking place
-
-## [](#adding-new-files)Adding New Files - Guidelines here?
-
-To add new files to the `imports` directory, follow these guidelines:
-
-1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
-2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
-3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
-4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
-
-By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
-
-Networking in OneCX Local Environment
-====================
-This document explains how networking is configured and managed in the OneCX local development environment.
-
-## [](#overview)Overview
-
-The OneCX local environment uses a sophisticated networking setup that combines:
-
-* **Traefik** as the central reverse proxy and API gateway
-* **Docker Compose networks** for service-to-service communication
-* **Host file configuration** for domain name resolution
-* **Service discovery** through Docker labels
-* **Environment-based configuration** for flexible deployment
-
-## [](#architecture-components)Architecture Components
-
-### [](#traefik-reverse-proxy)Traefik Reverse Proxy
-
-Traefik serves as the central entry point for all HTTP traffic in the OneCX environment. It acts as:
-
-* **Reverse Proxy**: Routes incoming requests to appropriate backend services
-* **Load Balancer**: Distributes traffic across service instances
-* **Service Discovery**: Automatically detects new services through Docker labels
-* **API Gateway**: Provides a single entry point for all microservices
-
-#### [](#traefik-configuration)Traefik Configuration
-
-The Traefik configuration is split across multiple files:
-
-* `init-data/traefik/traefik-conf.yml`: Main Traefik configuration
-* `init-data/traefik/traefik-services.yml`: Static service definitions
-* Docker labels in `docker-compose.v<version>.yaml`: Dynamic service registration
-
-#### [](#key-traefik-settings)Key Traefik Settings
-
-traefik-conf.yml
-
-```yaml
-entryPoints:
-  web:
-    address: ":80"  # HTTP entry point
-
-providers:
-  docker:
-    endpoint: unix:///var/run/docker.sock  # Docker socket for service discovery
-  file:
-    filename: /etc/traefik/services.yml    # Static service definitions
-```
-
-### [](#service-discovery-and-routing)Service Discovery and Routing
-
-#### [](#traefik-labels)Traefik Labels
-
-Services register themselves with Traefik using Docker labels:
-
-General Traefik Label Patterns
-
-```yaml
-labels:
-  # Define the service port (required for all services)
-  - "traefik.http.services.<service-name>.loadbalancer.server.port=<port>"
-
-  # Backend services (BFF/SVC) and Infrastructure services - simple host-based routing
-  - "traefik.http.routers.<service-name>.rule=Host(`<service-name>`)"
-
-  # Frontend applications - path-based routing through local-proxy
-  - "traefik.http.routers.<ui-service>.rule=Host(`local-proxy`)&&PathPrefix(`/<app-path>/`)"
-```
-
-#### [](#routing-rules)Routing Rules
-
-Different routing patterns are used for different service types:
-
-* Backend Services (BFF/SVC) and Infrastructure Services:
-
-```none
-Host(`service-name`)
-```
-
-* Frontend Applications (UI):
-
-```none
-Host(`local-proxy`)&&PathPrefix(`/app-path/`)
-```
-
-### [](#host-file-configuration)Host File Configuration
-
-For proper domain resolution in development, the following entries should be added to your local hosts file (`/etc/hosts` on Linux/macOS, `C:\Windows\System32\drivers\etc\hosts` on Windows):
-
-```none
-# OneCX Local Environment
-127.0.0.1 local-proxy
-127.0.0.1 keycloak-app
-127.0.0.1 postgresdb
-127.0.0.1 pgadmin
-127.0.0.1 onecx-shell-bff
-127.0.0.1 onecx-theme-svc
-127.0.0.1 onecx-theme-bff
-127.0.0.1 onecx-workspace-svc
-127.0.0.1 onecx-workspace-bff
-127.0.0.1 onecx-permission-svc
-127.0.0.1 onecx-permission-bff
-127.0.0.1 onecx-product-store-svc
-127.0.0.1 onecx-product-store-bff
-127.0.0.1 onecx-user-profile-svc
-127.0.0.1 onecx-user-profile-bff
-# Add other OneCX services as needed
-```
-
-### [](#port-mapping-strategy)Port Mapping Strategy
-
-#### [](#external-ports-host-container)External Ports (Host → Container)
-
-Key external ports exposed to the host:
-
-| Service           | Host Port | Purpose                        |
-| ----------------- | --------- | ------------------------------ |
-| Traefik HTTP      | 80        | Main HTTP entry point          |
-| Traefik Dashboard | 8082      | Web UI for Traefik management  |
-| Keycloak          | 8080      | Identity and access management |
-| PostgreSQL        | 5432      | Database direct access         |
-
-#### [](#internal-ports-container-container)Internal Ports (Container → Container)
-
-Services communicate internally using standard ports:
-
-* **Web Services**: Port 8080 (Quarkus default)
-* **PostgreSQL**: Port 5432
-* **Frontend Applications**: Port 8080 (Nginx)
-
-### [](#docker-compose-networks)Docker Compose Networks
-
-#### [](#default-network)Default Network
-
-All services are connected to the `default` (docker-compose.v2.yaml) or `example` (docker-compose.v1.yaml) Docker Compose network, which enables:
-
-* **Service-to-Service Communication**: Services can communicate using container names as hostnames
-* **Automatic DNS Resolution**: Docker provides built-in DNS for container name resolution
-* **Network Isolation**: Traffic is isolated from the host network and other Docker networks
-
-#### [](#network-communication-patterns)Network Communication Patterns
-
-Services communicate using these patterns:
-
-| Communication Type  | Example                    | URL Pattern                                    |
-| ------------------- | -------------------------- | ---------------------------------------------- |
-| Frontend to BFF     | Shell UI → Shell BFF       | <http://onecx-shell-bff:8080>                  |
-| BFF to Service      | Shell BFF → Theme Service  | <http://onecx-theme-svc:8080>                  |
-| Service to Database | Theme Service → PostgreSQL | jdbc:postgresql://postgresdb:5432/onecx\_theme |
-| Service to Keycloak | Any Service → Keycloak     | <http://keycloak-app:8080>                     |
-
-### [](#environment-configuration)Environment Configuration
-
-#### [](#common-environment-variables)Common Environment Variables
-
-Key networking-related shared environment variables in `common.env`:
-
-common.env
-
-```env
-KC_REALM=onecx
-QUARKUS_OIDC_AUTH_SERVER_URL=http://keycloak-app:8080/realms/${KC_REALM}
-```
-
-#### [](#service-specific-configuration)Service-Specific Configuration
-
-* BFF Environment (`bff.env`):  
-   * Currently empty - BFF services inherit their networking configuration from `common.env`.
-* Service Environment (`svc.env`):
-
-```env
-TKIT_DATAIMPORT_ENABLED=true
-ONECX_TENANT_CACHE_ENABLED=false
-```
-
-| |  Database connection URLs and authentication endpoints are typically configured directly in the docker-compose.v2.yaml file within each service’s environment section, using internal Docker network hostnames like postgresdb:5432 and keycloak-app:8080. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#access-patterns)Access Patterns
-
-### [](#external-access-browser-services)External Access (Browser → Services)
-
-#### [](#onecx-shell-main-entry-point)OneCX Shell (Main Entry Point)
-
-* **Shell Admin Interface**: `<http://local-proxy/onecx-shell/admin>`  
-   * Default credentials: username `onecx`, password `onecx`  
-   * All OneCX applications are accessed through the Shell workspace navigation
-
-#### [](#application-access-through-shell)Application Access Through Shell
-
-Applications are accessed via the Shell workspace navigation. For example:
-
-* **Workspace Management**: `<http://local-proxy/onecx-shell/admin/workspace>`
-* The workspace UI is served from: `<http://local-proxy/mfe/workspace/>`
-* Where the path can be found in the path prefix:  
-   * `` "traefik.http.routers.<ui-service>.rule=Host(\`local-proxy\ ``)&&PathPrefix(\`/mfe/**workspace**/\\\`)"\`
-
-#### [](#infrastructure-services)Infrastructure Services
-
-* **Keycloak**: `<http://keycloak-app:8080>` or `<http://localhost:8080>`
-* **PgAdmin**: `<http://pgadmin>`
-* **Traefik Dashboard**: `<http://localhost:8082>`
-
-### [](#internal-communication)Internal Communication
-
-Services communicate internally using container names:
-
-* BFF calls services: `<http://service-name:8080>`
-* Services call databases: `jdbc:postgresql://postgresdb:5432/db_name`
-* All services authenticate via: `<http://keycloak-app:8080>`
-
-## [](#development-workflow)Development Workflow
-
-### [](#local-development-integration)Local Development Integration
-
-The networking setup supports local development through:
-
-**Host Integration**:
-
-```yaml
-extra_hosts:
-  - "host.docker.internal:host-gateway"
-```
-
-**Static Service Definitions** (`traefik-services.yml`):
-
-```yaml
-http:
-  services:
-    local_bff:
-      loadBalancer:
-        servers:
-          - url: "http://host.docker.internal:8585/"
-    local_mfe:
-      loadBalancer:
-        servers:
-          - url: "http://host.docker.internal:4200/"
-```
-
-| |  With this configuration, the local MFE/UI must run on port 4200 and the respective BFF must run on port 8585\. Refer to this [different ports note section](#documentation:onecx-docs-getting-started/enable%5Fhot%5Freload.adoc#note-different-ports) for more details on changing to different ports. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#security-considerations)Security Considerations
-
-### [](#network-isolation)Network Isolation
-
-* Services are isolated within the Docker network
-* Only necessary ports are exposed to the host
-* Database is not directly accessible from outside (except via mapped port 5432)
-
-### [](#authentication-flow)Authentication Flow
-
-1. Browser → Traefik (local-proxy) → Frontend Application
-2. Frontend → Traefik → BFF Service
-3. BFF → Keycloak (authentication)
-4. BFF → Backend Services (with token)
-
-OneCX Data
-====================
-The OneCX Local Environment contains data required for initial [startup](../scripts/start.html). This data is usually automatically [imported](../scripts/import.html) after the services have started.
-
-This is an overview of the data and how its organized.
-
-__Table 1\. OneCX Default Data__
-| Data Type               | Managed by                                                 | Description                                              |
-| ----------------------- | ---------------------------------------------------------- | -------------------------------------------------------- |
-| Assignments             | [Permission Management](../../onecx-permission/index.html) | Relationship between roles and permissions               |
-| Bookmarks               | [Bookmark Management](../../onecx-bookmark/index.html)     | Bookmarks for quick access to frequently used items      |
-| Parameters              | [Parameter Management](../../onecx-parameter/index.html)   | Used by some applications                                |
-| Permissions             | [Permission Management](../../onecx-permission/index.html) | Declared and used in applications.                       |
-| Products (Applications) | [Application Store](../../onecx-product-store/index.html)  | Application data (components, slots etc.)                |
-| Tenants                 | [Tenant Management](../../onecx-tenant/index.html)         | Represents a customer or organizational unit using OneCX |
-| Themes                  | [Theme Management](../../onecx-theme/index.html)           | Customizing the look and feel of OneCX for a tenant      |
-| Workspaces              | [Workspace Management](../../onecx-workspace/index.html)   | Customizing the working areas for users                  |
-
-## [](#how-the-data-are-organized-and-imported)How the Data are organized and imported
-
-The directory **onecx-data** in the **onecx-local-env** repository contains all data files and scripts needed to import data into the OneCX Local Environment.
-
-The [import-onecx.sh](../scripts/import.html) script is used to import data needed by the OneCX services. It can be run from the root directory of the **onecx-local-env** repository. It starts several scripts that import data for the different services. All data files are in JSON format and usually related to a tenant or an application.
-
-The import scripts are using **node.js** for reading the data, split them in batches and call the respective service APIs to import the data. Each script is responsible for importing a specific type of data, e.g., workspaces, themes, permissions, etc.
-
-![OneCX Data Structure](../_images/onecx-data-structure.png) 
-
-Figure 1\. Data Organization
-
-Utilities
-====================
-## [](#additional-started-services)Additional Started Services
-
-In addition to the original OneCX products, some open-source tools are also used and launched.
-
-### [](#keycloak)Keycloak
-
-[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
-
-There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
-
-* <http://keycloak-app/admin/master/console/#/onecx>
-* Username: **admin**
-* Password: **admin**
-
-![screenshot successful keycloak onecx](../_images/screenshot_successful-keycloak-onecx.png) 
-
-Figure 1\. Keycloak running on localhost
-
-### [](#pgadmin)pgAdmin
-
-[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
-
-| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* <http://pgadmin/>
-* Username: **admin**
-* Password: **admin**
-
-![screenshot successful pgadmin](../_images/screenshot_successful-pgadmin.png) 
-
-Figure 2\. pgAdmin running on localhost
-
-### [](#traefik)Traefik
-
-Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
-
-[Use Traefik for routing Microfrontends](../scripts/toggle-mfes.html#routing-and-prioritize)
-
-* <http://traefik:8082/dashboard/>
-
-![screenshot successful traefik](../_images/screenshot_successful-traefik.png) 
-
-Figure 3\. Traefik Dashboard
-
 Check local Docker images
 ====================
 The **check-images.sh** script is used to list local Docker images with version information. It can be run from the root directory of the **onecx-local-env** repository.
@@ -14466,6 +14117,355 @@ The deletion is only possible if the image is not in use. If so then stop the ap
 ![script check images.sh rm image failed](../_images/scripts/script_check-images.sh_rm-image-failed.png) 
 
 Figure 2\. Image deletion failed
+
+OneCX Data
+====================
+parking place
+
+## [](#adding-new-files)Adding New Files - Guidelines here?
+
+To add new files to the `imports` directory, follow these guidelines:
+
+1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
+2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
+3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
+4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
+
+By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
+
+Networking in OneCX Local Environment
+====================
+This document explains how networking is configured and managed in the OneCX local development environment.
+
+## [](#overview)Overview
+
+The OneCX local environment uses a sophisticated networking setup that combines:
+
+* **Traefik** as the central reverse proxy and API gateway
+* **Docker Compose networks** for service-to-service communication
+* **Host file configuration** for domain name resolution
+* **Service discovery** through Docker labels
+* **Environment-based configuration** for flexible deployment
+
+## [](#architecture-components)Architecture Components
+
+### [](#traefik-reverse-proxy)Traefik Reverse Proxy
+
+Traefik serves as the central entry point for all HTTP traffic in the OneCX environment. It acts as:
+
+* **Reverse Proxy**: Routes incoming requests to appropriate backend services
+* **Load Balancer**: Distributes traffic across service instances
+* **Service Discovery**: Automatically detects new services through Docker labels
+* **API Gateway**: Provides a single entry point for all microservices
+
+#### [](#traefik-configuration)Traefik Configuration
+
+The Traefik configuration is split across multiple files:
+
+* `init-data/traefik/traefik-conf.yml`: Main Traefik configuration
+* `init-data/traefik/traefik-services.yml`: Static service definitions
+* Docker labels in `docker-compose.v<version>.yaml`: Dynamic service registration
+
+#### [](#key-traefik-settings)Key Traefik Settings
+
+traefik-conf.yml
+
+```yaml
+entryPoints:
+  web:
+    address: ":80"  # HTTP entry point
+
+providers:
+  docker:
+    endpoint: unix:///var/run/docker.sock  # Docker socket for service discovery
+  file:
+    filename: /etc/traefik/services.yml    # Static service definitions
+```
+
+### [](#service-discovery-and-routing)Service Discovery and Routing
+
+#### [](#traefik-labels)Traefik Labels
+
+Services register themselves with Traefik using Docker labels:
+
+General Traefik Label Patterns
+
+```yaml
+labels:
+  # Define the service port (required for all services)
+  - "traefik.http.services.<service-name>.loadbalancer.server.port=<port>"
+
+  # Backend services (BFF/SVC) and Infrastructure services - simple host-based routing
+  - "traefik.http.routers.<service-name>.rule=Host(`<service-name>`)"
+
+  # Frontend applications - path-based routing through local-proxy
+  - "traefik.http.routers.<ui-service>.rule=Host(`local-proxy`)&&PathPrefix(`/<app-path>/`)"
+```
+
+#### [](#routing-rules)Routing Rules
+
+Different routing patterns are used for different service types:
+
+* Backend Services (BFF/SVC) and Infrastructure Services:
+
+```none
+Host(`service-name`)
+```
+
+* Frontend Applications (UI):
+
+```none
+Host(`local-proxy`)&&PathPrefix(`/app-path/`)
+```
+
+### [](#host-file-configuration)Host File Configuration
+
+For proper domain resolution in development, the following entries should be added to your local hosts file (`/etc/hosts` on Linux/macOS, `C:\Windows\System32\drivers\etc\hosts` on Windows):
+
+```none
+# OneCX Local Environment
+127.0.0.1 local-proxy
+127.0.0.1 keycloak-app
+127.0.0.1 postgresdb
+127.0.0.1 pgadmin
+127.0.0.1 onecx-shell-bff
+127.0.0.1 onecx-theme-svc
+127.0.0.1 onecx-theme-bff
+127.0.0.1 onecx-workspace-svc
+127.0.0.1 onecx-workspace-bff
+127.0.0.1 onecx-permission-svc
+127.0.0.1 onecx-permission-bff
+127.0.0.1 onecx-product-store-svc
+127.0.0.1 onecx-product-store-bff
+127.0.0.1 onecx-user-profile-svc
+127.0.0.1 onecx-user-profile-bff
+# Add other OneCX services as needed
+```
+
+### [](#port-mapping-strategy)Port Mapping Strategy
+
+#### [](#external-ports-host-container)External Ports (Host → Container)
+
+Key external ports exposed to the host:
+
+| Service           | Host Port | Purpose                        |
+| ----------------- | --------- | ------------------------------ |
+| Traefik HTTP      | 80        | Main HTTP entry point          |
+| Traefik Dashboard | 8082      | Web UI for Traefik management  |
+| Keycloak          | 8080      | Identity and access management |
+| PostgreSQL        | 5432      | Database direct access         |
+
+#### [](#internal-ports-container-container)Internal Ports (Container → Container)
+
+Services communicate internally using standard ports:
+
+* **Web Services**: Port 8080 (Quarkus default)
+* **PostgreSQL**: Port 5432
+* **Frontend Applications**: Port 8080 (Nginx)
+
+### [](#docker-compose-networks)Docker Compose Networks
+
+#### [](#default-network)Default Network
+
+All services are connected to the `default` (docker-compose.v2.yaml) or `example` (docker-compose.v1.yaml) Docker Compose network, which enables:
+
+* **Service-to-Service Communication**: Services can communicate using container names as hostnames
+* **Automatic DNS Resolution**: Docker provides built-in DNS for container name resolution
+* **Network Isolation**: Traffic is isolated from the host network and other Docker networks
+
+#### [](#network-communication-patterns)Network Communication Patterns
+
+Services communicate using these patterns:
+
+| Communication Type  | Example                    | URL Pattern                                    |
+| ------------------- | -------------------------- | ---------------------------------------------- |
+| Frontend to BFF     | Shell UI → Shell BFF       | <http://onecx-shell-bff:8080>                  |
+| BFF to Service      | Shell BFF → Theme Service  | <http://onecx-theme-svc:8080>                  |
+| Service to Database | Theme Service → PostgreSQL | jdbc:postgresql://postgresdb:5432/onecx\_theme |
+| Service to Keycloak | Any Service → Keycloak     | <http://keycloak-app:8080>                     |
+
+### [](#environment-configuration)Environment Configuration
+
+#### [](#common-environment-variables)Common Environment Variables
+
+Key networking-related shared environment variables in `common.env`:
+
+common.env
+
+```env
+KC_REALM=onecx
+QUARKUS_OIDC_AUTH_SERVER_URL=http://keycloak-app:8080/realms/${KC_REALM}
+```
+
+#### [](#service-specific-configuration)Service-Specific Configuration
+
+* BFF Environment (`bff.env`):  
+   * Currently empty - BFF services inherit their networking configuration from `common.env`.
+* Service Environment (`svc.env`):
+
+```env
+TKIT_DATAIMPORT_ENABLED=true
+ONECX_TENANT_CACHE_ENABLED=false
+```
+
+| |  Database connection URLs and authentication endpoints are typically configured directly in the docker-compose.v2.yaml file within each service’s environment section, using internal Docker network hostnames like postgresdb:5432 and keycloak-app:8080. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#access-patterns)Access Patterns
+
+### [](#external-access-browser-services)External Access (Browser → Services)
+
+#### [](#onecx-shell-main-entry-point)OneCX Shell (Main Entry Point)
+
+* **Shell Admin Interface**: `<http://local-proxy/onecx-shell/admin>`  
+   * Default credentials: username `onecx`, password `onecx`  
+   * All OneCX applications are accessed through the Shell workspace navigation
+
+#### [](#application-access-through-shell)Application Access Through Shell
+
+Applications are accessed via the Shell workspace navigation. For example:
+
+* **Workspace Management**: `<http://local-proxy/onecx-shell/admin/workspace>`
+* The workspace UI is served from: `<http://local-proxy/mfe/workspace/>`
+* Where the path can be found in the path prefix:  
+   * `` "traefik.http.routers.<ui-service>.rule=Host(\`local-proxy\ ``)&&PathPrefix(\`/mfe/**workspace**/\\\`)"\`
+
+#### [](#infrastructure-services)Infrastructure Services
+
+* **Keycloak**: `<http://keycloak-app:8080>` or `<http://localhost:8080>`
+* **PgAdmin**: `<http://pgadmin>`
+* **Traefik Dashboard**: `<http://localhost:8082>`
+
+### [](#internal-communication)Internal Communication
+
+Services communicate internally using container names:
+
+* BFF calls services: `<http://service-name:8080>`
+* Services call databases: `jdbc:postgresql://postgresdb:5432/db_name`
+* All services authenticate via: `<http://keycloak-app:8080>`
+
+## [](#development-workflow)Development Workflow
+
+### [](#local-development-integration)Local Development Integration
+
+The networking setup supports local development through:
+
+**Host Integration**:
+
+```yaml
+extra_hosts:
+  - "host.docker.internal:host-gateway"
+```
+
+**Static Service Definitions** (`traefik-services.yml`):
+
+```yaml
+http:
+  services:
+    local_bff:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:8585/"
+    local_mfe:
+      loadBalancer:
+        servers:
+          - url: "http://host.docker.internal:4200/"
+```
+
+| |  With this configuration, the local MFE/UI must run on port 4200 and the respective BFF must run on port 8585\. Refer to this [different ports note section](#documentation:onecx-docs-getting-started/enable%5Fhot%5Freload.adoc#note-different-ports) for more details on changing to different ports. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#security-considerations)Security Considerations
+
+### [](#network-isolation)Network Isolation
+
+* Services are isolated within the Docker network
+* Only necessary ports are exposed to the host
+* Database is not directly accessible from outside (except via mapped port 5432)
+
+### [](#authentication-flow)Authentication Flow
+
+1. Browser → Traefik (local-proxy) → Frontend Application
+2. Frontend → Traefik → BFF Service
+3. BFF → Keycloak (authentication)
+4. BFF → Backend Services (with token)
+
+OneCX Data
+====================
+The OneCX Local Environment contains data required for initial [startup](../scripts/start.html). This data is usually automatically [imported](../scripts/import.html) after the services have started.
+
+This is an overview of the data and how its organized.
+
+__Table 1\. OneCX Default Data__
+| Data Type               | Managed by                                                 | Description                                              |
+| ----------------------- | ---------------------------------------------------------- | -------------------------------------------------------- |
+| Assignments             | [Permission Management](../../onecx-permission/index.html) | Relationship between roles and permissions               |
+| Bookmarks               | [Bookmark Management](../../onecx-bookmark/index.html)     | Bookmarks for quick access to frequently used items      |
+| Parameters              | [Parameter Management](../../onecx-parameter/index.html)   | Used by some applications                                |
+| Permissions             | [Permission Management](../../onecx-permission/index.html) | Declared and used in applications.                       |
+| Products (Applications) | [Application Store](../../onecx-product-store/index.html)  | Application data (components, slots etc.)                |
+| Tenants                 | [Tenant Management](../../onecx-tenant/index.html)         | Represents a customer or organizational unit using OneCX |
+| Themes                  | [Theme Management](../../onecx-theme/index.html)           | Customizing the look and feel of OneCX for a tenant      |
+| Workspaces              | [Workspace Management](../../onecx-workspace/index.html)   | Customizing the working areas for users                  |
+
+## [](#how-the-data-are-organized-and-imported)How the Data are organized and imported
+
+The directory **onecx-data** in the **onecx-local-env** repository contains all data files and scripts needed to import data into the OneCX Local Environment.
+
+The [import-onecx.sh](../scripts/import.html) script is used to import data needed by the OneCX services. It can be run from the root directory of the **onecx-local-env** repository. It starts several scripts that import data for the different services. All data files are in JSON format and usually related to a tenant or an application.
+
+The import scripts are using **node.js** for reading the data, split them in batches and call the respective service APIs to import the data. Each script is responsible for importing a specific type of data, e.g., workspaces, themes, permissions, etc.
+
+![OneCX Data Structure](../_images/onecx-data-structure.png) 
+
+Figure 1\. Data Organization
+
+Utilities
+====================
+## [](#additional-started-services)Additional Started Services
+
+In addition to the original OneCX products, some open-source tools are also used and launched.
+
+### [](#keycloak)Keycloak
+
+[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
+
+There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
+
+* <http://keycloak-app/admin/master/console/#/onecx>
+* Username: **admin**
+* Password: **admin**
+
+![screenshot successful keycloak onecx](../_images/screenshot_successful-keycloak-onecx.png) 
+
+Figure 1\. Keycloak running on localhost
+
+### [](#pgadmin)pgAdmin
+
+[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
+
+| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* <http://pgadmin/>
+* Username: **admin**
+* Password: **admin**
+
+![screenshot successful pgadmin](../_images/screenshot_successful-pgadmin.png) 
+
+Figure 2\. pgAdmin running on localhost
+
+### [](#traefik)Traefik
+
+Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
+
+[Use Traefik for routing Microfrontends](../scripts/toggle-mfes.html#routing-and-prioritize)
+
+* <http://traefik:8082/dashboard/>
+
+![screenshot successful traefik](../_images/screenshot_successful-traefik.png) 
+
+Figure 3\. Traefik Dashboard
 
 Migrate to v2
 ====================
@@ -15281,41 +15281,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
-| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
-
-| | | 3.20.2.1
-
-| [Link](https://quarkus.io/guides/container-image)                                                                                        |
-| ---------------------------------------------------------------------------------------------------------------------------------------- |
-| [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc) |
-| 3.15.3                                                                                                                                   |
-| tkit-quarkus-oidc-health                                                                                                                 |
-| 2.40.0                                                                                                                                   |
-
-undefined
-====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -15434,6 +15399,41 @@ app:
 ```
 
 cription: OneCX Announcement Backend For Frontend name: OneCX Announcement BFF
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
+| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
+
+| | | 3.20.2.1
+
+| [Link](https://quarkus.io/guides/container-image)                                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------- |
+| [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc) |
+| 3.15.3                                                                                                                                   |
+| tkit-quarkus-oidc-health                                                                                                                 |
+| 2.40.0                                                                                                                                   |
 
 undefined
 ====================
@@ -16816,6 +16816,10 @@ h| Extensions h| Documentation h| Configuration h| Version
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -17028,10 +17032,6 @@ undefined
 | quarkus-kubernetes-client
 
 | | | 3.15.1
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -22308,6 +22308,15 @@ quarkus.openapi-generator.codegen.spec.onecx_parameter_svc_v1_yaml.enable-securi
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                         | Type    | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
+| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
@@ -22337,15 +22346,6 @@ undefined
 |===th
 
 | | | 2.40.0
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                         | Type    | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
-| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
-| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
 
 undefined
 ====================
