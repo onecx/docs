@@ -4101,136 +4101,6 @@ The [WorkspaceService](#cookbook/service/workspace-service/index.adoc) provides 
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
-Enable OneCX app to run in standalone
-====================
-The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
-
-Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
-
-## [](#steps)Steps
-
-The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
-
-To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
-
-### [](#install-dependecies)Install `@onecx/standalone-shell`
-
-In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
-
-```console
-npm i @onecx/standalone-shell
-```
-
-### [](#rename-entrypoint-files)Rename existing entrypoint files
-
-To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
-
-### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
-
-When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
-
-Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
-
-```none
-<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
-```
-
-Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
-
-### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
-
-Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
-
-```none
-// Example providers and imports
-
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { CommonModule } from '@angular/common'
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
-
-export const commonProviders = [
-  provideHttpClient(withInterceptorsFromDi()),
-  ...
-]
-
-export const commonImports = [
-  BrowserModule,
-  BrowserAnimationsModule,
-  CommonModule,
-  ...
-]
-
-export class RemoteModule implements DoBootstrap {
-  ...
-}
-```
-
-### [](#update-index-html)Use `AppComponent` selector in `index.html`
-
-To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
-
-### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
-
-To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
-
-The newly created bootstrap file must contain the following code:
-
-```none
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
-import { AppModule } from './app/app.module'
-
-platformBrowserDynamic()
-  .bootstrapModule(AppModule)
-  .catch((err) => console.error(err))
-```
-
-The newly created main file should import the bootstrap files and handle potential errors:
-
-```none
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
-
-### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
-
-To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-    isolate: false,  
-    loader: {  
-      provide: TranslateLoader,  
-      useFactory: createTranslateLoader,  
-      deps: [HttpClient]  
-    }  
-  }),  
-  ...  
-],
-4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-### [](#verify-standalone-mode)Verify that the app is running in standalone
-
-After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
-
 Migrate vanilla Angular apps to OneCX
 ====================
 The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
@@ -4616,6 +4486,136 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 ### [](#troubleshooting-compilation-error)Compilation error `TypeError: The 'compilation' argument must be an instance of Compilation`
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
+
+Enable OneCX app to run in standalone
+====================
+The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
+
+Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
+
+## [](#steps)Steps
+
+The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
+
+To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
+
+### [](#install-dependecies)Install `@onecx/standalone-shell`
+
+In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
+
+```console
+npm i @onecx/standalone-shell
+```
+
+### [](#rename-entrypoint-files)Rename existing entrypoint files
+
+To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
+
+### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
+
+When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
+
+Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
+
+```none
+<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
+```
+
+Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
+
+### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
+
+Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
+
+```none
+// Example providers and imports
+
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+
+export const commonProviders = [
+  provideHttpClient(withInterceptorsFromDi()),
+  ...
+]
+
+export const commonImports = [
+  BrowserModule,
+  BrowserAnimationsModule,
+  CommonModule,
+  ...
+]
+
+export class RemoteModule implements DoBootstrap {
+  ...
+}
+```
+
+### [](#update-index-html)Use `AppComponent` selector in `index.html`
+
+To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
+
+### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
+
+To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
+
+The newly created bootstrap file must contain the following code:
+
+```none
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
+import { AppModule } from './app/app.module'
+
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch((err) => console.error(err))
+```
+
+The newly created main file should import the bootstrap files and handle potential errors:
+
+```none
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
+
+### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
+
+To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+    isolate: false,  
+    loader: {  
+      provide: TranslateLoader,  
+      useFactory: createTranslateLoader,  
+      deps: [HttpClient]  
+    }  
+  }),  
+  ...  
+],
+4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+### [](#verify-standalone-mode)Verify that the app is running in standalone
+
+After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
 
 Calendar
 ====================
@@ -5187,247 +5187,6 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-AutoComplete for suggestions with array of type number
-====================
-## [](#goal)Goal: Add AutoComplete Number
-
-Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
-| -------------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleNumberArray: z
-        .union([z.string(), z.array(z.string())])
-        .transform((v: string | string[] | undefined): string[] | undefined =>
-        v instanceof Array || !v
-            ? (v as string[] | undefined)
-            : ([v] as string[]),
-        )
-        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
-        .optional(),
-```
-
-## [](#state-and-viewmodel)2\. State & viewmodel
-
-Add additional array member for the AutoComplete suggestions in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
-
-```javascript
-...
-    exampleNumberArrayOptions: number[]
-...
-```
-
-## [](#actions)3\. Actions
-
-Create following actions to handle the events regarding AutoComplete:
-
-_Adapt in File:_ `<feature>-search.actions.ts`
-
-```javascript
-...
-    events: {
-        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
-        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
-        'exampleNumberArray data loading failed': emptyProps(),
-        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
-        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
-    },
-...
-```
-
-## [](#html)4\. HTML
-
-Add the following code to your formGroup in the html file:
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-autoComplete
-            id="exampleNumberArray"
-            formControlName="exampleNumberArray"
-            (completeMethod)="searchexampleNumberArrayData($event)"
-            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
-            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
-            [forceSelection]="true"
-            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
-            [showEmptyMessage]="true"
-            [emptyMessage]="
-            vm?.exampleNumberArrayOptions?.length === 0
-                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
-                : ''
-            "
-            (onSelect)="selectexampleNumberArrayValue($event)"
-            (onUnselect)="unSelectexampleNumberArrayValue($event)"
-        >
-        </p-autoComplete>
-        <label for="exampleNumberArray">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)5\. Component
-
-Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-...
-    optionLabelTransformer(item: number): string {
-      return item?.toString();
-    }
-
-    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArrayDataTextEntered({
-            exampleNumberArrayInputValue: event.query,
-        }),
-      );
-    }
-
-    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionSelected({
-            selectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-
-    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
-            unSelectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-...
-```
-
-## [](#reducers)6\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
-    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: exampleNumberArrayOptions,
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
-    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { selectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => {
-      const isValuePresent =
-        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
-      return {
-        ...state,
-        exampleNumberArraySelectedValues: isValuePresent
-          ? state.exampleNumberArraySelectedValues
-          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
-        exampleNumberArrayOptions: [],
-      };
-    },
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { unSelectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
-        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
-      ),
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-...
-```
-
-## [](#selectors)7\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-search.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>SearchViewModel = createSelector(
-      ...
-      <feature>SearchSelectors.
-      selectExampleNumberArrayOptions,
-      ...
-      (
-        ...
-        exampleNumberArrayOptions,
-        ...
-      ): <%= featureClassName %>SearchViewModel => ({
-        ...
-        exampleNumberArrayOptions,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)8\. Effects
-
-Create the effect for getting the suggestions
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-...
-    searchexampleNumberArray$ = createEffect(() =>
-      this.actions$.pipe(
-        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
-        mergeMap((action) => {
-          return this.<feature>Service
-            .searchexampleNumberArray(action.exampleNumberArrayInputText)
-            .pipe(
-              map((response) =>
-                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
-                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
-                }),
-              ),
-              catchError(() =>
-                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
-              ),
-            );
-        }),
-      ),
-    );
-...
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 AutoComplete for suggestions with array of type object
 ====================
 ## [](#goal)Goal: Add Autocmplete Object
@@ -5735,6 +5494,247 @@ _Adapt in File:_ `<feature>-search.effects.ts`
               ),
             ),
         ),
+      ),
+    );
+...
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
+AutoComplete for suggestions with array of type number
+====================
+## [](#goal)Goal: Add AutoComplete Number
+
+Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
+| -------------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleNumberArray: z
+        .union([z.string(), z.array(z.string())])
+        .transform((v: string | string[] | undefined): string[] | undefined =>
+        v instanceof Array || !v
+            ? (v as string[] | undefined)
+            : ([v] as string[]),
+        )
+        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
+        .optional(),
+```
+
+## [](#state-and-viewmodel)2\. State & viewmodel
+
+Add additional array member for the AutoComplete suggestions in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
+
+```javascript
+...
+    exampleNumberArrayOptions: number[]
+...
+```
+
+## [](#actions)3\. Actions
+
+Create following actions to handle the events regarding AutoComplete:
+
+_Adapt in File:_ `<feature>-search.actions.ts`
+
+```javascript
+...
+    events: {
+        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
+        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
+        'exampleNumberArray data loading failed': emptyProps(),
+        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
+        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
+    },
+...
+```
+
+## [](#html)4\. HTML
+
+Add the following code to your formGroup in the html file:
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-autoComplete
+            id="exampleNumberArray"
+            formControlName="exampleNumberArray"
+            (completeMethod)="searchexampleNumberArrayData($event)"
+            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
+            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
+            [forceSelection]="true"
+            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
+            [showEmptyMessage]="true"
+            [emptyMessage]="
+            vm?.exampleNumberArrayOptions?.length === 0
+                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
+                : ''
+            "
+            (onSelect)="selectexampleNumberArrayValue($event)"
+            (onUnselect)="unSelectexampleNumberArrayValue($event)"
+        >
+        </p-autoComplete>
+        <label for="exampleNumberArray">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)5\. Component
+
+Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+...
+    optionLabelTransformer(item: number): string {
+      return item?.toString();
+    }
+
+    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArrayDataTextEntered({
+            exampleNumberArrayInputValue: event.query,
+        }),
+      );
+    }
+
+    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionSelected({
+            selectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+
+    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
+            unSelectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+...
+```
+
+## [](#reducers)6\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
+    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: exampleNumberArrayOptions,
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
+    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { selectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => {
+      const isValuePresent =
+        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
+      return {
+        ...state,
+        exampleNumberArraySelectedValues: isValuePresent
+          ? state.exampleNumberArraySelectedValues
+          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
+        exampleNumberArrayOptions: [],
+      };
+    },
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { unSelectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
+        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
+      ),
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+...
+```
+
+## [](#selectors)7\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-search.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>SearchViewModel = createSelector(
+      ...
+      <feature>SearchSelectors.
+      selectExampleNumberArrayOptions,
+      ...
+      (
+        ...
+        exampleNumberArrayOptions,
+        ...
+      ): <%= featureClassName %>SearchViewModel => ({
+        ...
+        exampleNumberArrayOptions,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)8\. Effects
+
+Create the effect for getting the suggestions
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+...
+    searchexampleNumberArray$ = createEffect(() =>
+      this.actions$.pipe(
+        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
+        mergeMap((action) => {
+          return this.<feature>Service
+            .searchexampleNumberArray(action.exampleNumberArrayInputText)
+            .pipe(
+              map((response) =>
+                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
+                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
+                }),
+              ),
+              catchError(() =>
+                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
+              ),
+            );
+        }),
       ),
     );
 ...
@@ -16444,9 +16444,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
-
-## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -16523,7 +16521,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
+
+## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -16711,6 +16711,10 @@ ption: OneCX Data Orchestrator Operator name: OneCX Data Orchestrator Operator
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -16836,10 +16840,6 @@ undefined
 | [onecx.data-orchestrator.client.connection-pool-size](#onecx-data-orchestrator-operator%5Fonecx-data-orchestrator-client-connection-pool-size) The size of the rest client connection pool. Environment variable: ONECX\_DATA\_ORCHESTRATOR\_CLIENT\_CONNECTION\_POOL\_SIZE                          | int                | 30                                     |
 | [onecx.data-orchestrator.client.key."keys"](#onecx-data-orchestrator-operator%5Fonecx-data-orchestrator-client-key-keys) Clients key configuration Environment variable: ONECX\_DATA\_ORCHESTRATOR\_CLIENT\_KEY\_\_KEYS\_                                                                            | Map<String,String> |                                        |
 | [onecx.data-orchestrator.leader-election.lease-name](#onecx-data-orchestrator-operator%5Fonecx-data-orchestrator-leader-election-lease-name) Lease name Environment variable: ONECX\_DATA\_ORCHESTRATOR\_LEADER\_ELECTION\_LEASE\_NAME                                                               | string             | onecx-data-orchestrator-operator-lease |
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -20465,6 +20465,10 @@ name: OneCX Permission SVC
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -20601,10 +20605,6 @@ undefined
 | \===ion                                | 3.20.2.1                                                                                           |                                                                                                                                                  |         |
 | \===tion                               | 3.15.3                                                                                             |                                                                                                                                                  |         |
 | tkit-quarkus-oidc-health               | 2.40.0                                                                                             |                                                                                                                                                  |         |
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -23044,6 +23044,10 @@ tbd
 
 undefined
 ====================
+This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
+
+undefined
+====================
 ## [](#%5Fonecx%5Ftenant%5Fsvc)onecx-tenant-svc
 
 This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
@@ -23130,10 +23134,6 @@ tkit.dataimport.configurations.tenant.stop-at-error=true
 
 | \=== Container [Docker registry](https://github.com/onecx/onecx-tenant-svc/pkgs/container/onecx-tenant-svc) \=== Helm [Helm registry](https://github.com/onecx/onecx-tenant-svc/pkgs/container/charts%2Fonecx-tenant-svc) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: svc image: repository: "onecx/onecx-tenant-svc" db: enabled: true operator: microservice: spec: description: OneCX Tenant Backend Service name: OneCX Tenant SVC ---- spec: description: OneCX Tenant Backend Service name: OneCX Tenant SVC ---- |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-This backend service takes an `Identity token` of the user, reads the organization `ID` from the token and returns the corresponding `tenant ID`.
 
 undefined
 ====================
@@ -24666,7 +24666,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftheme%5Fui)OneCX Theme UI
+## [](#%5Fonecx%5Ftheme%5Fui)onecx-theme-ui
+
+## [](#%5Fonecx%5Ftheme%5Fui%5F2)OneCX Theme UI
 
 ### [](#%5Fwhat%5Fis%5Ftheme%5Fmanagement)What is Theme Management?
 
@@ -24744,9 +24746,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftheme%5Fui)onecx-theme-ui
-
-## [](#%5Fonecx%5Ftheme%5Fui%5F2)OneCX Theme UI
+## [](#%5Fonecx%5Ftheme%5Fui)OneCX Theme UI
 
 ### [](#%5Fwhat%5Fis%5Ftheme%5Fmanagement)What is Theme Management?
 
@@ -25844,10 +25844,6 @@ tbd
 
 undefined
 ====================
-
-
-undefined
-====================
 ## [](#%5Fonecx%5Fwelcome%5Fsvc)onecx-welcome-svc
 
 ### [](#%5Fdefault%5Fproperties)Default properties
@@ -25941,6 +25937,10 @@ app:
         description: OneCX Welcome Backend Service
         name: OneCX Welcome SVC
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
