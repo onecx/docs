@@ -3883,136 +3883,6 @@ The [WorkspaceService](#../service/workspace-service/index.adoc) provides method
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
-Enable OneCX app to run in standalone
-====================
-The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
-
-Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
-
-## [](#steps)Steps
-
-The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
-
-To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
-
-### [](#install-dependecies)Install `@onecx/standalone-shell`
-
-In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
-
-```console
-npm i @onecx/standalone-shell
-```
-
-### [](#rename-entrypoint-files)Rename existing entrypoint files
-
-To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
-
-### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
-
-When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
-
-Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
-
-```none
-<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
-```
-
-Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
-
-### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
-
-Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
-
-```none
-// Example providers and imports
-
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { CommonModule } from '@angular/common'
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
-
-export const commonProviders = [
-  provideHttpClient(withInterceptorsFromDi()),
-  ...
-]
-
-export const commonImports = [
-  BrowserModule,
-  BrowserAnimationsModule,
-  CommonModule,
-  ...
-]
-
-export class RemoteModule implements DoBootstrap {
-  ...
-}
-```
-
-### [](#update-index-html)Use `AppComponent` selector in `index.html`
-
-To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
-
-### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
-
-To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
-
-The newly created bootstrap file must contain the following code:
-
-```none
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
-import { AppModule } from './app/app.module'
-
-platformBrowserDynamic()
-  .bootstrapModule(AppModule)
-  .catch((err) => console.error(err))
-```
-
-The newly created main file should import the bootstrap files and handle potential errors:
-
-```none
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
-
-### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
-
-To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-    isolate: false,  
-    loader: {  
-      provide: TranslateLoader,  
-      useFactory: createTranslateLoader,  
-      deps: [HttpClient]  
-    }  
-  }),  
-  ...  
-],
-4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-### [](#verify-standalone-mode)Verify that the app is running in standalone
-
-After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
-
 Migrate vanilla Angular apps to OneCX
 ====================
 The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
@@ -4399,6 +4269,211 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
 
+Enable OneCX app to run in standalone
+====================
+The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
+
+Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
+
+## [](#steps)Steps
+
+The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
+
+To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
+
+### [](#install-dependecies)Install `@onecx/standalone-shell`
+
+In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
+
+```console
+npm i @onecx/standalone-shell
+```
+
+### [](#rename-entrypoint-files)Rename existing entrypoint files
+
+To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
+
+### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
+
+When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
+
+Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
+
+```none
+<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
+```
+
+Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
+
+### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
+
+Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
+
+```none
+// Example providers and imports
+
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+
+export const commonProviders = [
+  provideHttpClient(withInterceptorsFromDi()),
+  ...
+]
+
+export const commonImports = [
+  BrowserModule,
+  BrowserAnimationsModule,
+  CommonModule,
+  ...
+]
+
+export class RemoteModule implements DoBootstrap {
+  ...
+}
+```
+
+### [](#update-index-html)Use `AppComponent` selector in `index.html`
+
+To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
+
+### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
+
+To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
+
+The newly created bootstrap file must contain the following code:
+
+```none
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
+import { AppModule } from './app/app.module'
+
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch((err) => console.error(err))
+```
+
+The newly created main file should import the bootstrap files and handle potential errors:
+
+```none
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
+
+### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
+
+To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+    isolate: false,  
+    loader: {  
+      provide: TranslateLoader,  
+      useFactory: createTranslateLoader,  
+      deps: [HttpClient]  
+    }  
+  }),  
+  ...  
+],
+4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+### [](#verify-standalone-mode)Verify that the app is running in standalone
+
+After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
+
+Dropdown
+====================
+## [](#goal)Goal: Add Dropdown Input
+
+Add a Dropdown as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .string()
+        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-dropdown
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              appendTo="body"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              [showClear]="true"
+        ></p-dropdown>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 Calendar
 ====================
 ## [](#goal)Goal: Add Calendar Input
@@ -4520,11 +4595,11 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-Dropdown
+MultiSelect
 ====================
-## [](#goal)Goal: Add Dropdown Input
+## [](#goal)Goal: Add MultiSelect Input
 
-Add a Dropdown as a search criteria input field for your search page.
+Add a MultiSelect as a search criteria input field for your search page.
 
 | |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
 | ------------------------------------------------------------------------------------------------------- |
@@ -4537,8 +4612,9 @@ _Adapt in File:_ `<feature>-search.parameters.ts`
 
 ```javascript
     exampleEnum: z
-        .string()
-        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
         .optional(),
 ```
 
@@ -4550,17 +4626,16 @@ _Adapt in File:_ `<feature>-search.component.html`
 
 ```html
     <span class="p-float-label">
-        <p-dropdown
+        <p-multiSelect
               id="exampleEnum"
               formControlName="exampleEnum"
-              appendTo="body"
               [options]="(exampleEnum$ | async) ?? []"
               optionLabel="label"
               optionValue="value"
               placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
               display="chip"
-              [showClear]="true"
-        ></p-dropdown>
+              appendTo="body"
+        ></p-multiSelect>
         <label for="exampleEnum$">{{
             'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
         }}</label>
@@ -4706,81 +4781,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](#ngrx/cookbook/adding-search-criteria/dropdown.adoc)
 * [MultiSelect input field](#ngrx/cookbook/adding-search-criteria/multiselect.adoc)
 * [AutoComplete input field](#ngrx/cookbook/adding-search-criteria/autocomplete/autocomplete.adoc)
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 Lazy loading tabs
 ====================
@@ -10788,6 +10788,455 @@ __Table 4\. SearchConfigData interface__
 | displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
 | viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
 
+Migrate to OneCX version 6
+====================
+## [](#migration-checklist)Migration checklist
+
+* General changes  
+   * [Remove @onecx/keycloak-auth](#removed-packages)  
+   * [Remove @onecx/portal-layout-styles](#removed-packages)  
+   * [Remove @onecx/portal-integration-interface](#removed-packages)  
+   * [Update required packages](#update-packages)  
+   * [Update application styles](#styles-update)  
+   * [Replace PortalCoreModule](#replace-portal-core-module)  
+   * [Check deleted components](#deleted-components)  
+   * [Adjust standalone mode usage](#standalone-mode)  
+   * [Update FilterType usage](#filter-type)  
+   * [Update ThemeService usage](#theme-service)  
+   * [Update ConfigurationService usage](#configuration-service)  
+   * [Replace BASE\_URL injection token](#base-url)  
+   * [Remove singleton:true from angular packages in webpack](#angular-in-webpack)  
+   * [Move translation related providers to bootstrap.ts for Remote Components](#translation-bootstrap)  
+   * [Remove addInitializeModuleGuard()](#removed-add-initialize-guard)
+* PrimeNg related changes  
+   * [Add new plugin to webpack config](#primeng-new-plugin)  
+   * [Provide theme configuration for Microfrontends and Remote Components](#theme-config)
+* Angular material related changes  
+   * [Add new plugin to webpack config](#material-new-plugin)
+
+## [](#general-changes)General changes
+
+### [](#removed-packages)Removed packages
+
+In the version 6 of OneCX the following packages are no longer available:
+
+* **@onecx/keycloak-auth**
+* **@onecx/portal-layout-styles**
+* **@onecx/portal-integration-interface**
+
+#### [](#portal-layout-styles-removal)Portal Layout Styles Removal
+
+Since version 6 of OneCX `@onecx/portal-layout-styles` library is no longer available. The library should not be used anymore and every application should make sure to [update application styles](#styles-update).
+
+#### [](#portal-integration-angular)Portal Integration Angular Removal
+
+Since version 6 of OneCX, the `@onecx/portal-integration-angular` library is no longer available. The list of features that are still supported in other libraries and alternative solutions can be found in the [removed from @onecx/portal-integration-interface](#removed-from-integration-angular) section. It is important to [replace PortalCoreModule](#replace-portal-core-module) if used in the application to preserve existing functionality.
+
+### [](#update-packages)Update required packages
+
+Please, alongside @angular and @onecx package upgrades, make sure to update the following packages to avoid potential issues:
+
+| Package                    | Required version |
+| -------------------------- | ---------------- |
+| @ngx-translate/core        | ^16.0.0          |
+| @ngx-translate/http-loader | ^8.0.0           |
+| ngx-build-plus             | ^19.0.0          |
+
+### [](#styles-update)Update application styles
+
+Please, make sure to **remove @onecx/portal-layout-styles and @onecx/portal-integration-interface references from application styles**.
+
+Since version 6 styles from @onecx/portal-layout-styles will no longer be available globally on a page. **Please, make sure that your application does not use any styles (css classes, animations, etc.) defined by portal-layout-styles**. In case it does, you will need to implement those in your application.
+
+The only css styles available for each application since version 6:
+
+* styles exposed via app\_url/styles.css file (where app\_url is a url to the deployed application)
+* component styles defined in the application (styles defined for each component inside the application)
+* PrimeNG component styles (only if the application uses primeNG)
+
+#### [](#expose-styles-on-top-level)Expose styles.css on top level
+
+In case if your application needs to share styles between components you should make sure to **expose styles.css file. Shell will assume that this file is called styles.css and is exposed on the top level of your deployed application**. In order to make sure this is done properly, we are recommending to update the project configuration with the following config:
+
+project.json or angular.json
+
+```none
+...
+"styles": [
+  {
+    "input": "./src/styles.scss",
+    "bundleName": "styles",
+    "inject": true
+  }
+]
+...
+```
+
+The snippet above assumes that the exposed style sheet is in **src/styles.scss**. Setting the **inject** property to **true** might lead to hashing, meaning the exposed file would be called **styles.HASH.css**, where **HASH** is a generated hash value during the project building. If this applies to your application, make sure to adjust the exposal so the hash is not included.
+
+### [](#replace-portal-core-module)Replace PortalCoreModule
+
+If your application was using **PortalCoreModule** from **@onecx/portal-integration-angular**, you should replace all occurrences with **AngularAcceleratorModule** from **@onecx/angular-accelerator**. This will make sure that all components and directives are working.
+
+### [](#deleted-components)Check deleted components
+
+Some components will be removed. Please check if you are using following components:
+
+#### [](#removed-from-angular-accelerator)Removed from @onecx/angular-accelerator
+
+* createRemoteComponentTranslateLoader
+* createRemoteComponentAndMfeTranslateLoader  
+⇒ **Use createTranslateLoader with remoteComponentTranslationPathFactory from @onecx/angular-utils**
+* createTranslateLoader  
+⇒ **Use createTranslateLoader with translationPathFactory from @onecx/angular-utils**
+* HasPermissionChecker
+* AlwaysGrantPermissionChecker
+* TranslationCacheService
+* AsyncTranslateLoader
+* CachingTranslateLoader
+* TranslateCombinedLoader
+* HAS\_PERMISSION\_CHECKER (injection token)  
+⇒ **Import from @onecx/angular-utils**
+* DataLoadingErrorComponent (ocx-data-loading-error)
+* isValidDate  
+⇒ **Removed from the library**
+
+#### [](#removed-from-angular-integration-interface)Removed from @onecx/angular-integration-interface
+
+* provideAppServiceMock  
+⇒ **Use provideAppStateServiceMock**
+* IAuthService
+* AUTH\_SERVICE (injection token)  
+⇒ **Removed from the library**
+
+#### [](#removed-from-angular-remote-components)Removed from @onecx/angular-remote-components
+
+* BASE\_URL (injection token)  
+⇒ **Use REMOTE\_COMPONENT\_CONFIG from @onecx/angular-utils**
+
+#### [](#removed-from-integration-angular)Removed from @onecx/portal-integration-angular
+
+* PortalCoreModule  
+⇒ **This module has to be [replaced by AngularAcceleratorModule](#replace-portal-core-module)**
+* ColumnGroupSelectionComponent (ocx-column-group-selection)
+* CustomGroupColumnSelectorComponent (ocx-custom-group-column-selector)
+* DataLayoutSelectionComponent (ocx-data-layout-selection)
+* DataListGridComponent (ocx-data-list-grid)
+* DataListGridSortingComponent (ocx-data-list-grid-sorting)
+* DataTableComponent (ocx-data-table)
+* DataViewComponent (ocx-data-view)
+* DiagramComponent (ocx-diagram)
+* FilterViewComponent (ocx-filter-view)
+* GroupByCountDiagramComponent (ocx-group-by-count-diagram)
+* InteractiveDataViewComponent (ocx-interactive-data-view)
+* LifecycleComponent (ocx-lifecycle)
+* PageHeaderComponent (ocx-page-header)
+* SearchHeaderComponent (ocx-search-header)
+* DialogMessageContentComponent
+* DialogInlineComponent (ocx-dialog-inline)
+* DialogFooterComponent (ocx-dialog-footer)
+* DialogContentComponent (ocx-dialog-content )
+* GlobalErrorComponent (ocx-error)
+* LoadingIndicatorComponent (ocx-loading-indicator)
+* LoadingIndicatorDirective (ocxLoadingIndicator)
+* BasicDirective (ocxBasic)
+* RelativeDatePipe (relativeDate)
+* AdvancedDirective (ocxAdvanced)
+* OcxContentContainerDirective (ocxContentContainer)
+* OcxContentDirective (ocxContent)
+* IfBreakpointDirective (ocxIfBreakpoint)
+* IfPermissionDirective (ocxIfPermission, ocxIfNotPermission)
+* SrcDirective (ocxSrc)
+* TooltipOnOverflowDirective (ocxTooltipOnOverflow)
+* ExportDataService
+* PortalDialogService
+* ImageLogoUrlUtils
+* DialogContentHarness
+* DialogFooterHarness
+* DialogInlineHarness
+* DialogMessageContentHarness  
+⇒ **These components are now in @onecx/angular-accelerator**
+* PortalPageComponent (ocx-portal-page)
+
+⇒ **These components are now in @onecx/angular-utils**
+
+* PortalFooterComponent (portal-footer )
+* PortalHeaderComponent (portal-header)
+* PortalViewportComponent (portal-viewport)  
+⇒ **These components are now in @onecx/shell-core**
+* PortalMenuComponent (portal-menu)
+* PortalMenuHorizontalComponent (portal-menu-horizontal)
+* AppInlineProfileComponent (inline-profile)  
+⇒ **They are now remote components in onecx-workspace-ui**
+* AnnouncementBannerComponent (ocx-announcement-banner)
+* AnnouncementsApiService  
+⇒ **Now remote components in onecx-announcement-ui**
+* HelpItemEditorComponent (ocx-help-item-editor)
+* NoHelpItemComponent (ocx-no-help-item)
+* HelpPageAPIService  
+⇒ **Now remote components in onecx-help-ui**
+* UserAvatarComponent (ocx-user-avatar)
+* UserProfileAPIService  
+⇒ **Now remote components in onecx-user-profile-ui**
+* DataViewControlsComponent (ocx-data-view-controls)  
+⇒ **Consider using the InteractiveDataViewComponent (ocx-interactive-data-view) from @onecx/angular-accelerator**
+* PageContentComponent (ocx-page-content)  
+⇒ **Consider using the OcxContentComponent (ocx-content) or OcxContentContainerComponent (ocx-content-container) from @onecx/angular-accelerator**
+* SearchCriteriaComponent (ocx-search-criteria)
+* CriteriaTemplateComponent (ocx-criteria-template)  
+⇒ **Consider using the SearchHeaderComponent (ocx-search-header) from @onecx/angular-accelerator**
+* standaloneInitializer  
+⇒ **Use standalone mode instead [Documentation](#angular:cookbook/migrations/enable-standalone/index.adoc)**
+* ButtonDialogComponent(ocx-button-dialog)  
+⇒ **This component should be replaced by ocx-dialog-inline in @onecx/angular-accelerator**
+* MenuService  
+⇒ **If someone wants to load menu item they should create an endpoint in the BFF of the own app and create their own function.**
+
+Every other feature that is not mentioned was removed and is no longer supported.
+
+#### [](#removed-from-ngrx-accelerator)Removed from @onecx/ngrx-accelerator
+
+* filterForOnlyQueryParamsChanged  
+⇒ **Use filterOutOnlyQueryParamsChanged**
+* filterForQueryParamsChanged  
+⇒ **Use filterOutQueryParamsHaveNotChanged**
+
+#### [](#removed-from-shell-core)Removed from @onecx/shell-core
+
+* PortalFooterComponent (ocx-shell-footer)  
+⇒ **Now remote component in onecx-workspace-ui**
+
+## [](#standalone-mode)Adjust Standalone Mode
+
+In version 6 of OneCX **@onecx/standalone-shell** library has been renamed to **@onecx/angular-standalone-shell**. Please, make sure that all imports, package.json and webpack config are adjusted accordingly.
+
+Additionally, since version 6, apart from **StandaloneShellModule** import it is required to add **provideStandaloneProviders** in the standalone module providers array. Please, make sure to adjust the standalone module.
+
+updated-app-standalone.module.ts example
+
+```none
+import { StandaloneShellModule, provideStandaloneProviders } from '@onecx/angular-standalone-shell'
+...
+@NgModule({
+    imports: [StandaloneShellModule]
+    providers: [
+        provideStandaloneProviders()
+    ]
+}) export class AppModule {}
+```
+
+### [](#filter-type)FilterType values changes
+
+Please, make sure to update `FilterType` usage:
+
+* `FilterType.EQUAL` → `FilterType.EQUALS`
+* `FilterType.TRUTHY` → `FilterType.IS_NOT_EMPTY`
+
+### [](#configuration-service)Check usage of ConfigurationService
+
+ConfigurationService (@onecx/angular-integration-interface) is now asynchronous. Please check if usage needs to be adapted.
+
+### [](#theme-service)ThemeService removed functionality
+
+ThemeService in version 6 should **only be used to access the currentTheme** via `currentTheme$` property. The following have been removed:
+
+* `baseUrlV1` property
+* `getThemeRef` function
+* `loadAndApplyTheme` function
+* `apply` function
+
+Please, make sure that those methods are no longer used.
+
+### [](#base-url)BASE\_URL injection token
+
+`BASE_URL` injection token should no longer be used, instead please use `REMOTE_COMPONENT_CONFIG`
+
+### [](#angular-in-webpack)Adjust angular packages in webpack
+
+Make sure that all angular packages **do not have `singleton: true` set in webpack.config.js**.
+
+### [](#translation-bootstrap)Move translation providers to bootstrap.ts for Remote Components
+
+For each Remote Component translation related providers are required to be defined in the bootstrap.ts instead of the component.ts file.
+
+remote-component.bootstrap.ts
+
+```none
+import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents'
+import {
+  REMOTE_COMPONENT_CONFIG,
+  RemoteComponentConfig,
+  provideTranslateServiceForRoot
+} from '@onecx/angular-remote-components'
+import { TranslateLoader } from '@ngx-translate/core'
+import { ReplaySubject } from 'rxjs'
+import { createTranslateLoader, remoteComponentTranslationPathFactory, provideTranslationPathFromMeta } from '@onecx/angular-utils'
+
+bootstrapRemoteComponent(RemoteComponent, 'ocx-my-remote-component', environment.production, [
+  ...
+  { provide: REMOTE_COMPONENT_CONFIG, useValue: new ReplaySubject<RemoteComponentConfig>(1) },
+  provideTranslateServiceForRoot({
+    isolate: true,
+    loader: {
+      provide: TranslateLoader,
+      useFactory: createTranslateLoader,
+      deps: [HttpClient]
+    }
+  }),
+  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/')
+])
+```
+
+| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#removed-add-initialize-guard)Remove addInitializeModuleGuard()
+
+With the removal of addInitializeModuleGuard(), the translations will be provided by the TranslationConnectionService. Please add the provideTranslationConnectionService() in the provider of your .module.ts.
+
+If you already import AngularAcceleratorModule, then it is not necessary, because it is already added there.
+
+## [](#primeng-related-changes)PrimeNG related changes
+
+### [](#primeng-new-plugin)Add required plugin to webpack config (will be changed to OneCX plugin)
+
+Since version 6 it’s required to add the following plugin to the webpack configuration of the application.
+
+Webpack plugin snippet
+
+```none
+const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+...
+const modifyPrimeNgPlugin = new ModifySourcePlugin({
+  rules: [
+    {
+      test: (module) => {
+        return module.resource && module.resource.includes('primeng')
+      },
+      operations: [
+        new ReplaceOperation(
+          'all',
+          'document\\.createElement\\(([^)]+)\\)',
+          'document.createElementFromPrimeNg({"this": this, "arguments": Array.from(arguments), element: $1})'
+        ),
+        new ReplaceOperation('all', 'Theme.setLoadedStyleName', '(function(_){})')
+      ]
+    }
+  ]
+})
+module.exports = {
+  ...webpackConfig,
+  plugins: [...plugins, modifyPrimeNgPlugin]
+}
+```
+
+### [](#theme-config)Provide ThemeConfig
+
+Since version 6 of OneCX it is required to add an additional provider to the Microfrontends and Remote Components.
+
+mfe.remote.module.ts
+
+```none
+import { provideThemeConfig } from '@onecx/angular-utils'
+...
+@NgModule({
+    providers: [
+        provideThemeConfig()
+    ]
+}) export class MyMfe {}
+```
+
+remote-component.bootstrap.ts
+
+```none
+import { provideThemeConfig } from '@onecx/angular-utils'
+
+bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
+  provideThemeConfig()
+])
+```
+
+#### [](#theme-overrides)Provide theme overrides
+
+The new theming system introduced in version 6 of OneCX is based on PrimeNG’s theming mechanism. However, in OneCX it is possible to style the content differently per Application. The mechanism that allows that is called theme overrides.
+
+Each Mfe or Remote Component can specify their overrides that will guarantee that certain styles are applied differently than in other applications on the page. Here is an example of how to provide overrides.
+
+```none
+provideThemeConfig({
+  overrides: {
+    semantic: {
+      extend: {
+        onecx: {
+          secondaryColor: 'red'
+        },
+      },
+      focusRing: {
+        width: '2px',
+        style: 'solid',
+        color: '{primary.color}',
+        offset: '0px',
+        shadow: 'none',
+      },
+    }
+  }
+})
+```
+
+In this example:
+
+* the **secondary color** theme variable is changed
+* the **default focus highlight** is changed
+
+More about what and how to override can be found in [theming documentation](#angular:cookbook/theming.adoc).
+
+## [](#material-related-changes)Angular Material related changes
+
+### [](#material-new-plugin)Add required plugin to webpack config (will be changed to OneCX plugin)
+
+Since version 6 it’s required to add the following plugin to the webpack configuration of the application.
+
+Webpack plugin snippet
+
+```none
+const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+...
+const modifyMaterialPlugin = new ModifySourcePlugin({
+  rules: [
+    {
+      test: (module) => {
+        return (
+          module.resource &&
+          (module.resource.includes("@angular/material") ||
+            module.resource.includes("@angular/cdk"))
+        );
+      },
+      operations: [
+        new ReplaceOperation(
+          "all",
+          "document\\.createElement\\(",
+          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},',
+        ),
+      ],
+    }
+  ]
+})
+module.exports = {
+  ...webpackConfig,
+  plugins: [...plugins, modifyMaterialPlugin]
+}
+```
+
+## [](#further-considerations)Further considerations
+
+### [](#angular-19-further-changes)Angular 19 changes
+
+Make sure to adjust the Application to the Angular 19 requirements. Based on the implementation there could be changes required to be made to ensure compatibility.
+
+### [](#primeng-19-further-changes)PrimeNG 19 changes
+
+If the migrated Application uses PrimeNG components, please make sure to adjust the implementation according to the PrimeNG 19 requirements and API changes.
+
 OneCX angular-integration-interface Library
 ====================
 ## [](#overview)Overview
@@ -11535,455 +11984,6 @@ __Table 16\. UserProfileAccountSettingsLocaleAndTimeSettings structure__
 
 | |  For Angular-based applications, the [@onecx/angular-integration-interface offers an Injectable UserService service](angular-integration-interface.html#user-service) exposing functions useful when dealing with user related data. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Migrate to OneCX version 6
-====================
-## [](#migration-checklist)Migration checklist
-
-* General changes  
-   * [Remove @onecx/keycloak-auth](#removed-packages)  
-   * [Remove @onecx/portal-layout-styles](#removed-packages)  
-   * [Remove @onecx/portal-integration-interface](#removed-packages)  
-   * [Update required packages](#update-packages)  
-   * [Update application styles](#styles-update)  
-   * [Replace PortalCoreModule](#replace-portal-core-module)  
-   * [Check deleted components](#deleted-components)  
-   * [Adjust standalone mode usage](#standalone-mode)  
-   * [Update FilterType usage](#filter-type)  
-   * [Update ThemeService usage](#theme-service)  
-   * [Update ConfigurationService usage](#configuration-service)  
-   * [Replace BASE\_URL injection token](#base-url)  
-   * [Remove singleton:true from angular packages in webpack](#angular-in-webpack)  
-   * [Move translation related providers to bootstrap.ts for Remote Components](#translation-bootstrap)  
-   * [Remove addInitializeModuleGuard()](#removed-add-initialize-guard)
-* PrimeNg related changes  
-   * [Add new plugin to webpack config](#primeng-new-plugin)  
-   * [Provide theme configuration for Microfrontends and Remote Components](#theme-config)
-* Angular material related changes  
-   * [Add new plugin to webpack config](#material-new-plugin)
-
-## [](#general-changes)General changes
-
-### [](#removed-packages)Removed packages
-
-In the version 6 of OneCX the following packages are no longer available:
-
-* **@onecx/keycloak-auth**
-* **@onecx/portal-layout-styles**
-* **@onecx/portal-integration-interface**
-
-#### [](#portal-layout-styles-removal)Portal Layout Styles Removal
-
-Since version 6 of OneCX `@onecx/portal-layout-styles` library is no longer available. The library should not be used anymore and every application should make sure to [update application styles](#styles-update).
-
-#### [](#portal-integration-angular)Portal Integration Angular Removal
-
-Since version 6 of OneCX, the `@onecx/portal-integration-angular` library is no longer available. The list of features that are still supported in other libraries and alternative solutions can be found in the [removed from @onecx/portal-integration-interface](#removed-from-integration-angular) section. It is important to [replace PortalCoreModule](#replace-portal-core-module) if used in the application to preserve existing functionality.
-
-### [](#update-packages)Update required packages
-
-Please, alongside @angular and @onecx package upgrades, make sure to update the following packages to avoid potential issues:
-
-| Package                    | Required version |
-| -------------------------- | ---------------- |
-| @ngx-translate/core        | ^16.0.0          |
-| @ngx-translate/http-loader | ^8.0.0           |
-| ngx-build-plus             | ^19.0.0          |
-
-### [](#styles-update)Update application styles
-
-Please, make sure to **remove @onecx/portal-layout-styles and @onecx/portal-integration-interface references from application styles**.
-
-Since version 6 styles from @onecx/portal-layout-styles will no longer be available globally on a page. **Please, make sure that your application does not use any styles (css classes, animations, etc.) defined by portal-layout-styles**. In case it does, you will need to implement those in your application.
-
-The only css styles available for each application since version 6:
-
-* styles exposed via app\_url/styles.css file (where app\_url is a url to the deployed application)
-* component styles defined in the application (styles defined for each component inside the application)
-* PrimeNG component styles (only if the application uses primeNG)
-
-#### [](#expose-styles-on-top-level)Expose styles.css on top level
-
-In case if your application needs to share styles between components you should make sure to **expose styles.css file. Shell will assume that this file is called styles.css and is exposed on the top level of your deployed application**. In order to make sure this is done properly, we are recommending to update the project configuration with the following config:
-
-project.json or angular.json
-
-```none
-...
-"styles": [
-  {
-    "input": "./src/styles.scss",
-    "bundleName": "styles",
-    "inject": true
-  }
-]
-...
-```
-
-The snippet above assumes that the exposed style sheet is in **src/styles.scss**. Setting the **inject** property to **true** might lead to hashing, meaning the exposed file would be called **styles.HASH.css**, where **HASH** is a generated hash value during the project building. If this applies to your application, make sure to adjust the exposal so the hash is not included.
-
-### [](#replace-portal-core-module)Replace PortalCoreModule
-
-If your application was using **PortalCoreModule** from **@onecx/portal-integration-angular**, you should replace all occurrences with **AngularAcceleratorModule** from **@onecx/angular-accelerator**. This will make sure that all components and directives are working.
-
-### [](#deleted-components)Check deleted components
-
-Some components will be removed. Please check if you are using following components:
-
-#### [](#removed-from-angular-accelerator)Removed from @onecx/angular-accelerator
-
-* createRemoteComponentTranslateLoader
-* createRemoteComponentAndMfeTranslateLoader  
-⇒ **Use createTranslateLoader with remoteComponentTranslationPathFactory from @onecx/angular-utils**
-* createTranslateLoader  
-⇒ **Use createTranslateLoader with translationPathFactory from @onecx/angular-utils**
-* HasPermissionChecker
-* AlwaysGrantPermissionChecker
-* TranslationCacheService
-* AsyncTranslateLoader
-* CachingTranslateLoader
-* TranslateCombinedLoader
-* HAS\_PERMISSION\_CHECKER (injection token)  
-⇒ **Import from @onecx/angular-utils**
-* DataLoadingErrorComponent (ocx-data-loading-error)
-* isValidDate  
-⇒ **Removed from the library**
-
-#### [](#removed-from-angular-integration-interface)Removed from @onecx/angular-integration-interface
-
-* provideAppServiceMock  
-⇒ **Use provideAppStateServiceMock**
-* IAuthService
-* AUTH\_SERVICE (injection token)  
-⇒ **Removed from the library**
-
-#### [](#removed-from-angular-remote-components)Removed from @onecx/angular-remote-components
-
-* BASE\_URL (injection token)  
-⇒ **Use REMOTE\_COMPONENT\_CONFIG from @onecx/angular-utils**
-
-#### [](#removed-from-integration-angular)Removed from @onecx/portal-integration-angular
-
-* PortalCoreModule  
-⇒ **This module has to be [replaced by AngularAcceleratorModule](#replace-portal-core-module)**
-* ColumnGroupSelectionComponent (ocx-column-group-selection)
-* CustomGroupColumnSelectorComponent (ocx-custom-group-column-selector)
-* DataLayoutSelectionComponent (ocx-data-layout-selection)
-* DataListGridComponent (ocx-data-list-grid)
-* DataListGridSortingComponent (ocx-data-list-grid-sorting)
-* DataTableComponent (ocx-data-table)
-* DataViewComponent (ocx-data-view)
-* DiagramComponent (ocx-diagram)
-* FilterViewComponent (ocx-filter-view)
-* GroupByCountDiagramComponent (ocx-group-by-count-diagram)
-* InteractiveDataViewComponent (ocx-interactive-data-view)
-* LifecycleComponent (ocx-lifecycle)
-* PageHeaderComponent (ocx-page-header)
-* SearchHeaderComponent (ocx-search-header)
-* DialogMessageContentComponent
-* DialogInlineComponent (ocx-dialog-inline)
-* DialogFooterComponent (ocx-dialog-footer)
-* DialogContentComponent (ocx-dialog-content )
-* GlobalErrorComponent (ocx-error)
-* LoadingIndicatorComponent (ocx-loading-indicator)
-* LoadingIndicatorDirective (ocxLoadingIndicator)
-* BasicDirective (ocxBasic)
-* RelativeDatePipe (relativeDate)
-* AdvancedDirective (ocxAdvanced)
-* OcxContentContainerDirective (ocxContentContainer)
-* OcxContentDirective (ocxContent)
-* IfBreakpointDirective (ocxIfBreakpoint)
-* IfPermissionDirective (ocxIfPermission, ocxIfNotPermission)
-* SrcDirective (ocxSrc)
-* TooltipOnOverflowDirective (ocxTooltipOnOverflow)
-* ExportDataService
-* PortalDialogService
-* ImageLogoUrlUtils
-* DialogContentHarness
-* DialogFooterHarness
-* DialogInlineHarness
-* DialogMessageContentHarness  
-⇒ **These components are now in @onecx/angular-accelerator**
-* PortalPageComponent (ocx-portal-page)
-
-⇒ **These components are now in @onecx/angular-utils**
-
-* PortalFooterComponent (portal-footer )
-* PortalHeaderComponent (portal-header)
-* PortalViewportComponent (portal-viewport)  
-⇒ **These components are now in @onecx/shell-core**
-* PortalMenuComponent (portal-menu)
-* PortalMenuHorizontalComponent (portal-menu-horizontal)
-* AppInlineProfileComponent (inline-profile)  
-⇒ **They are now remote components in onecx-workspace-ui**
-* AnnouncementBannerComponent (ocx-announcement-banner)
-* AnnouncementsApiService  
-⇒ **Now remote components in onecx-announcement-ui**
-* HelpItemEditorComponent (ocx-help-item-editor)
-* NoHelpItemComponent (ocx-no-help-item)
-* HelpPageAPIService  
-⇒ **Now remote components in onecx-help-ui**
-* UserAvatarComponent (ocx-user-avatar)
-* UserProfileAPIService  
-⇒ **Now remote components in onecx-user-profile-ui**
-* DataViewControlsComponent (ocx-data-view-controls)  
-⇒ **Consider using the InteractiveDataViewComponent (ocx-interactive-data-view) from @onecx/angular-accelerator**
-* PageContentComponent (ocx-page-content)  
-⇒ **Consider using the OcxContentComponent (ocx-content) or OcxContentContainerComponent (ocx-content-container) from @onecx/angular-accelerator**
-* SearchCriteriaComponent (ocx-search-criteria)
-* CriteriaTemplateComponent (ocx-criteria-template)  
-⇒ **Consider using the SearchHeaderComponent (ocx-search-header) from @onecx/angular-accelerator**
-* standaloneInitializer  
-⇒ **Use standalone mode instead [Documentation](#angular:cookbook/migrations/enable-standalone/index.adoc)**
-* ButtonDialogComponent(ocx-button-dialog)  
-⇒ **This component should be replaced by ocx-dialog-inline in @onecx/angular-accelerator**
-* MenuService  
-⇒ **If someone wants to load menu item they should create an endpoint in the BFF of the own app and create their own function.**
-
-Every other feature that is not mentioned was removed and is no longer supported.
-
-#### [](#removed-from-ngrx-accelerator)Removed from @onecx/ngrx-accelerator
-
-* filterForOnlyQueryParamsChanged  
-⇒ **Use filterOutOnlyQueryParamsChanged**
-* filterForQueryParamsChanged  
-⇒ **Use filterOutQueryParamsHaveNotChanged**
-
-#### [](#removed-from-shell-core)Removed from @onecx/shell-core
-
-* PortalFooterComponent (ocx-shell-footer)  
-⇒ **Now remote component in onecx-workspace-ui**
-
-## [](#standalone-mode)Adjust Standalone Mode
-
-In version 6 of OneCX **@onecx/standalone-shell** library has been renamed to **@onecx/angular-standalone-shell**. Please, make sure that all imports, package.json and webpack config are adjusted accordingly.
-
-Additionally, since version 6, apart from **StandaloneShellModule** import it is required to add **provideStandaloneProviders** in the standalone module providers array. Please, make sure to adjust the standalone module.
-
-updated-app-standalone.module.ts example
-
-```none
-import { StandaloneShellModule, provideStandaloneProviders } from '@onecx/angular-standalone-shell'
-...
-@NgModule({
-    imports: [StandaloneShellModule]
-    providers: [
-        provideStandaloneProviders()
-    ]
-}) export class AppModule {}
-```
-
-### [](#filter-type)FilterType values changes
-
-Please, make sure to update `FilterType` usage:
-
-* `FilterType.EQUAL` → `FilterType.EQUALS`
-* `FilterType.TRUTHY` → `FilterType.IS_NOT_EMPTY`
-
-### [](#configuration-service)Check usage of ConfigurationService
-
-ConfigurationService (@onecx/angular-integration-interface) is now asynchronous. Please check if usage needs to be adapted.
-
-### [](#theme-service)ThemeService removed functionality
-
-ThemeService in version 6 should **only be used to access the currentTheme** via `currentTheme$` property. The following have been removed:
-
-* `baseUrlV1` property
-* `getThemeRef` function
-* `loadAndApplyTheme` function
-* `apply` function
-
-Please, make sure that those methods are no longer used.
-
-### [](#base-url)BASE\_URL injection token
-
-`BASE_URL` injection token should no longer be used, instead please use `REMOTE_COMPONENT_CONFIG`
-
-### [](#angular-in-webpack)Adjust angular packages in webpack
-
-Make sure that all angular packages **do not have `singleton: true` set in webpack.config.js**.
-
-### [](#translation-bootstrap)Move translation providers to bootstrap.ts for Remote Components
-
-For each Remote Component translation related providers are required to be defined in the bootstrap.ts instead of the component.ts file.
-
-remote-component.bootstrap.ts
-
-```none
-import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents'
-import {
-  REMOTE_COMPONENT_CONFIG,
-  RemoteComponentConfig,
-  provideTranslateServiceForRoot
-} from '@onecx/angular-remote-components'
-import { TranslateLoader } from '@ngx-translate/core'
-import { ReplaySubject } from 'rxjs'
-import { createTranslateLoader, remoteComponentTranslationPathFactory, provideTranslationPathFromMeta } from '@onecx/angular-utils'
-
-bootstrapRemoteComponent(RemoteComponent, 'ocx-my-remote-component', environment.production, [
-  ...
-  { provide: REMOTE_COMPONENT_CONFIG, useValue: new ReplaySubject<RemoteComponentConfig>(1) },
-  provideTranslateServiceForRoot({
-    isolate: true,
-    loader: {
-      provide: TranslateLoader,
-      useFactory: createTranslateLoader,
-      deps: [HttpClient]
-    }
-  }),
-  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/')
-])
-```
-
-| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#removed-add-initialize-guard)Remove addInitializeModuleGuard()
-
-With the removal of addInitializeModuleGuard(), the translations will be provided by the TranslationConnectionService. Please add the provideTranslationConnectionService() in the provider of your .module.ts.
-
-If you already import AngularAcceleratorModule, then it is not necessary, because it is already added there.
-
-## [](#primeng-related-changes)PrimeNG related changes
-
-### [](#primeng-new-plugin)Add required plugin to webpack config (will be changed to OneCX plugin)
-
-Since version 6 it’s required to add the following plugin to the webpack configuration of the application.
-
-Webpack plugin snippet
-
-```none
-const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
-...
-const modifyPrimeNgPlugin = new ModifySourcePlugin({
-  rules: [
-    {
-      test: (module) => {
-        return module.resource && module.resource.includes('primeng')
-      },
-      operations: [
-        new ReplaceOperation(
-          'all',
-          'document\\.createElement\\(([^)]+)\\)',
-          'document.createElementFromPrimeNg({"this": this, "arguments": Array.from(arguments), element: $1})'
-        ),
-        new ReplaceOperation('all', 'Theme.setLoadedStyleName', '(function(_){})')
-      ]
-    }
-  ]
-})
-module.exports = {
-  ...webpackConfig,
-  plugins: [...plugins, modifyPrimeNgPlugin]
-}
-```
-
-### [](#theme-config)Provide ThemeConfig
-
-Since version 6 of OneCX it is required to add an additional provider to the Microfrontends and Remote Components.
-
-mfe.remote.module.ts
-
-```none
-import { provideThemeConfig } from '@onecx/angular-utils'
-...
-@NgModule({
-    providers: [
-        provideThemeConfig()
-    ]
-}) export class MyMfe {}
-```
-
-remote-component.bootstrap.ts
-
-```none
-import { provideThemeConfig } from '@onecx/angular-utils'
-
-bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
-  provideThemeConfig()
-])
-```
-
-#### [](#theme-overrides)Provide theme overrides
-
-The new theming system introduced in version 6 of OneCX is based on PrimeNG’s theming mechanism. However, in OneCX it is possible to style the content differently per Application. The mechanism that allows that is called theme overrides.
-
-Each Mfe or Remote Component can specify their overrides that will guarantee that certain styles are applied differently than in other applications on the page. Here is an example of how to provide overrides.
-
-```none
-provideThemeConfig({
-  overrides: {
-    semantic: {
-      extend: {
-        onecx: {
-          secondaryColor: 'red'
-        },
-      },
-      focusRing: {
-        width: '2px',
-        style: 'solid',
-        color: '{primary.color}',
-        offset: '0px',
-        shadow: 'none',
-      },
-    }
-  }
-})
-```
-
-In this example:
-
-* the **secondary color** theme variable is changed
-* the **default focus highlight** is changed
-
-More about what and how to override can be found in [theming documentation](#angular:cookbook/theming.adoc).
-
-## [](#material-related-changes)Angular Material related changes
-
-### [](#material-new-plugin)Add required plugin to webpack config (will be changed to OneCX plugin)
-
-Since version 6 it’s required to add the following plugin to the webpack configuration of the application.
-
-Webpack plugin snippet
-
-```none
-const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
-...
-const modifyMaterialPlugin = new ModifySourcePlugin({
-  rules: [
-    {
-      test: (module) => {
-        return (
-          module.resource &&
-          (module.resource.includes("@angular/material") ||
-            module.resource.includes("@angular/cdk"))
-        );
-      },
-      operations: [
-        new ReplaceOperation(
-          "all",
-          "document\\.createElement\\(",
-          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},',
-        ),
-      ],
-    }
-  ]
-})
-module.exports = {
-  ...webpackConfig,
-  plugins: [...plugins, modifyMaterialPlugin]
-}
-```
-
-## [](#further-considerations)Further considerations
-
-### [](#angular-19-further-changes)Angular 19 changes
-
-Make sure to adjust the Application to the Angular 19 requirements. Based on the implementation there could be changes required to be made to ensure compatibility.
-
-### [](#primeng-19-further-changes)PrimeNG 19 changes
-
-If the migrated Application uses PrimeNG components, please make sure to adjust the implementation according to the PrimeNG 19 requirements and API changes.
 
 OneCX PortalDialogService
 ====================
@@ -18195,6 +18195,22 @@ db:
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                          | Type   | Default  |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- |
+| [onecx.iam.keycloaks."keycloaks".display-name](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-display-name) Display name for keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_DISPLAY\_NAME | string | required |
+| [onecx.iam.keycloaks."keycloaks".description](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-description) Description for keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_DESCRIPTION      | string |          |
+| [onecx.iam.keycloaks."keycloaks".url](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-url) url of keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_URL                                       | string | required |
+| [onecx.iam.keycloaks."keycloaks".issuerHost](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-issuerhost) Baseurl of keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_ISSUERHOST              | string | required |
+| [onecx.iam.keycloaks."keycloaks".realm](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-realm) Keycloak realm Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_REALM                                  | string | required |
+| [onecx.iam.keycloaks."keycloaks".client](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-client) Client for keylcloak admin api Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_CLIENT               | string | required |
+| [onecx.iam.keycloaks."keycloaks".secret](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-secret) Client secret Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_SECRET                                | string | required |
+| [onecx.iam.keycloaks."keycloaks".username](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-username) Username for keycloak admin api access Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_USERNAME | string | required |
+| [onecx.iam.keycloaks."keycloaks".password](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-password) User password Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_PASSWORD                          | string | required |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
 | tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0    |
@@ -18221,22 +18237,6 @@ undefined
 | \===ontainer-image-docker.adoc\[Link\] | 3.15.3                                                                                             | onecx-security                                                                                                                                   |          |
 | 0.34.0                                 | quarkus-keycloak-admin-client-reactive                                                             |                                                                                                                                                  |          |
 | 3.15.3                                 | tkit-quarkus-oidc-health                                                                           |                                                                                                                                                  |          |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                          | Type   | Default  |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | -------- |
-| [onecx.iam.keycloaks."keycloaks".display-name](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-display-name) Display name for keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_DISPLAY\_NAME | string | required |
-| [onecx.iam.keycloaks."keycloaks".description](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-description) Description for keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_DESCRIPTION      | string |          |
-| [onecx.iam.keycloaks."keycloaks".url](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-url) url of keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_URL                                       | string | required |
-| [onecx.iam.keycloaks."keycloaks".issuerHost](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-issuerhost) Baseurl of keycloak Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_ISSUERHOST              | string | required |
-| [onecx.iam.keycloaks."keycloaks".realm](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-realm) Keycloak realm Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_REALM                                  | string | required |
-| [onecx.iam.keycloaks."keycloaks".client](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-client) Client for keylcloak admin api Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_CLIENT               | string | required |
-| [onecx.iam.keycloaks."keycloaks".secret](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-secret) Client secret Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_SECRET                                | string | required |
-| [onecx.iam.keycloaks."keycloaks".username](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-username) Username for keycloak admin api access Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_USERNAME | string | required |
-| [onecx.iam.keycloaks."keycloaks".password](#onecx-iam-svc%5Fonecx-iam-keycloaks-keycloaks-password) User password Environment variable: ONECX\_IAM\_KEYCLOAKS\_\_KEYCLOAKS\_\_PASSWORD                          | string | required |
 
 undefined
 ====================
