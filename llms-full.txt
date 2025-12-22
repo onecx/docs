@@ -3982,6 +3982,136 @@ The [WorkspaceService](../../../../onecx-portal-ui-libs/libraries/angular-integr
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
+Enable OneCX app to run in standalone
+====================
+The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
+
+Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
+
+## [](#steps)Steps
+
+The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
+
+To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
+
+### [](#install-dependecies)Install `@onecx/standalone-shell`
+
+In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
+
+```console
+npm i @onecx/standalone-shell
+```
+
+### [](#rename-entrypoint-files)Rename existing entrypoint files
+
+To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
+
+### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
+
+When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
+
+Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
+
+```none
+<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
+```
+
+Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
+
+### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
+
+Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
+
+```none
+// Example providers and imports
+
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+
+export const commonProviders = [
+  provideHttpClient(withInterceptorsFromDi()),
+  ...
+]
+
+export const commonImports = [
+  BrowserModule,
+  BrowserAnimationsModule,
+  CommonModule,
+  ...
+]
+
+export class RemoteModule implements DoBootstrap {
+  ...
+}
+```
+
+### [](#update-index-html)Use `AppComponent` selector in `index.html`
+
+To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
+
+### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
+
+To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
+
+The newly created bootstrap file must contain the following code:
+
+```none
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
+import { AppModule } from './app/app.module'
+
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch((err) => console.error(err))
+```
+
+The newly created main file should import the bootstrap files and handle potential errors:
+
+```none
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
+
+### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
+
+To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+    isolate: false,  
+    loader: {  
+      provide: TranslateLoader,  
+      useFactory: createTranslateLoader,  
+      deps: [HttpClient]  
+    }  
+  }),  
+  ...  
+],
+4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+### [](#verify-standalone-mode)Verify that the app is running in standalone
+
+After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
+
 Migrate vanilla Angular apps to OneCX
 ====================
 The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
@@ -4367,136 +4497,6 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 ### [](#troubleshooting-compilation-error)Compilation error `TypeError: The 'compilation' argument must be an instance of Compilation`
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
-
-Enable OneCX app to run in standalone
-====================
-The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
-
-Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
-
-## [](#steps)Steps
-
-The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
-
-To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
-
-### [](#install-dependecies)Install `@onecx/standalone-shell`
-
-In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
-
-```console
-npm i @onecx/standalone-shell
-```
-
-### [](#rename-entrypoint-files)Rename existing entrypoint files
-
-To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
-
-### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
-
-When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
-
-Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
-
-```none
-<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
-```
-
-Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
-
-### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
-
-Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
-
-```none
-// Example providers and imports
-
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { CommonModule } from '@angular/common'
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
-
-export const commonProviders = [
-  provideHttpClient(withInterceptorsFromDi()),
-  ...
-]
-
-export const commonImports = [
-  BrowserModule,
-  BrowserAnimationsModule,
-  CommonModule,
-  ...
-]
-
-export class RemoteModule implements DoBootstrap {
-  ...
-}
-```
-
-### [](#update-index-html)Use `AppComponent` selector in `index.html`
-
-To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
-
-### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
-
-To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
-
-The newly created bootstrap file must contain the following code:
-
-```none
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
-import { AppModule } from './app/app.module'
-
-platformBrowserDynamic()
-  .bootstrapModule(AppModule)
-  .catch((err) => console.error(err))
-```
-
-The newly created main file should import the bootstrap files and handle potential errors:
-
-```none
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
-
-### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
-
-To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-    isolate: false,  
-    loader: {  
-      provide: TranslateLoader,  
-      useFactory: createTranslateLoader,  
-      deps: [HttpClient]  
-    }  
-  }),  
-  ...  
-],
-4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-### [](#verify-standalone-mode)Verify that the app is running in standalone
-
-After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
 
 Calendar
 ====================
@@ -8620,6 +8620,27 @@ To get started, we recommend you to visit the following pages:
 
 undefined
 ====================
+### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
+
+The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/nx-plugin:pre-commit-validation
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
+
+| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
+
+The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
+
+The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
+
+undefined
+====================
 ### [](#%5Fautomated%5Fcode%5Fmodification%5Fin%5Fyour%5Fapplication)Automated Code Modification in Your Application
 
 #### [](#%5Foverview)Overview
@@ -8881,24 +8902,23 @@ This marker is used as a placeholder for future extensions by newly generated co
 
 undefined
 ====================
-### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
+### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
 
-The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
 
 To run the generator, execute the following command:
 
-nx generate <namespaceOfTheGenerator>/nx-plugin:pre-commit-validation
+nx generate <namespaceOfTheGenerator>/nx-plugin:ngrx-page <feature>
 
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
+**Placeholder**:
 
-| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](../../getting%5Fstarted/glossary.html#feature).
 
-If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
+| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
-
-The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
+After running the generator, you can modify all files to your needs.
 
 undefined
 ====================
@@ -9481,26 +9501,6 @@ Refer to the [permissions cookbook](../../../docs-guides-ui/angular/cookbook/per
 
 | |  Remove the "ACTION" comment after working on this task |
 | --------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
-
-The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/nx-plugin:ngrx-page <feature>
-
-**Placeholder**:
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../getting%5Fstarted/glossary.html#feature).
-
-| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, you can modify all files to your needs.
 
 One-CX Quarkus Extensions
 ====================
@@ -10186,6 +10186,31 @@ undefined
 | [onecx.validator.values.mapping."mapping"](#onecx-validator%5Fonecx-validator-values-mapping-mapping) Key to parameter-name mapping Environment variable: ONECX\_VALIDATOR\_VALUES\_MAPPING\_\_MAPPING\_                                                                                                                                                       | Map<String,String> |                                                     |
 | [onecx.validator.size.template](#onecx-validator%5Fonecx-validator-size-template) Template for the constraint violations error message 6 parameters required: %1$s, %2$s, %3$s, %4$s, %5$d, %6$d %1$s = provider %2$s = key %3$s = parameter %4$s = message %5$d = min-size value %6$d = max-size value Environment variable: ONECX\_VALIDATOR\_SIZE\_TEMPLATE | string             | Parameter: %3$s Boundaries: %5$d Bytes - %6$d Bytes |
 
+OneCX UI Libraries
+====================
+`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
+
+This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
+
+## [](#overview)Overview
+
+| Library                                                                                  | Description                                                                                                     |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
+| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
+| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
+| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
+| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
+| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
+| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
+| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
+| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
+| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
+| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
+| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
+
+For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
+
 Local Development
 ====================
 This guide explains how to set up a local development environment for testing changes to the libraries, located in the `onecx-portal-ui-libs` repository and integrating them in local applications and a local [OneCX Shell](https://onecx.github.io/docs/onecx-shell/current/general/index.html).
@@ -10556,30 +10581,311 @@ Example package.json
 }
 ...
 
-OneCX UI Libraries
+OneCX GroupByCountDiagram
 ====================
-`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
-
-This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
-
 ## [](#overview)Overview
 
-| Library                                                                                  | Description                                                                                                     |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
-| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
-| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
-| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
-| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
-| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
-| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
-| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
-| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
-| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
-| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
-| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
+This document aims to showcase how to manage GroupByCountDiagram component.
 
-For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
+This component displays the search result data as a diagram. Please, visit the storybook page for the [GroupByCountDiagram component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-groupbycountdiagramcomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+
+## [](#customization)Customization
+
+The GroupByCountDiagram component allows for content customization:
+
+* render different types of diagrams
+* enable switching between diagram types
+* set custom colors
+
+To find out how to work with the GroupByCountDiagram component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-groupbycountdiagramcomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the GroupByCountDiagram component interface, please read the further documentation.
+
+## [](#inputs)Inputs
+
+__Table 1\. GroupByCountDiagram inputs__
+| Property name         | Type                             | Default                     | Description                                                                                                                                                                                                                                                          |
+| --------------------- | -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| sumKey                | string                           | FEATURE\_SEARCH.DIAGRAM.SUM | Translation key for label below the chart.                                                                                                                                                                                                                           |
+| diagramType           | [DiagramType](#diagram-type)     | DiagramType.PIE             | Type of the chart to be displayed as.                                                                                                                                                                                                                                |
+| supportedDiagramTypes | [DiagramType\[\]](#diagram-type) | \[\]                        | Add multiple Diagram types to be able to switch between them.                                                                                                                                                                                                        |
+| data                  | unknown\[\]                      | \-                          | Data to be displayed as a diagram.                                                                                                                                                                                                                                   |
+| columnType            | [ColumnType](#column-type)       | ColumnType.STRING           | Defines the type of the column.                                                                                                                                                                                                                                      |
+| columnField           | string                           | ''                          | Defines which column data field to be displayed.                                                                                                                                                                                                                     |
+| column                | [DiagramColumn](#diagram-column) | \-                          | Defines which columns and its type to be displayed.                                                                                                                                                                                                                  |
+| fillMissingColors     | boolean                          | true                        | Determines if diagram should generate the colors for the data that does not have any set. Set to false will result in using the provided colors only if every data item has one. When at least one item does not have a color set, diagram will generate all colors. |
+| colors                | Record<string, string>           | {}                          | Defines custom color for data items.                                                                                                                                                                                                                                 |
+
+## [](#outputs)Outputs
+
+__Table 2\. GroupByCountDiagram outputs__
+| Property name         | Type                                                                                        | Description                                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| dataSelected          | EventEmitter<any>                                                                           | Emits data object upon clicking a diagram element.                                                             |
+| diagramTypeChanged    | EventEmitter<[DiagramType](#diagram-type)\>                                                 | Emits the [DiagramType](#diagram-type) when one of the supported diagram types is selected to switch the type. |
+| componentStateChanged | EventEmitter<[GroupByCountDiagramComponentState](#group-by-count-diagram-component-state)\> | Emits the selected [DiagramType](#diagram-type) to ensure consistent component state.                          |
+
+## [](#types)Types
+
+### [](#diagram-type)DiagramType
+
+DiagramType enum
+
+```javascript
+    export const enum DiagramType {
+        PIE = 'PIE',
+        VERTICAL_BAR = 'VERTICAL_BAR',
+        HORIZONTAL_BAR = 'HORIZONTAL_BAR',
+    }
+```
+
+### [](#column-type)ColumnType
+
+ColumnType enum
+
+```javascript
+    export const enum ColumnType {
+        STRING = 'STRING',
+        NUMBER = 'NUMBER',
+        DATE = 'DATE',
+        RELATIVE_DATE = 'RELATIVE_DATE',
+        TRANSLATION_KEY = 'TRANSLATION_KEY',
+    }
+```
+
+### [](#diagram-column)DiagramColumn
+
+DiagramColumn type
+
+```javascript
+    export type DiagramColumn = { columnType: ColumnType; id: string }
+```
+
+### [](#group-by-count-diagram-component-state)GroupByCountDiagramComponentState
+
+GroupByCountDiagramComponentState interface
+
+```javascript
+    export interface GroupByCountDiagramComponentState {
+        activeDiagramType?: DiagramType
+    }
+```
+
+OneCX PageHeader
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to use the PageHeader component.
+
+This component should be used for creating a header for the pages. Please, visit the storybook page for the [PageHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+
+## [](#customization)Customization
+
+The PageHeader component allows to customize its content:
+
+* control header title, subtitle and figure
+* display page details
+* display action buttons and menu items
+
+To find out how to work with PageHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the PageHeader component interface, please access further documentation.
+
+## [](#inputs)Inputs
+
+__Table 1\. PageHeader inputs__
+| Input name               | Type                                        | Default | Description                                                                                                                                                                                    |   |    |    |                                      |
+| ------------------------ | ------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - | -- | -- | ------------------------------------ |
+| header                   | string                                      | \-      | Header title.                                                                                                                                                                                  |   |    |    |                                      |
+| loading                  | boolean                                     | false   | If component is in loading state. Set to true to display component in the loading state.                                                                                                       |   |    |    |                                      |
+| showFigure               | boolean                                     | true    | If header figure should be visible. Set to false to hide the figure.                                                                                                                           |   |    |    |                                      |
+| figureImage              | string                                      | \-      | Image URL to be displayed in the header figure.                                                                                                                                                |   |    |    |                                      |
+| subheader                | string                                      | \-      | Header subtitle.                                                                                                                                                                               |   |    |    |                                      |
+| actions                  | [Action](#action)\[\]                       | \-      | Array of actions available in the header in form of a button or a menu item.                                                                                                                   |   |    |    |                                      |
+| objectDetails            | [ObjectDetailItem](#object-detail-item)\[\] | \-      | Array of detail items to be displayed in the header.                                                                                                                                           |   |    |    |                                      |
+| showBreadcrumbs          | boolean                                     | true    | If breadcrumbs should be visible.                                                                                                                                                              |   |    |    |                                      |
+| manualBreadcrumbs        | boolean                                     | false   | If breadcrumbs should be set manually. By default BreadcrumbService will generate breadcrumbs based on the router state. Set to true and set breadcrumbs for module routes to use manual mode. |   |    |    |                                      |
+| enableGridView           | boolean                                     | \-      | If grid view should be enabled. Set to false to use column view. Set to true to use grid view.                                                                                                 |   |    |    |                                      |
+| gridLayoutDesktopColumns | 1 \| 2                                      | 3       | 4                                                                                                                                                                                              | 6 | 12 | \- | The amount of columns for grid view. |
+| figureBackground         | boolean                                     | true    | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
+| disableDefaultActions    | boolean                                     | false   | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
+
+## [](#outputs)Outputs
+
+__Table 2\. PageHeader outputs__
+| Output name | Type | Description |
+| ----------- | ---- | ----------- |
+| save        | any  | Deprecated. |
+
+## [](#types)Types
+
+### [](#action)Action
+
+Action type is used to create:
+
+* action buttons in the header (use `show: 'always'`)
+* action menu item in the `more actions` button in the header (use `show: 'asOverflow'`)
+
+__Table 3\. Action interface__
+| Property            | Type                    | Description                                                                                                                                                                                                |
+| ------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id?                 | string                  | Identifier of the action button or menu item.                                                                                                                                                              |
+| label?              | string                  | Action button or menu item text.                                                                                                                                                                           |
+| labelKey?           | string                  | Translation key for action button or menu item text. Has higher priority than label.                                                                                                                       |
+| icon?               | string                  | Icon of the action button or menu item .                                                                                                                                                                   |
+| permission?         | string                  | Permission for the action. If user does not have this permission, the action will not be shown.                                                                                                            |
+| title?              | string                  | Action button or menu item tooltip text.                                                                                                                                                                   |
+| titleKey?           | string                  | Translation key for action button or menu item tooltip text.                                                                                                                                               |
+| ariaLabel?          | string                  | Text for the aria label of the action button. Used for actions with show: 'always' property.                                                                                                               |
+| ariaLabelKey?       | string                  | Translation key for the aria label of the action button. Used for actions with show: 'always' property. Has higher priority than ariaLabel.                                                                |
+| actionCallback?     | (): void                | Callback to be used when the button is clicked or the menu item is chosen.                                                                                                                                 |
+| disabled?           | boolean                 | If action button or menu item should be disabled.                                                                                                                                                          |
+| disabledTooltip?    | string                  | Tooltip for the disabled action button.                                                                                                                                                                    |
+| disabledTooltipKey? | string                  | Translation key for the tooltip of the disabled action button. Has higher priority than disabledTooltipKey.                                                                                                |
+| show?               | 'always' \|'asOverflow' | Action button display control. Use 'always' to display button in the header. Use 'asOverflow' to add a menu item to the more actions menu button in the header.                                            |
+| conditional?        | boolean                 | If action should be visible on condition resolved in showCondition property.                                                                                                                               |
+| showCondition?      | boolean                 | If conditional: true is set, this value determines if the action is visible. Note, this property will not work with dynamic values. Please, replace the passed Action if you wish to update the condition. |
+| btnClass?           | string                  | Deprecated.                                                                                                                                                                                                |
+
+### [](#object-detail-item)ObjectDetailItem
+
+ObjectDetailItem is used to define the detail item to be displayed for the page in the header. The detail item has a label and can have a value as well as action button.
+
+__Table 4\. ObjectDetailItem interface__
+| Property                    | Type      | Description                                                                                |
+| --------------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| \`label                     | string    | Text for the detail label. Use labelPipe to transform the label e.g., using TranslatePipe. |
+| \`value?                    | string    | Text for the detail value. Use valuePipe to transform the value e.g., using TranslatePipe. |
+| \`labelTooltip?             | string    | Text for the detail label tooltip.                                                         |
+| \`valueTooltip?             | string    | Text for the detail value tooltip.                                                         |
+| \`icon?                     | PrimeIcon | Icon displayed before the detail value.                                                    |
+| \`iconStyleClass?           | string    | Style of the icon element.                                                                 |
+| \`labelPipe?                | Type<any> | Pipe used to transform the detail label provided via label.                                |
+| \`valuePipe?                | Type<any> | Pipe used to transform the detail value provided via value.                                |
+| \`valuePipeArgs?            | string    | Arguments for the Pipe provided via valuePipe, used for transforming the detail value.     |
+| \`valueCssClass?            | string    | String containing css classes to be used for displaying the detail value.                  |
+| \`actionItemIcon?           | PrimeIcon | Icon for the detail item action button.                                                    |
+| \`actionItemCallback?       | () ⇒ void | Callback to be used when the detail item action button is clicked.                         |
+| \`actionItemTooltip?        | string    | Text for the detail action button tooltip.                                                 |
+| \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
+| \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
+| \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
+
+OneCX SearchHeader
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage SearchHeader component.
+
+This component displays the search result data as a diagram. Please, visit the storybook page for the [SearchHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+
+## [](#customization)Customization
+
+The SearchHeader component allows for content customization:
+
+* define header title
+* add input fields
+* add header actions buttons
+* `*ocxAdvanced` directive  
+   * The `*ocxAdvanced` directive specifies whether a field is part of the `basic` or `advanced` mode. This mode can be toggled using the Basic\\|Advanced button in the search header which is only displayed when this directive is used for defining advanced input fields. The directive will be added to the div element:  
+   ```html  
+    <form [formGroup]="criteriaGroup">  
+         <div class="grid mt-0 p-fluid">  
+           <div *ocxAdvanced class="col-12 md:col-3">  
+             <span class="p-float-label">  
+              // PLACE YOUR INPUT FIELD HERE  
+             </span>  
+           </div>  
+           ...  
+   ```
+
+To find out how to work with the SearchHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the SearchHeader component interface, please read the further documentation.
+
+### [](#ocx-basic-and-advanced-directives)ocxBasic and ocxAdvanced Directives
+
+The `*ocxBasic` and `*ocxAdvanced` directives are [structural directives](https://angular.dev/guide/directives/structural-directives) that provide advanced search field visibility control within the SearchHeader component. These directives enable the creation of a two-tier search interface where fields can be categorized as either basic or advanced.
+
+Here’s a simple example showing how to use the directives:
+
+```html
+<ocx-search-header
+  ...>
+  <form [formGroup]="criteriaForm" class="flex flex-wrap gap-3">
+    <span class="p-float-label">
+      <input
+        id="title"
+        ...>
+      <label for="title">Title</label>
+    </span>
+
+    <span *ocxBasic class="p-float-label">
+      <p-multiSelect
+        id="status"
+        ...>
+      </p-multiSelect>
+      <label for="status">Status</label>
+    </span>
+
+    <span *ocxAdvanced class="p-float-label">
+      <p-multiSelect
+        id="priority"
+        ...>
+      </p-multiSelect>
+      <label for="priority">Priority</label>
+    </span>
+  </form>
+</ocx-search-header>
+```
+
+* **Basic Mode**: Fields marked with `*ocxAdvanced` are hidden by default and only basic fields and fields without directive are visible. (Here: only Title and Status visible)
+* **Advanced Mode**: All fields without an directive or with `*ocxAdvanced` are visible. (Here: Title and Priority visible)
+* **Toggle Button**: The Basic|Advanced toggle button appears automatically when at least one field uses either the `*ocxBasic` or `*ocxAdvanced` directive
+
+## [](#inputs)Inputs
+
+__Table 1\. SearchHeader inputs__
+| Property name          | Type                       | Default   | Description                                                                                                                                                                                |                                                                |
+| ---------------------- | -------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| header                 | string                     | ''        | Translation key for header title.                                                                                                                                                          |                                                                |
+| subheader              | string \| undefined        | \-        | Translation key for sub-header title.                                                                                                                                                      |                                                                |
+| viewMode               | 'basic' \| 'advanced'      | 'basic'   | Determines if 'basic' or 'advanced' search criterias are displayed.                                                                                                                        |                                                                |
+| manualBreadcrumbs      | boolean                    | false     | Determines to use custom or default rendered breadcrumbs.                                                                                                                                  |                                                                |
+| actions                | [ColumnType](#column-type) | \[\]      | Array of actions available in the header in form of a button or a menu item. Please refer to [PageHeader component](#cookbook/components/page-header/index.adoc) for detailed information. |                                                                |
+| searchButtonDisabled   | boolean                    | false     | Determines if the search button should be rendered.                                                                                                                                        |                                                                |
+| resetButtonDisabled    | boolean                    | false     | Determines if the reset button should be rendered.                                                                                                                                         |                                                                |
+| searchConfigPermission | string \| string\[\]       | undefined | \-                                                                                                                                                                                         | Defines the permission key(s) for displaying the searchConfig. |
+| pageName               | string \| undefined        | \-        | Defines page name for searchConfig.                                                                                                                                                        |                                                                |
+
+## [](#outputs)Outputs
+
+__Table 2\. SearchHeader outputs__
+| Property name               | Type                                                                         | Description                                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searched                    | EventEmitter<any>                                                            | Emits event when search button is clicked.                                                                                                                     |
+| resetted                    | EventEmitter<any>                                                            | Emits event when reset button is clicked.                                                                                                                      |
+| selectedSearchConfigChanged | EventEmitter<[SearchConfigData](#search-config-data) \| undefined>           | Emits the [SearchConfigData](#search-config-data) upon change of selected searchConfig.                                                                        |
+| viewModeChanged             | EventEmitter<'basic' \| 'advanced'>                                          | Emits the viewMode 'basic' or 'advanced' when the Basic\|Advanced button is clicked.                                                                           |
+| componentStateChanged       | EventEmitter <[SearchHeaderComponentState](#search-header-component-state)\> | Emits the [SearchHeaderComponentState](#search-header-component-state) with updated viewMode or searchConfig if changed, to ensure consistent component state. |
+
+## [](#types)Types
+
+### [](#search-header-component-state)SearchHeaderComponentState
+
+SearchHeaderComponentState is used to maintain consistent ComponentState.
+
+__Table 3\. SearchHeaderComponentState interface__
+| Property name        | Type              | Description                    |
+| -------------------- | ----------------- | ------------------------------ |
+| activeViewMode       | EventEmitter<any> | Current active viewMode.       |
+| selectedSearchConfig | EventEmitter<any> | Current selected searchConfig. |
+
+### [](#search-config-data)SearchConfigData
+
+SearchConfigData is used for the SearchConfig component.
+
+__Table 4\. SearchConfigData interface__
+| Property name       | Type                        | Description                                                        |
+| ------------------- | --------------------------- | ------------------------------------------------------------------ |
+| name                | string \| undefined         | Name of the searchConfig.                                          |
+| fieldValues         | { \[key: string\]: string } | Data values to display.                                            |
+| displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
+| viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
 
 Library: @onecx/angular-integration-interface
 ====================
@@ -11328,312 +11634,6 @@ __Table 16\. UserProfileAccountSettingsLocaleAndTimeSettings structure__
 
 | |  For Angular-based applications, the [@onecx/angular-integration-interface offers an Injectable UserService service](angular-integration-interface.html#user-service) exposing functions useful when dealing with user related data. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-OneCX GroupByCountDiagram
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage GroupByCountDiagram component.
-
-This component displays the search result data as a diagram. Please, visit the storybook page for the [GroupByCountDiagram component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-groupbycountdiagramcomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
-
-## [](#customization)Customization
-
-The GroupByCountDiagram component allows for content customization:
-
-* render different types of diagrams
-* enable switching between diagram types
-* set custom colors
-
-To find out how to work with the GroupByCountDiagram component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-groupbycountdiagramcomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the GroupByCountDiagram component interface, please read the further documentation.
-
-## [](#inputs)Inputs
-
-__Table 1\. GroupByCountDiagram inputs__
-| Property name         | Type                             | Default                     | Description                                                                                                                                                                                                                                                          |
-| --------------------- | -------------------------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| sumKey                | string                           | FEATURE\_SEARCH.DIAGRAM.SUM | Translation key for label below the chart.                                                                                                                                                                                                                           |
-| diagramType           | [DiagramType](#diagram-type)     | DiagramType.PIE             | Type of the chart to be displayed as.                                                                                                                                                                                                                                |
-| supportedDiagramTypes | [DiagramType\[\]](#diagram-type) | \[\]                        | Add multiple Diagram types to be able to switch between them.                                                                                                                                                                                                        |
-| data                  | unknown\[\]                      | \-                          | Data to be displayed as a diagram.                                                                                                                                                                                                                                   |
-| columnType            | [ColumnType](#column-type)       | ColumnType.STRING           | Defines the type of the column.                                                                                                                                                                                                                                      |
-| columnField           | string                           | ''                          | Defines which column data field to be displayed.                                                                                                                                                                                                                     |
-| column                | [DiagramColumn](#diagram-column) | \-                          | Defines which columns and its type to be displayed.                                                                                                                                                                                                                  |
-| fillMissingColors     | boolean                          | true                        | Determines if diagram should generate the colors for the data that does not have any set. Set to false will result in using the provided colors only if every data item has one. When at least one item does not have a color set, diagram will generate all colors. |
-| colors                | Record<string, string>           | {}                          | Defines custom color for data items.                                                                                                                                                                                                                                 |
-
-## [](#outputs)Outputs
-
-__Table 2\. GroupByCountDiagram outputs__
-| Property name         | Type                                                                                        | Description                                                                                                    |
-| --------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| dataSelected          | EventEmitter<any>                                                                           | Emits data object upon clicking a diagram element.                                                             |
-| diagramTypeChanged    | EventEmitter<[DiagramType](#diagram-type)\>                                                 | Emits the [DiagramType](#diagram-type) when one of the supported diagram types is selected to switch the type. |
-| componentStateChanged | EventEmitter<[GroupByCountDiagramComponentState](#group-by-count-diagram-component-state)\> | Emits the selected [DiagramType](#diagram-type) to ensure consistent component state.                          |
-
-## [](#types)Types
-
-### [](#diagram-type)DiagramType
-
-DiagramType enum
-
-```javascript
-    export const enum DiagramType {
-        PIE = 'PIE',
-        VERTICAL_BAR = 'VERTICAL_BAR',
-        HORIZONTAL_BAR = 'HORIZONTAL_BAR',
-    }
-```
-
-### [](#column-type)ColumnType
-
-ColumnType enum
-
-```javascript
-    export const enum ColumnType {
-        STRING = 'STRING',
-        NUMBER = 'NUMBER',
-        DATE = 'DATE',
-        RELATIVE_DATE = 'RELATIVE_DATE',
-        TRANSLATION_KEY = 'TRANSLATION_KEY',
-    }
-```
-
-### [](#diagram-column)DiagramColumn
-
-DiagramColumn type
-
-```javascript
-    export type DiagramColumn = { columnType: ColumnType; id: string }
-```
-
-### [](#group-by-count-diagram-component-state)GroupByCountDiagramComponentState
-
-GroupByCountDiagramComponentState interface
-
-```javascript
-    export interface GroupByCountDiagramComponentState {
-        activeDiagramType?: DiagramType
-    }
-```
-
-OneCX PageHeader
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to use the PageHeader component.
-
-This component should be used for creating a header for the pages. Please, visit the storybook page for the [PageHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
-
-## [](#customization)Customization
-
-The PageHeader component allows to customize its content:
-
-* control header title, subtitle and figure
-* display page details
-* display action buttons and menu items
-
-To find out how to work with PageHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the PageHeader component interface, please access further documentation.
-
-## [](#inputs)Inputs
-
-__Table 1\. PageHeader inputs__
-| Input name               | Type                                        | Default | Description                                                                                                                                                                                    |   |    |    |                                      |
-| ------------------------ | ------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - | -- | -- | ------------------------------------ |
-| header                   | string                                      | \-      | Header title.                                                                                                                                                                                  |   |    |    |                                      |
-| loading                  | boolean                                     | false   | If component is in loading state. Set to true to display component in the loading state.                                                                                                       |   |    |    |                                      |
-| showFigure               | boolean                                     | true    | If header figure should be visible. Set to false to hide the figure.                                                                                                                           |   |    |    |                                      |
-| figureImage              | string                                      | \-      | Image URL to be displayed in the header figure.                                                                                                                                                |   |    |    |                                      |
-| subheader                | string                                      | \-      | Header subtitle.                                                                                                                                                                               |   |    |    |                                      |
-| actions                  | [Action](#action)\[\]                       | \-      | Array of actions available in the header in form of a button or a menu item.                                                                                                                   |   |    |    |                                      |
-| objectDetails            | [ObjectDetailItem](#object-detail-item)\[\] | \-      | Array of detail items to be displayed in the header.                                                                                                                                           |   |    |    |                                      |
-| showBreadcrumbs          | boolean                                     | true    | If breadcrumbs should be visible.                                                                                                                                                              |   |    |    |                                      |
-| manualBreadcrumbs        | boolean                                     | false   | If breadcrumbs should be set manually. By default BreadcrumbService will generate breadcrumbs based on the router state. Set to true and set breadcrumbs for module routes to use manual mode. |   |    |    |                                      |
-| enableGridView           | boolean                                     | \-      | If grid view should be enabled. Set to false to use column view. Set to true to use grid view.                                                                                                 |   |    |    |                                      |
-| gridLayoutDesktopColumns | 1 \| 2                                      | 3       | 4                                                                                                                                                                                              | 6 | 12 | \- | The amount of columns for grid view. |
-| figureBackground         | boolean                                     | true    | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
-| disableDefaultActions    | boolean                                     | false   | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
-
-## [](#outputs)Outputs
-
-__Table 2\. PageHeader outputs__
-| Output name | Type | Description |
-| ----------- | ---- | ----------- |
-| save        | any  | Deprecated. |
-
-## [](#types)Types
-
-### [](#action)Action
-
-Action type is used to create:
-
-* action buttons in the header (use `show: 'always'`)
-* action menu item in the `more actions` button in the header (use `show: 'asOverflow'`)
-
-__Table 3\. Action interface__
-| Property            | Type                    | Description                                                                                                                                                                                                |
-| ------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| id?                 | string                  | Identifier of the action button or menu item.                                                                                                                                                              |
-| label?              | string                  | Action button or menu item text.                                                                                                                                                                           |
-| labelKey?           | string                  | Translation key for action button or menu item text. Has higher priority than label.                                                                                                                       |
-| icon?               | string                  | Icon of the action button or menu item .                                                                                                                                                                   |
-| permission?         | string                  | Permission for the action. If user does not have this permission, the action will not be shown.                                                                                                            |
-| title?              | string                  | Action button or menu item tooltip text.                                                                                                                                                                   |
-| titleKey?           | string                  | Translation key for action button or menu item tooltip text.                                                                                                                                               |
-| ariaLabel?          | string                  | Text for the aria label of the action button. Used for actions with show: 'always' property.                                                                                                               |
-| ariaLabelKey?       | string                  | Translation key for the aria label of the action button. Used for actions with show: 'always' property. Has higher priority than ariaLabel.                                                                |
-| actionCallback?     | (): void                | Callback to be used when the button is clicked or the menu item is chosen.                                                                                                                                 |
-| disabled?           | boolean                 | If action button or menu item should be disabled.                                                                                                                                                          |
-| disabledTooltip?    | string                  | Tooltip for the disabled action button.                                                                                                                                                                    |
-| disabledTooltipKey? | string                  | Translation key for the tooltip of the disabled action button. Has higher priority than disabledTooltipKey.                                                                                                |
-| show?               | 'always' \|'asOverflow' | Action button display control. Use 'always' to display button in the header. Use 'asOverflow' to add a menu item to the more actions menu button in the header.                                            |
-| conditional?        | boolean                 | If action should be visible on condition resolved in showCondition property.                                                                                                                               |
-| showCondition?      | boolean                 | If conditional: true is set, this value determines if the action is visible. Note, this property will not work with dynamic values. Please, replace the passed Action if you wish to update the condition. |
-| btnClass?           | string                  | Deprecated.                                                                                                                                                                                                |
-
-### [](#object-detail-item)ObjectDetailItem
-
-ObjectDetailItem is used to define the detail item to be displayed for the page in the header. The detail item has a label and can have a value as well as action button.
-
-__Table 4\. ObjectDetailItem interface__
-| Property                    | Type      | Description                                                                                |
-| --------------------------- | --------- | ------------------------------------------------------------------------------------------ |
-| \`label                     | string    | Text for the detail label. Use labelPipe to transform the label e.g., using TranslatePipe. |
-| \`value?                    | string    | Text for the detail value. Use valuePipe to transform the value e.g., using TranslatePipe. |
-| \`labelTooltip?             | string    | Text for the detail label tooltip.                                                         |
-| \`valueTooltip?             | string    | Text for the detail value tooltip.                                                         |
-| \`icon?                     | PrimeIcon | Icon displayed before the detail value.                                                    |
-| \`iconStyleClass?           | string    | Style of the icon element.                                                                 |
-| \`labelPipe?                | Type<any> | Pipe used to transform the detail label provided via label.                                |
-| \`valuePipe?                | Type<any> | Pipe used to transform the detail value provided via value.                                |
-| \`valuePipeArgs?            | string    | Arguments for the Pipe provided via valuePipe, used for transforming the detail value.     |
-| \`valueCssClass?            | string    | String containing css classes to be used for displaying the detail value.                  |
-| \`actionItemIcon?           | PrimeIcon | Icon for the detail item action button.                                                    |
-| \`actionItemCallback?       | () ⇒ void | Callback to be used when the detail item action button is clicked.                         |
-| \`actionItemTooltip?        | string    | Text for the detail action button tooltip.                                                 |
-| \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
-| \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
-| \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
-
-OneCX SearchHeader
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage SearchHeader component.
-
-This component displays the search result data as a diagram. Please, visit the storybook page for the [SearchHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
-
-## [](#customization)Customization
-
-The SearchHeader component allows for content customization:
-
-* define header title
-* add input fields
-* add header actions buttons
-* `*ocxAdvanced` directive  
-   * The `*ocxAdvanced` directive specifies whether a field is part of the `basic` or `advanced` mode. This mode can be toggled using the Basic\\|Advanced button in the search header which is only displayed when this directive is used for defining advanced input fields. The directive will be added to the div element:  
-   ```html  
-    <form [formGroup]="criteriaGroup">  
-         <div class="grid mt-0 p-fluid">  
-           <div *ocxAdvanced class="col-12 md:col-3">  
-             <span class="p-float-label">  
-              // PLACE YOUR INPUT FIELD HERE  
-             </span>  
-           </div>  
-           ...  
-   ```
-
-To find out how to work with the SearchHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the SearchHeader component interface, please read the further documentation.
-
-### [](#ocx-basic-and-advanced-directives)ocxBasic and ocxAdvanced Directives
-
-The `*ocxBasic` and `*ocxAdvanced` directives are [structural directives](https://angular.dev/guide/directives/structural-directives) that provide advanced search field visibility control within the SearchHeader component. These directives enable the creation of a two-tier search interface where fields can be categorized as either basic or advanced.
-
-Here’s a simple example showing how to use the directives:
-
-```html
-<ocx-search-header
-  ...>
-  <form [formGroup]="criteriaForm" class="flex flex-wrap gap-3">
-    <span class="p-float-label">
-      <input
-        id="title"
-        ...>
-      <label for="title">Title</label>
-    </span>
-
-    <span *ocxBasic class="p-float-label">
-      <p-multiSelect
-        id="status"
-        ...>
-      </p-multiSelect>
-      <label for="status">Status</label>
-    </span>
-
-    <span *ocxAdvanced class="p-float-label">
-      <p-multiSelect
-        id="priority"
-        ...>
-      </p-multiSelect>
-      <label for="priority">Priority</label>
-    </span>
-  </form>
-</ocx-search-header>
-```
-
-* **Basic Mode**: Fields marked with `*ocxAdvanced` are hidden by default and only basic fields and fields without directive are visible. (Here: only Title and Status visible)
-* **Advanced Mode**: All fields without an directive or with `*ocxAdvanced` are visible. (Here: Title and Priority visible)
-* **Toggle Button**: The Basic|Advanced toggle button appears automatically when at least one field uses either the `*ocxBasic` or `*ocxAdvanced` directive
-
-## [](#inputs)Inputs
-
-__Table 1\. SearchHeader inputs__
-| Property name          | Type                       | Default   | Description                                                                                                                                                                                |                                                                |
-| ---------------------- | -------------------------- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
-| header                 | string                     | ''        | Translation key for header title.                                                                                                                                                          |                                                                |
-| subheader              | string \| undefined        | \-        | Translation key for sub-header title.                                                                                                                                                      |                                                                |
-| viewMode               | 'basic' \| 'advanced'      | 'basic'   | Determines if 'basic' or 'advanced' search criterias are displayed.                                                                                                                        |                                                                |
-| manualBreadcrumbs      | boolean                    | false     | Determines to use custom or default rendered breadcrumbs.                                                                                                                                  |                                                                |
-| actions                | [ColumnType](#column-type) | \[\]      | Array of actions available in the header in form of a button or a menu item. Please refer to [PageHeader component](#cookbook/components/page-header/index.adoc) for detailed information. |                                                                |
-| searchButtonDisabled   | boolean                    | false     | Determines if the search button should be rendered.                                                                                                                                        |                                                                |
-| resetButtonDisabled    | boolean                    | false     | Determines if the reset button should be rendered.                                                                                                                                         |                                                                |
-| searchConfigPermission | string \| string\[\]       | undefined | \-                                                                                                                                                                                         | Defines the permission key(s) for displaying the searchConfig. |
-| pageName               | string \| undefined        | \-        | Defines page name for searchConfig.                                                                                                                                                        |                                                                |
-
-## [](#outputs)Outputs
-
-__Table 2\. SearchHeader outputs__
-| Property name               | Type                                                                         | Description                                                                                                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| searched                    | EventEmitter<any>                                                            | Emits event when search button is clicked.                                                                                                                     |
-| resetted                    | EventEmitter<any>                                                            | Emits event when reset button is clicked.                                                                                                                      |
-| selectedSearchConfigChanged | EventEmitter<[SearchConfigData](#search-config-data) \| undefined>           | Emits the [SearchConfigData](#search-config-data) upon change of selected searchConfig.                                                                        |
-| viewModeChanged             | EventEmitter<'basic' \| 'advanced'>                                          | Emits the viewMode 'basic' or 'advanced' when the Basic\|Advanced button is clicked.                                                                           |
-| componentStateChanged       | EventEmitter <[SearchHeaderComponentState](#search-header-component-state)\> | Emits the [SearchHeaderComponentState](#search-header-component-state) with updated viewMode or searchConfig if changed, to ensure consistent component state. |
-
-## [](#types)Types
-
-### [](#search-header-component-state)SearchHeaderComponentState
-
-SearchHeaderComponentState is used to maintain consistent ComponentState.
-
-__Table 3\. SearchHeaderComponentState interface__
-| Property name        | Type              | Description                    |
-| -------------------- | ----------------- | ------------------------------ |
-| activeViewMode       | EventEmitter<any> | Current active viewMode.       |
-| selectedSearchConfig | EventEmitter<any> | Current selected searchConfig. |
-
-### [](#search-config-data)SearchConfigData
-
-SearchConfigData is used for the SearchConfig component.
-
-__Table 4\. SearchConfigData interface__
-| Property name       | Type                        | Description                                                        |
-| ------------------- | --------------------------- | ------------------------------------------------------------------ |
-| name                | string \| undefined         | Name of the searchConfig.                                          |
-| fieldValues         | { \[key: string\]: string } | Data values to display.                                            |
-| displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
-| viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
 
 Migrate to OneCX version 6
 ====================
@@ -18343,10 +18343,6 @@ undefined
 
 undefined
 ====================
-
-
-undefined
-====================
 ## [](#%5Fonecx%5Fiam%5Fbff)onecx-iam-bff
 
 ### [](#%5Fconfiguration)Configuration
@@ -18416,6 +18412,10 @@ quarkus.openapi-generator.codegen.spec.onecx_iam_svc_yaml.enable-security-genera
 
 | \=== Container [Docker registry](https://github.com/onecx/onecx-iam-bff/pkgs/container/onecx-iam-bff) \=== Helm [Helm registry](https://github.com/onecx/onecx-iam-bff/pkgs/container/charts%2Fonecx-iam-bff) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: bff image: repository: "onecx/onecx-iam-bff" operator: # Permission permission: enabled: true spec: permissions: user: admin-read: permission on all GET requests and POST search for admin operations admin-write: permission on all POST and PUT requests for admin operations role: admin-read: permission on all GET requests and POST search for admin operations admin-write: permission on all POST and PUT requests for admin operations provider: admin-read: permission on all GET requests and POST search for admin operations read: permission on all GET requests and POST search for user operations password: write: permission on PUT, POST, PATCH requests, where objects are saved or updated keycloak: client: enabled: true spec: kcConfig: defaultClientScopes: \[ ocx-ia:all, ocx-pm:read \] ---- spec: kcConfig: defaultClientScopes: \[ ocx-ia:all, ocx-pm:read \] ---- |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -23776,137 +23776,6 @@ undefined
 
 undefined
 ====================
-| Extensions                                                          | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                                                        | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
-| quarkus-smallrye-openapi                                            | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
-| quarkus-rest-jackson                                                | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
-| quarkus-smallrye-health                                             | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
-| quarkus-opentelemetry                                               | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
-| quarkus-micrometer-registry-prometheus                              | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
-| quarkus-openapi-generator                                           | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
-| quarkus-rest-client-jackson                                         | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
-| tkit-quarkus-log-cdi                                                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
-| tkit-quarkus-log-rs                                                 | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
-| tkit-quarkus-log-json                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
-| tkit-quarkus-rest                                                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
-| tkit-quarkus-rest-context                                           | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
-| quarkus-hibernate-validator                                         | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
-| onecx-core                                                          | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
-| quarkus-oidc                                                        | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
-| tkit-quarkus-security                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
-| quarkus-arc                                                         | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
-| quarkus-container-image-docker                                      | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
-| quarkus-kubernetes-client                                           | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
-| quarkus-openapi-generator-oidc                                      | 2.10.0-lts                                                                                         |                                                                                                                                                  |            |
-| quarkus-rest-client-oidc-filter                                     | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
-| \====-doc/latest/config/quarkus-container-image-docker.adoc\[Link\] | 3.15.3                                                                                             | quarkus-kubernetes-client                                                                                                                        |            |
-| 3.15.3                                                              | quarkus-rest-client-oidc-filter                                                                    |                                                                                                                                                  |            |
-| 3.15.3                                                              | tkit-quarkus-oidc-health                                                                           |                                                                                                                                                  |            |
-| 2.40.0                                                              | \===us-oidc-health                                                                                 |                                                                                                                                                  |            |
-
-undefined
-====================
-### [](#%5Fdefault%5Fproperties)Default properties
-
-src/main/resources/application.properties 
-
-```properties
-quarkus.http.auth.permission.health.paths=/q/*
-quarkus.http.auth.permission.health.policy=permit
-quarkus.http.auth.permission.default.paths=/*
-quarkus.http.auth.permission.default.policy=authenticated
-quarkus.kubernetes-client.trust-certs=true
-%prod.quarkus.oidc-client.client-id=${ONECX_OIDC_CLIENT_CLIENT_ID:${quarkus.application.name}}
-quarkus.oidc.ui.auth-server-url=${quarkus.oidc.auth-server-url}
-quarkus.oidc.ui.client-id=${quarkus.oidc.client-id}
-quarkus.oidc.ui.credentials.secret=${quarkus.oidc.credentials.secret}
-quarkus.oidc.ui.application-type=web-app
-```
-
-### [](#%5Fextensions)Extensions
-
-| Extensions                                                          | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                                                        | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
-| quarkus-smallrye-openapi                                            | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
-| quarkus-rest-jackson                                                | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
-| quarkus-smallrye-health                                             | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
-| quarkus-opentelemetry                                               | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
-| quarkus-micrometer-registry-prometheus                              | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
-| quarkus-openapi-generator                                           | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
-| quarkus-rest-client-jackson                                         | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
-| tkit-quarkus-log-cdi                                                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
-| tkit-quarkus-log-rs                                                 | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
-| tkit-quarkus-log-json                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
-| tkit-quarkus-rest                                                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
-| tkit-quarkus-rest-context                                           | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
-| quarkus-hibernate-validator                                         | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
-| onecx-core                                                          | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
-| quarkus-oidc                                                        | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
-| tkit-quarkus-security                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
-| quarkus-arc                                                         | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
-| quarkus-container-image-docker                                      | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
-| quarkus-kubernetes-client                                           | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
-| quarkus-openapi-generator-oidc                                      | 2.10.0-lts                                                                                         |                                                                                                                                                  |            |
-| quarkus-rest-client-oidc-filter                                     | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
-| \====-doc/latest/config/quarkus-container-image-docker.adoc\[Link\] | 3.15.3                                                                                             | quarkus-kubernetes-client                                                                                                                        |            |
-| 3.15.3                                                              | quarkus-rest-client-oidc-filter                                                                    |                                                                                                                                                  |            |
-| 3.15.3                                                              | tkit-quarkus-oidc-health                                                                           |                                                                                                                                                  |            |
-| 2.40.0                                                              | \===us-oidc-health                                                                                 |                                                                                                                                                  |            |
-
-### [](#%5Fcontainer)Container
-
-[Docker registry](https://github.com/onecx/onecx-test-operator/pkgs/container/onecx-test-operator)
-
-### [](#%5Fhelm)Helm
-
-[Helm registry](https://github.com/onecx/onecx-test-operator/pkgs/container/charts%2Fonecx-test-operator)
-
-Default values
-
-src/main/helm/values.yaml
-
-```yaml
-app:
-  serviceAccount:
-    enabled: true
-  name: operator
-  template:
-    oidc_client_id: "ONECX_OIDC_CLIENT_CLIENT_ID"
-  image:
-    repository: "onecx/onecx-test-operator"
-  envCustom:
-    - name: KUBERNETES_NAMESPACE
-      valueFrom:
-        fieldRef:
-          fieldPath: metadata.namespace
-  operator:
-    keycloak:
-      client:
-        enabled: true
-        spec:
-          kcConfig:
-            defaultClientScopes: [ ocx-pm:read ]
-```
-
-kcConfig:
-         defaultClientScopes: [ ocx-pm:read ]
-
-e: permission to run test
-    keycloak:
-      client:
-        enabled: true
-        spec:
-          kcConfig:
-            defaultClientScopes: [ ocx-pm:read ]
-
-undefined
-====================
-
-
-undefined
-====================
 ## [](#%5Fonecx%5Ftest%5Foperator)onecx-test-operator
 
 ### [](#%5Fdefault%5Fproperties)Default properties
@@ -24002,6 +23871,137 @@ e: permission to run test
         spec:
           kcConfig:
             defaultClientScopes: [ ocx-pm:read ]
+
+undefined
+====================
+
+
+undefined
+====================
+### [](#%5Fdefault%5Fproperties)Default properties
+
+src/main/resources/application.properties 
+
+```properties
+quarkus.http.auth.permission.health.paths=/q/*
+quarkus.http.auth.permission.health.policy=permit
+quarkus.http.auth.permission.default.paths=/*
+quarkus.http.auth.permission.default.policy=authenticated
+quarkus.kubernetes-client.trust-certs=true
+%prod.quarkus.oidc-client.client-id=${ONECX_OIDC_CLIENT_CLIENT_ID:${quarkus.application.name}}
+quarkus.oidc.ui.auth-server-url=${quarkus.oidc.auth-server-url}
+quarkus.oidc.ui.client-id=${quarkus.oidc.client-id}
+quarkus.oidc.ui.credentials.secret=${quarkus.oidc.credentials.secret}
+quarkus.oidc.ui.application-type=web-app
+```
+
+### [](#%5Fextensions)Extensions
+
+| Extensions                                                          | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                                                        | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
+| quarkus-smallrye-openapi                                            | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
+| quarkus-rest-jackson                                                | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
+| quarkus-smallrye-health                                             | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
+| quarkus-opentelemetry                                               | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
+| quarkus-micrometer-registry-prometheus                              | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
+| quarkus-openapi-generator                                           | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
+| quarkus-rest-client-jackson                                         | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
+| tkit-quarkus-log-cdi                                                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
+| tkit-quarkus-log-rs                                                 | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
+| tkit-quarkus-log-json                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
+| tkit-quarkus-rest                                                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
+| tkit-quarkus-rest-context                                           | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
+| quarkus-hibernate-validator                                         | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
+| onecx-core                                                          | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
+| quarkus-oidc                                                        | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
+| tkit-quarkus-security                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
+| quarkus-arc                                                         | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
+| quarkus-container-image-docker                                      | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
+| quarkus-kubernetes-client                                           | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
+| quarkus-openapi-generator-oidc                                      | 2.10.0-lts                                                                                         |                                                                                                                                                  |            |
+| quarkus-rest-client-oidc-filter                                     | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
+| \====-doc/latest/config/quarkus-container-image-docker.adoc\[Link\] | 3.15.3                                                                                             | quarkus-kubernetes-client                                                                                                                        |            |
+| 3.15.3                                                              | quarkus-rest-client-oidc-filter                                                                    |                                                                                                                                                  |            |
+| 3.15.3                                                              | tkit-quarkus-oidc-health                                                                           |                                                                                                                                                  |            |
+| 2.40.0                                                              | \===us-oidc-health                                                                                 |                                                                                                                                                  |            |
+
+### [](#%5Fcontainer)Container
+
+[Docker registry](https://github.com/onecx/onecx-test-operator/pkgs/container/onecx-test-operator)
+
+### [](#%5Fhelm)Helm
+
+[Helm registry](https://github.com/onecx/onecx-test-operator/pkgs/container/charts%2Fonecx-test-operator)
+
+Default values
+
+src/main/helm/values.yaml
+
+```yaml
+app:
+  serviceAccount:
+    enabled: true
+  name: operator
+  template:
+    oidc_client_id: "ONECX_OIDC_CLIENT_CLIENT_ID"
+  image:
+    repository: "onecx/onecx-test-operator"
+  envCustom:
+    - name: KUBERNETES_NAMESPACE
+      valueFrom:
+        fieldRef:
+          fieldPath: metadata.namespace
+  operator:
+    keycloak:
+      client:
+        enabled: true
+        spec:
+          kcConfig:
+            defaultClientScopes: [ ocx-pm:read ]
+```
+
+kcConfig:
+         defaultClientScopes: [ ocx-pm:read ]
+
+e: permission to run test
+    keycloak:
+      client:
+        enabled: true
+        spec:
+          kcConfig:
+            defaultClientScopes: [ ocx-pm:read ]
+
+undefined
+====================
+| Extensions                                                          | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                                                        | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.20.2.1   |
+| quarkus-smallrye-openapi                                            | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.20.2.1   |
+| quarkus-rest-jackson                                                | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.20.2.1                                                                                                                                         |            |
+| quarkus-smallrye-health                                             | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.20.2.1   |
+| quarkus-opentelemetry                                               | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.20.2.1   |
+| quarkus-micrometer-registry-prometheus                              | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.20.2.1   |
+| quarkus-openapi-generator                                           | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.10.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.10.0-lts |
+| quarkus-rest-client-jackson                                         | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.20.2.1                                                                                                                                         |            |
+| tkit-quarkus-log-cdi                                                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 3.6.0      |
+| tkit-quarkus-log-rs                                                 | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 3.6.0      |
+| tkit-quarkus-log-json                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 3.6.0      |
+| tkit-quarkus-rest                                                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 3.6.0      |
+| tkit-quarkus-rest-context                                           | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 3.6.0      |
+| quarkus-hibernate-validator                                         | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.20.2.1   |
+| onecx-core                                                          | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 1.7.0                                                                                                                                            |            |
+| quarkus-oidc                                                        | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.20.2.1   |
+| tkit-quarkus-security                                               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/3.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 3.6.0      |
+| quarkus-arc                                                         | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.20.2.1   |
+| quarkus-container-image-docker                                      | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.20.2.1   |
+| quarkus-kubernetes-client                                           | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
+| quarkus-openapi-generator-oidc                                      | 2.10.0-lts                                                                                         |                                                                                                                                                  |            |
+| quarkus-rest-client-oidc-filter                                     | 3.20.2.1                                                                                           |                                                                                                                                                  |            |
+| \====-doc/latest/config/quarkus-container-image-docker.adoc\[Link\] | 3.15.3                                                                                             | quarkus-kubernetes-client                                                                                                                        |            |
+| 3.15.3                                                              | quarkus-rest-client-oidc-filter                                                                    |                                                                                                                                                  |            |
+| 3.15.3                                                              | tkit-quarkus-oidc-health                                                                           |                                                                                                                                                  |            |
+| 2.40.0                                                              | \===us-oidc-health                                                                                 |                                                                                                                                                  |            |
 
 OneCX Theme Management
 ====================
@@ -24341,126 +24341,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.4.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.4.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.4.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.4.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.4.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.4.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
-| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
-
-| | | 3.20.2.1
-
-|===th
-
-| | | 2.40.0
-
-undefined
-====================
-
-
-undefined
-====================
-### [](#%5Fdefault%5Fproperties)Default properties
-
-src/main/resources/application.properties 
-
-```properties
-quarkus.http.auth.permission.health.paths=/q/*
-quarkus.http.auth.permission.health.policy=permit
-quarkus.http.auth.permission.default.paths=/*
-quarkus.http.auth.permission.default.policy=authenticated
-onecx.permissions.application-id=${quarkus.application.name}
-org.eclipse.microprofile.rest.client.propagateHeaders=apm-principal-token
-quarkus.http.filter.images.header."Cache-Control"=max-age=432000
-quarkus.http.filter.images.matches=/images/*
-%prod.quarkus.rest-client.onecx_theme_svc.url=http://onecx-theme-svc:8080
-%prod.quarkus.rest-client.onecx_image_internal.url=http://onecx-theme-svc:8080
-quarkus.openapi-generator.codegen.input-base-dir=target/tmp/openapi
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.base-package=gen.org.tkit.onecx.theme.client
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.base-package=gen.org.tkit.onecx.theme.exim.client
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.config-key=onecx_image_internal
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.type-mappings.File=byte[]
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.type-mappings.File=byte[]
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.enable-security-generation=false
-%prod.quarkus.oidc-client.client-id=${ONECX_OIDC_CLIENT_CLIENT_ID:${quarkus.application.name}}
-%prod.quarkus.rest-client.onecx_theme_svc.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
-%prod.quarkus.rest-client.onecx_image_internal.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
-```
-
-### [](#%5Fextensions)Extensions
-
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.4.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.4.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.4.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.4.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.4.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.4.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
-| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
-
-| | | 3.20.2.1
-
-|===th
-
-| | | 2.40.0
-
-| \=== Container [Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff) \=== Helm [Helm registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/charts%2Fonecx-theme-bff) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: bff template: oidc\_client\_id: "ONECX\_OIDC\_CLIENT\_CLIENT\_ID" image: repository: "onecx/onecx-theme-bff" operator: # Permission permission: enabled: true spec: permissions: themes: read: permission on all GET requests and POST search write: permission on PUT, POST, PATCH requests, where objects are saved or updated delete: permission on all DELETE requests keycloak: client: enabled: true spec: kcConfig: defaultClientScopes: \[ ocx-th:all, ocx-pm:read \] microservice: spec: description: OneCX Theme Backend For Frontend name: OneCX Theme BFF ---- |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
 ## [](#%5Fonecx%5Ftheme%5Fbff)onecx-theme-bff
 
 ### [](#%5Fdefault%5Fproperties)Default properties
@@ -24544,6 +24424,126 @@ quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.enable-sec
 
 | \=== Container [Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff) \=== Helm [Helm registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/charts%2Fonecx-theme-bff) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: bff template: oidc\_client\_id: "ONECX\_OIDC\_CLIENT\_CLIENT\_ID" image: repository: "onecx/onecx-theme-bff" operator: # Permission permission: enabled: true spec: permissions: themes: read: permission on all GET requests and POST search write: permission on PUT, POST, PATCH requests, where objects are saved or updated delete: permission on all DELETE requests keycloak: client: enabled: true spec: kcConfig: defaultClientScopes: \[ ocx-th:all, ocx-pm:read \] microservice: spec: description: OneCX Theme Backend For Frontend name: OneCX Theme BFF ---- |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+
+
+undefined
+====================
+### [](#%5Fdefault%5Fproperties)Default properties
+
+src/main/resources/application.properties 
+
+```properties
+quarkus.http.auth.permission.health.paths=/q/*
+quarkus.http.auth.permission.health.policy=permit
+quarkus.http.auth.permission.default.paths=/*
+quarkus.http.auth.permission.default.policy=authenticated
+onecx.permissions.application-id=${quarkus.application.name}
+org.eclipse.microprofile.rest.client.propagateHeaders=apm-principal-token
+quarkus.http.filter.images.header."Cache-Control"=max-age=432000
+quarkus.http.filter.images.matches=/images/*
+%prod.quarkus.rest-client.onecx_theme_svc.url=http://onecx-theme-svc:8080
+%prod.quarkus.rest-client.onecx_image_internal.url=http://onecx-theme-svc:8080
+quarkus.openapi-generator.codegen.input-base-dir=target/tmp/openapi
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.base-package=gen.org.tkit.onecx.theme.client
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.base-package=gen.org.tkit.onecx.theme.exim.client
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.config-key=onecx_image_internal
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.type-mappings.File=byte[]
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.type-mappings.File=byte[]
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.enable-security-generation=false
+%prod.quarkus.oidc-client.client-id=${ONECX_OIDC_CLIENT_CLIENT_ID:${quarkus.application.name}}
+%prod.quarkus.rest-client.onecx_theme_svc.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
+%prod.quarkus.rest-client.onecx_image_internal.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
+```
+
+### [](#%5Fextensions)Extensions
+
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.4.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.4.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.4.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.4.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.4.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.4.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
+| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
+
+| | | 3.20.2.1
+
+|===th
+
+| | | 2.40.0
+
+| \=== Container [Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff) \=== Helm [Helm registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/charts%2Fonecx-theme-bff) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: bff template: oidc\_client\_id: "ONECX\_OIDC\_CLIENT\_CLIENT\_ID" image: repository: "onecx/onecx-theme-bff" operator: # Permission permission: enabled: true spec: permissions: themes: read: permission on all GET requests and POST search write: permission on PUT, POST, PATCH requests, where objects are saved or updated delete: permission on all DELETE requests keycloak: client: enabled: true spec: kcConfig: defaultClientScopes: \[ ocx-th:all, ocx-pm:read \] microservice: spec: description: OneCX Theme Backend For Frontend name: OneCX Theme BFF ---- |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.4.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.4.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.4.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.4.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.4.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.4.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.4.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
+| quarkus-rest-client-oidc-filter        | 3.27.1                                                                                             |                                                                                                                                                  |            |
+
+| | | 3.20.2.1
+
+|===th
+
+| | | 2.40.0
 
 undefined
 ====================
@@ -26036,6 +26036,10 @@ quarkus.openapi-generator.codegen.spec.onecx_welcome_exim_v1_yaml.enable-securit
 
 undefined
 ====================
+
+
+undefined
+====================
 ### [](#%5Fdefault%5Fproperties)Default properties
 
 src/main/resources/application.properties 
@@ -26118,10 +26122,6 @@ quarkus.openapi-generator.codegen.spec.onecx_welcome_exim_v1_yaml.enable-securit
 
 | \=== Container [Docker registry](https://github.com/onecx/onecx-welcome-bff/pkgs/container/onecx-welcome-bff) \=== Helm [Helm registry](https://github.com/onecx/onecx-welcome-bff/pkgs/container/charts%2Fonecx-welcome-bff) Default values .src/main/helm/values.yaml \[source,yaml\] ---- app: name: bff image: repository: "onecx/onecx-welcome-bff" operator: # Permission permission: enabled: true spec: permissions: image: read: permission on all GET requests and POST search write: permission on PUT, POST, PATCH requests, where objects are saved or updated delete: permission on all DELETE requests keycloak: client: enabled: true spec: kcConfig: defaultClientScopes: \[ ocx-wc:all, ocx-wc:read, ocx-wc:write, ocx-pm:read, ocx-an:read \] microservice: spec: description: OneCX Welcome Backend For Frontend name: OneCX Welcome BFF ----  description: OneCX Welcome Backend For Frontend name: OneCX Welcome BFF ---- ClientScopes: \[ ocx-wc:all, ocx-pm:read, ocx-an:read \] ---- |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-
 
 undefined
 ====================
