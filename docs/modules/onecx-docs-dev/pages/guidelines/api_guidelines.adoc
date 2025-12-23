@@ -1,0 +1,284 @@
+= API Guidelines
+:lang: en
+:sectnums:
+
+== Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications.
+However, they may not cover every possible use case or technical scenario.
+
+== General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse your objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+== API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+== Resource Naming
+
+* Use plural form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+== Mandatory Schema Fields
+
+=== General
+
+* `title`: `{applicationName} {external/internal} service {version}`.
+Example: onecx-help external service V1
+* `description`: Short description of the purpose of this API and which entities are targeted.
+* `version`: version of the OpenAPI file. 
+Example: `1.0.0`
+* `servers`: `{url}:{port}` of the application
+* `tags`: list all used tags like this:
+----
+- name: {tagName} 
+  description: short description of the purpose
+----
+* `paths`: endpoint definitions
+* `schemas`: object definitions
+
+.Example
+[%collapsible]
+====
+----
+---
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+----
+====
+
+=== Endpoints
+* `tags`: `{tagName}`. Use camel case for all tags.
+* `description`: description of the purpose of this endpoint.
+* `operationId`: name of the generated Java method.
+* `requestBody`: definition of the required object and content-type. Not needed for GET
+* `responses`: possible response-codes including description and object definitions.
+For response description please use the following pattern: `{Resource} {operation} {status}` +
+Example:
+
+----
+    Theme created successfully.
+    Theme not found.
+----
+
+== DTO Naming Convention
+[NOTE]
+Use the following conventions for the naming of responses and request bodies for all HTTP Methods.
+
+[source]
+----
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+----
+
+Examples: +
+ `CreateThemeRequest` +
+ `GetUserResponse` +
+
+ * Do not include the suffix `DTO` in your object names. This should and will be added by the generator.
+ 
+ * If you plan to just return a sub-set of a resource, e.g. as result of an `/search` endpoint, name your object with the suffix `Abstract`. Like this for example: `ThemeAbstract`.
+
+== HTTP Methods
+
+=== GET
+
+[source]
+----
+GET /{apiVersion}/{resources}/{id}
+----
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field. +
+ Example:
+
+   GetThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+
+[NOTE]
+====
+Return a full set of business and technical related fields.
+Make sure to include the `modificationCount` field to make updates possible.
+====
+
+=== POST
+
+[source]
+----
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+----
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+==== Search
+* To support pagination include the following mandatory criteria:
+----
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+----
+and the following fields in the response: 
+----
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+----
+[NOTE]
+====
+Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data.
+====
+
+=== PUT
+
+[source]
+----
+PUT /{apiVersion}/{resources}/{id}
+----
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field. +
+ Example:
+
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+[NOTE]
+====
+Make sure to include the full business entity and the most recent `modificationCount` retrieved by the previous `GET` request to avoid optimisticlock exceptions.
+====
+
+=== PATCH
+
+[source]
+----
+PATCH /{apiVersion}/{resources}/{id}
+----
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+=== DELETE
+
+[source]
+----
+DELETE /{apiVersion}/{resources}/{id}
+----
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+== Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`
+----
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+----
+.Example Usage
+[%collapsible]
+====
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+====
+* Do not include `401`, `403`, `500` errors in OpenAPI files.
+* `401`, `403` and `500` are handled by the framework.
+
+== Code Style
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+== Examples
+Take a look at the OpenAPI files of our official OneCX applications:
+https://github.com/onecx
