@@ -2491,6 +2491,392 @@ Demo OneCX Links:
 * <https://dev.one-cx.org/newShell/admin/workspace>
 * <https://nshop-dev.test.1000kit.net/ui/product-configurator?M=10872D82A2>
 
+Migrate vanilla Angular apps to OneCX
+====================
+The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and that a OneCX platform instance is up and running. At the time of writing, some required dependencies are only compatible with Angular version 18\. Therefore the application must be updated to Angular 18 before migrating. Additionally, the Angular application should be based on feature modules, which are lazy loaded before routing or route directly to standalone components.
+
+Note that this guide does not cover general Angular project setup or the steps to configure OneCX.
+
+## [](#migration-steps)Migration steps
+
+The goal of this migration is to transform a "vanilla" Angular app into a OneCX compatible app that exposes a microfrontend which can be loaded and displayed by the OneCX platform. To achieve this goal, a few migration steps have to be completed. All steps have been tested in fresh Angular apps generated with the Angular CLI and the NX CLI (using Webpack as a bundler). Some steps only apply to either Angular CLI or NX based applications and are marked accordingly.
+
+### [](#ensure-functionality)Ensure that your application works as expected
+
+Before starting the migration, the correct functionality of the application in its "pre-migration" state should be verified by running existing tests, building the app and running it in a browser. This ensures that the app functions as expected before the migration, helping to prevent unexpected errors in later stages of the process.
+
+### [](#install-dependencies)Install necessary dependencies
+
+In order to convert an app into a OneCX compatible microfrontend it’s necessary to first install some dependencies which allow wrapping the app inside a OneCX compatible webcomponent and exposing it as a remote entrypoint.
+
+Dependencies
+
+```console
+npm i @angular/elements@18 @angular-architects/module-federation @onecx/angular-integration-interface  @onecx/angular-utils @onecx/angular-webcomponents @webcomponents/webcomponentsjs
+```
+
+Dev-Dependencies (Only Angular CLI)
+
+```console
+npm i -D webpack webpack-merge ngx-build-plus@18
+```
+
+| |  For nx based applications the above mentioned dev dependencies are not needed as these apps already ship with a configurable builder. |
+| ---------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#refactor-angular-json)Refactor `angular.json` to use ngx-build-plus builders (Only Angular CLI)
+
+To correctly bundle an app for use in a microfrontend context, the default Angular bundler must be replaced with ngx-build-plus, and a few additional configuration options need to be specified.
+
+| |  YOUR\_APP\_NAME should be replaced with the name of the actual application, which can be obtained from angular.json. TODO comments should be taken care of and afterwards removed from the file. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+angular.json
+
+```json
+...
+"architect": {
+    "build": {
+        "builder": "ngx-build-plus:browser",
+        "options": {
+            ...
+            // TODO: property "browser" should be removed in favor of "main" if it exists
+            "main": "src/main.ts",
+            "scripts": ["node_modules/@webcomponents/webcomponentsjs/webcomponents-bundle.js"],
+            "extraWebpackConfig": "webpack.config.js",
+            // TODO: Replace "./YOUR_ASSETS_FOLDER" with the path to your projects asset folder.
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "./YOUR_ASSETS_FOLDER",
+                "output": "assets"
+              },
+              ...
+            ]
+        },
+        ...
+        "configurations": {
+            "production": {
+               ...
+               "extraWebpackConfig": "webpack.prod.config.js"
+            },
+           ...
+        }
+    },
+    "serve": {
+        "builder": "ngx-build-plus:dev-server",
+        "options": {
+            ...
+            "buildTarget": "YOUR_APP_NAME:build",
+            "port": 4200,
+            "publicHost": "http://localhost:4200",
+            "extraWebpackConfig": "webpack.config.js"
+        },
+        "configurations": {
+            ...
+            "production": {
+                ...
+                "extraWebpackConfig": "webpack.prod.config.js"
+            },
+        },
+        ...
+    },
+    "extract-i18n": {
+        "builder": "ngx-build-plus:extract-i18n",
+        "options": {
+            "buildTarget": "YOUR_APP_NAME:build",
+            "extraWebpackConfig": "webpack.config.js"
+        }
+    },
+    ...
+}
+```
+
+### [](#refactor-project-json)Refactor `project.json` to enable custom bundling (Only NX)
+
+To correctly bundle an app for use in a microfrontend context, the default bundler used for NX Angular projects must be replaced with a specific Webpack bundler, and a few additional configuration options need to be specified.
+
+project.json
+
+```json
+...
+"targets": {
+    "build": {
+        "executor": "@nx/angular:webpack-browser",
+        "options": {
+            ...
+            "scripts": ["node_modules/@webcomponents/webcomponentsjs/webcomponents-bundle.js"],
+            "customWebpackConfig": {
+              "path": "webpack.config.js"
+            },
+            // TODO: Replace "./YOUR_ASSETS_FOLDER" with the path to your projects asset folder.
+            "assets": [
+              {
+                "glob": "**/*",
+                "input": "./YOUR_ASSETS_FOLDER",
+                "output": "assets"
+              },
+              ...
+            ]
+        },
+        ...
+        "configurations": {
+            "production": {
+              ...
+              "customWebpackConfig": {
+                "path": "webpack.prod.config.js"
+              }
+            },
+            ...
+        }
+    },
+    "serve": {
+        "builder": "@nx/angular:dev-server",
+        ...
+    },
+    ...
+}
+```
+
+### [](#create-entrypoints)Create app entrypoint files
+
+To enable an app to run both as a standalone application and as a microfrontend, it’s necessary to provide separate entry points for remote and standalone consumption. This guide will focus on the creation of the remote/microfrontend entrypoints and doesn’t require any changes to an Angular apps default entrypoints (app.module.ts, app.component.ts etc.). For instructions on how to prepare a migrated OneCX application and its entrypoints for standalone consumption see the [Standalone Mode](#standalone-mode) section of this document.
+
+#### [](#create-entrypoint-component)Create app-entrypoint-component
+
+This component will serve as the root entrypoint of the application, when served as a microfrontend.
+
+##### [](#create-entrypoint-component-html)Create `src/app/app-entrypoint.component.html`
+
+To provide a router outlet at the root of the exposed microfrontend the components HTML must contain the default Angular router-outlet.
+
+```html
+<router-outlet></router-outlet>
+```
+
+##### [](#create-entrypoint-component-ts)Create `src/app/app-entrypoint.component.ts`
+
+Alongside the created HTML file the following TypeScript file should be created.
+
+```typescript
+import { Component } from '@angular/core'
+@Component({
+  selector: 'app-root',
+  templateUrl: './app-entrypoint.component.html'
+})
+export class AppEntrypointComponent {}
+```
+
+#### [](#create-entrypoint-module)Create remote module `src/app/remote.module.ts`
+
+To declare the entrypoint component and provide a root module for the microfrontend (equivalent to app.module), a separate module has to be created. It serves as sort of a replacement for the normal `app.module.ts` file which will be treated as the application root in the microfrontend context and enables specific module configuration for the different use-cases. Additionally it exposes the previously mentioned entrypoint component as a web component. Apart from the microfrontend specific code, the module should also include all essential imports, providers etc. that would normally be included in the `app.module.ts` file.
+
+To ensure a correct loading of the application microfrontend and a connection between the app’s router and the OneCX router, the module must at least include the following code (`ocx-test-component` should be replaced with whatever name makes sense for the application that is being migrated):
+
+```typescript
+import { APP_INITIALIZER, DoBootstrap, Injector, NgModule } from '@angular/core'
+import { RouterModule, Routes, Router } from '@angular/router'
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { createAppEntrypoint, initializeRouter, startsWith } from '@onecx/angular-webcomponents'
+import { AppStateService } from '@onecx/angular-integration-interface'
+import { AppEntrypointComponent } from './app-entrypoint.component'
+// TODO: Replace with application routes
+const routes: Routes = [
+  {
+    matcher: startsWith(''),
+    loadChildren: () => import('./feature/feature.module').then((m) => m.FeatureModule)
+  },
+  {
+    matcher: startsWith('additional'),
+    loadChildren: () => import('./feature2/feature2.module').then((m) => m.FeatureModule)
+  }
+]
+@NgModule({
+  declarations: [AppEntrypointComponent],
+  imports: [
+    BrowserModule,
+    BrowserAnimationsModule,
+    RouterModule.forRoot(routes),
+  ],
+  providers: [
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeRouter,
+      multi: true,
+      deps: [Router, AppStateService]
+    }
+  ]
+})
+export class RemoteModule implements DoBootstrap {
+  constructor(private readonly injector: Injector) {}
+  ngDoBootstrap(): void {
+    createAppEntrypoint(AppEntrypointComponent, 'ocx-test-component', this.injector)
+  }
+}
+```
+
+In this example the `remote.module.ts` file provides a remote entrypoint component, called ocx-test-component, connects the remote app’s router to the OneCX router and defines two routes that each route to a different feature module.
+
+| |  Depending on the application this file will vary heavily and contain different providers, imports etc.. To ensure correct routing using the Angular router, instead of specifying a path for each route, a matcher should be specified using the startsWith function from the [@onecx/angular-webcomponents](../module-federation/webcomponents.html#onecx-angular-webcomponents) package. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+#### [](#configure-remote-module-translation-loading)Optional: Set up `@ngx-translate` translation loading in the remote module
+
+To ensure correct translation loading in an application using `@ngx-translate` a few modifications have to be applied to the remote module mentioned above.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. After installing the package, it has to be added to the `shared` configuration in the `webpack.config.js` file. This ensures that the package is shared between the app and OneCX.  
+const config = withModuleFederationPlugin({  
+  ...  
+  shared: share({  
+    ...  
+    '@ngx-translate/core': { requiredVersion: 'auto' },  
+    ...  
+  }),  
+})
+3. After the initial configuration, translation files can be created and translations can be used in the app.
+4. After creating the translation files, a few imports have to be added at the beginning of the remote module file.  
+import { addInitializeModuleGuard, AppStateService } from '@onecx/angular-integration-interface';  
+import { createTranslateLoader, provideTranslationPathFromMeta } from '@onecx/angular-utils'
+5. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard`. This ensures correct translation loading for each route.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+6. `TranslateModule.forRoot()` has to be configured in the modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the remote module. The factory function `createTranslateLoader` ensures that the correct translation files is loaded on app load.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+      isolate: false,  
+      loader: {  
+        provide: TranslateLoader,  
+        useFactory: createTranslateLoader,  
+        deps: [HttpClient]  
+      }  
+    }),  
+  ...  
+],
+7. The path to the applications translations has to be provided using provideTranslationPathFromMeta(import.meta.url,…​).  
+providers: [  
+  ...  
+  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/'),  
+  ...  
+]
+
+| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+#### [](#expose-entrypoint)Create `remote-bootstrap.ts` and `remote-main.ts`
+
+To correctly bootstrap and later expose the microfrontend application, a file called `src/remote-bootstrap.ts` has to be created with the following contents:
+
+```typescript
+import { bootstrapModule } from '@onecx/angular-webcomponents'
+import { RemoteModule } from './app/remote.module'
+// TODO: Replace this with a dynamic value (e.g. from environment.ts)
+const isProduction = false
+bootstrapModule(RemoteModule, 'microfrontend', isProduction)
+```
+
+Additionally a file called `src/remote-main.ts` should be created. This file will call the newly created bootstrap script and handle any errors. If any additional code has to be executed after a successful bootstrapping of the application, it can be placed in a .then block after the import statement and before the catch statement.
+
+```typescript
+import('./remote-bootstrap').catch((err) => console.error(err))
+```
+
+#### [](#bundle-entrypoint)Add newly created `remote-main.ts` to `files` in tsconfig
+
+To ensure that the newly created file `remote-main.ts` is part of the compiled bundle, its location has to be added to the files array in `tsconfig.app.json`.
+
+```none
+"files": [
+  ...
+  "src/app/remote-main.ts"
+],
+```
+
+### [](#webpack-configuration)Create Webpack config files
+
+After creating all necessary entrypoint files and modifying the build configuration, all that’s left to do is to configure the application to expose all necessary entrypoint code in one consumable file called remoteEntry.js. This file will be used by the OneCX platform to obtain all information, necessary to render the microfrontend version of the application. In order to expose this file and ensure correct dependency sharing between the app and OneCX, a Webpack config file containing specific configuration properties has to be created.
+
+The file, `webpack.config.js`, which should be placed in the root folder of the application must contain the following configuration:
+
+| |  This file is meant to be used as a minimal starting point. Depending on the application the contents of the file, especially the shared config, may need to be adapted. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+```typescript
+const { ModifyEntryPlugin } = require('@angular-architects/module-federation/src/utils/modify-entry-plugin')
+const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  name: 'YOUR_MFE_NAME',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './RemoteModule': 'src/remote-main.ts',
+  },
+  shared: share({
+    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/common': { requiredVersion: 'auto', includeSecondaries: { skip: ['@angular/common/http/testing'] } },
+    '@angular/common/http': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/forms': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/platform-browser': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/router': { requiredVersion: 'auto', includeSecondaries: true },
+    rxjs: { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-utils': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-webcomponents': { requiredVersion: 'auto', includeSecondaries: true },
+  }),
+})
+config.devServer = { allowedHosts: 'all' }
+const plugins = config.plugins.filter((plugin) => !(plugin instanceof ModifyEntryPlugin))
+module.exports = {
+  ...config,
+  plugins,
+  output: { uniqueName: 'YOUR_MFE_NAME', publicPath: 'auto' },
+  experiments: { ...config.experiments, topLevelAwait: true },
+  optimization: { runtimeChunk: false, splitChunks: false }
+}
+```
+
+To allow for a custom Webpack configuration in production environments it’s a good practice to additionally create a `webpack.prod.js` file that will extend the base config:
+
+```typescript
+module.exports = require('./webpack.config')
+```
+
+If necessary, this file can be used to overwrite or extend the contents of the base config with production specific values.
+
+### [](#environment-file)Add environment file `env.json`
+
+During the loading of an app, OneCX will try to load it’s environment file. To avoid any errors, a file called `env.json` should be accessible at <http://localhost:4200/assets/env.json>. This can be achieved by adding the respective file to the assets folder of the application. The file can be used to pass environment variables to OneCX. For now it can just contain an empty object (`{}`).
+
+### [](#test-remote-entrypoint)Verify that the app is exposing a remote entry point
+
+After completing all steps listed above, the application should be ready to be used as a microfrontend in the OneCX platform. After starting the application with its start command (e.g. `npm start`), the applications entrypoint file (remoteEntry.js) should be accessible at <http://localhost:4200/remoteEntry.js>.
+
+## [](#standalone-mode)Standalone Mode
+
+After completing all steps mentioned in this document, a previously existing "vanilla" Angular application should be runnable as a microfrontend in OneCX. If the app additionally has to support running in standalone (e.g. in local development), a few additional steps are necessary. All steps required for running an app in standalone are covered in the separate [Enable OneCX app to run in standalone](#documentation:docs-guides-ui:angular/migrations/enable-standalone/index.adoc) cookbook.
+
+## [](#further-reading)Further Reading
+
+For more information on how OneCX loads microfrontends and utilizes web components for content rendering, refer to the [Microfrontend Content Loading in OneCX](../module-federation/microfrontend-content-loading.html) and [Web Components in OneCX](../module-federation/webcomponents.html) pages of the OneCX Docs.
+
+## [](#troubleshooting)Troubleshooting
+
+### [](#troubleshooting-compilation-error)Compilation error `TypeError: The 'compilation' argument must be an instance of Compilation`
+
+If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
+
 Angular Guidelines
 ====================
 This chapter gives guidance which guidelines should be followed during the development.
@@ -2668,7 +3054,7 @@ OneCX Permissions
 
 In [OneCX permission management](../../onecx-permission/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) is available for permission checking.
 
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+[OneCX compatible application](app-to-onecx.html):
 
 * can use the [User Service](../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to check permissions.
 
@@ -2713,19 +3099,149 @@ userService.getPermissions().pipe((
 ))
 ```
 
+Enable OneCX app to run in standalone
+====================
+The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
+
+## [](#general)General
+
+### [](#prerequisites)Prerequisites
+
+This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
+
+Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
+
+## [](#steps)Steps
+
+The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
+
+To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
+
+### [](#install-dependecies)Install `@onecx/standalone-shell`
+
+In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
+
+```console
+npm i @onecx/standalone-shell
+```
+
+### [](#rename-entrypoint-files)Rename existing entrypoint files
+
+To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
+
+### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
+
+When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
+
+Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
+
+```none
+<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
+```
+
+Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
+
+### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
+
+Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
+
+```none
+// Example providers and imports
+
+import { BrowserModule } from '@angular/platform-browser'
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
+import { CommonModule } from '@angular/common'
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
+
+export const commonProviders = [
+  provideHttpClient(withInterceptorsFromDi()),
+  ...
+]
+
+export const commonImports = [
+  BrowserModule,
+  BrowserAnimationsModule,
+  CommonModule,
+  ...
+]
+
+export class RemoteModule implements DoBootstrap {
+  ...
+}
+```
+
+### [](#update-index-html)Use `AppComponent` selector in `index.html`
+
+To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
+
+### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
+
+To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
+
+The newly created bootstrap file must contain the following code:
+
+```none
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
+import { AppModule } from './app/app.module'
+
+platformBrowserDynamic()
+  .bootstrapModule(AppModule)
+  .catch((err) => console.error(err))
+```
+
+The newly created main file should import the bootstrap files and handle potential errors:
+
+```none
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
+
+### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
+
+To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
+
+1. The package `@ngx-translate/core` has to be installed in the project.
+2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
+imports: [  
+  ...  
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
+  ...  
+],
+3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
+imports: [  
+  ...  
+  TranslateModule.forRoot({  
+    isolate: false,  
+    loader: {  
+      provide: TranslateLoader,  
+      useFactory: createTranslateLoader,  
+      deps: [HttpClient]  
+    }  
+  }),  
+  ...  
+],
+4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
+
+Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
+
+### [](#verify-standalone-mode)Verify that the app is running in standalone
+
+After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
+
 OneCX Theming
 ====================
 ## [](#overview)Overview
 
 In an OneCX application theming is handled by the OneCX shell in collaboration with the OneCX Theme Management application.
 
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+[OneCX compatible application](app-to-onecx.html):
 
 * should use theme variables to theme its content.
 
 ## [](#theme-appliance)Theme Appliance
 
-In OneCX each workspace can use different theme for its pages. Each theme defines a set of the same CSS variables that are available on each pages with different values. The availability of those CSS variables is handled by the OneCX shell based on the accessed workspace. It means that **[OneCX compatible](migrations/vanilla-to-onecx/index.html) application does not have to do anything to apply the theme**. The only responsibility is to use theme variables.
+In OneCX each workspace can use different theme for its pages. Each theme defines a set of the same CSS variables that are available on each pages with different values. The availability of those CSS variables is handled by the OneCX shell based on the accessed workspace. It means that **[OneCX compatible](app-to-onecx.html) application does not have to do anything to apply the theme**. The only responsibility is to use theme variables.
 
 ## [](#theme-variables)Theme Variables
 
@@ -2820,7 +3336,7 @@ OneCX Toast Messages
 
 In OneCX toast messages display is handled via [PortalMessageService](../../onecx-portal-ui-libs/service/portal-message-service.html).
 
-[OneCX compatible application](migrations/vanilla-to-onecx/index.html):
+[OneCX compatible application](app-to-onecx.html):
 
 * should use [PortalMessageService](../../onecx-portal-ui-libs/service/portal-message-service.html) to display toast messages
 * should not contain any toast component (in OneCX shell is in charge of displaying toast messages)
@@ -3844,273 +4360,6 @@ The OneCX platform provides several libraries to assist in React application dev
 * **react-remote-components**: A library that enables the use of remote components in React applications, facilitating microfrontend architectures.
 * **react-webcomponents**: A library that allows the creation and use of web components within React applications.
 
-OneCX Multi-language Translations
-====================
-## [](#overview)Overview
-
-This document contains instructions on how to set up multi-language translations in a [**OneCX compatible**](../migrations/vanilla-to-onecx/index.html) application using the `@ngx-translate` library.
-
-## [](#prerequisites)Prerequisites
-
-Before proceeding, ensure that your application meets the compatibility requirements.
-
-## [](#setup)Setup
-
-To set up the multi-language translations support follow the steps listed below.
-
-### [](#install-ngx-translate)Step 1: Install ngx-translate Library
-
-The `@ngx-translate/core` package has to be installed in the project.
-
-```bash
-npm i @ngx-translate/core
-```
-
-| |  Make sure to add a ^ sign in the package.json file of the project for @ngx-translate/core library. |
-| ----------------------------------------------------------------------------------------------------- |
-
-### [](#share-ngx-translate)Step 2: Share ngx-translate In Webpack Configuration
-
-The `@ngx-translate/core` package has to be added as a shared package in webpack configuration.
-
-```typescript
-const config = withModuleFederationPlugin({
-  ...
-  shared: share({
-    ...
-    '@ngx-translate/core': { requiredVersion: 'auto' },
-    ...
-  }),
-});
-```
-
-This ensures the package is shared between the app and OneCX.
-
-### [](#create-translation-files)Step 3: Create Translation Files
-
-Create translation files (e.g., en.json, de.json) in a directory such as assets/i18n/. These files will contain key-value pairs for each language.
-
-en.json
-
-```json
-{
-  "HELLO": "Hello",
-  "WELCOME": "Welcome"
-}
-```
-
-### [](#import-utilities)Step 4: Import Required Utilities
-
-In your remote module file, import the following:
-
-remote.module.ts
-
-```typescript
-import { addInitializeModuleGuard, AppStateService } from '@onecx/angular-integration-interface';
-import { createTranslateLoader, provideTranslationPathFromMeta } from '@onecx/angular-utils';
-```
-
-### [](#wrap-routes)Step 5: Wrap Routes with Initialization Guard
-
-Wrap your routes with addInitializeModuleGuard to ensure translations are loaded correctly:
-
-remote.module.ts
-
-```typescript
-imports: [
-  ...
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),
-  ...
-]
-```
-
-### [](#configure-translate-module)Step 6: Configure TranslateModule
-
-Add TranslateModule.forRoot() to your module’s imports array (or commonImports if shared):
-
-remote.module.ts
-
-```typescript
-imports: [
-  ...
-  TranslateModule.forRoot({
-    isolate: false,
-    loader: {
-      provide: TranslateLoader,
-      useFactory: createTranslateLoader,
-      deps: [HttpClient]
-    }
-  }),
-  ...
-]
-```
-
-Optionally, if you intend to support multiple locales at the same time in case of missing translations for the current locale, you can utilize the `MultiLanguageMissingTranslationHandler` available via `@onecx/angular-utils`:
-
-remote.module.ts
-
-```typescript
-import {
-  MultiLanguageMissingTranslationHandler
-} from '@onecx/angular-utils'
-
-imports: [
-  ...
-  TranslateModule.forRoot({
-    isolate: false,
-    loader: {
-      provide: TranslateLoader,
-      useFactory: createTranslateLoader,
-      deps: [HttpClient]
-    },
-    missingTranslationHandler: {
-      provide: MissingTranslationHandler,
-      useClass: MultiLanguageMissingTranslationHandler
-    }
-  }),
-  ...
-]
-```
-
-### [](#provide-translation-path)Step 7: Provide Translation Path
-
-Use provideTranslationPathFromMeta(import.meta.url, …​) to specify the location of your translation files:
-
-remote.module.ts
-
-```typescript
-providers: [
-  ...
-  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/'),
-  ...
-]
-```
-
-| |  Replace 'assets/i18n/' with the actual path to your translation files if different. |
-| -------------------------------------------------------------------------------------- |
-
-| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#feature-modules)Step 8: Support in Feature Modules
-
-If any feature modules use ngx-translate features (e.g., translate pipe), ensure TranslateModule is also imported in those modules:
-
-feature.module.ts
-
-```typescript
-@NgModule({
-  imports: [
-    ...
-    TranslateModule,
-    ...
-  ]
-})
-export class FeatureModule {}
-```
-
-## [](#completion-checklist)Completion Checklist
-
-To verify that the setup is complete, ensure the following:
-
-* `@ngx-translate/core` is installed and listed in `package.json` with a `^` sign.
-* Webpack configuration includes `@ngx-translate/core` as a shared package.
-* Translation files are created and accessible.
-* Application routes are wrapped with `addInitializeModuleGuard`.
-* `TranslateModule.forRoot()` is configured in the remote module.  
-   * (Optional) `MultiLanguageMissingTranslationHandler` is set up for full multi-language support.
-* `provideTranslationPathFromMeta` is used to specify the translation files' path.
-* `TranslateModule` is imported in any feature modules using translation features.
-
-## [](#next-steps)Next Steps
-
-After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
-
-OneCX Multi-language Translations Usage
-====================
-## [](#overview)Overview
-
-This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../migrations/vanilla-to-onecx/index.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
-
-## [](#prerequisites)Prerequisites
-
-Before proceeding, ensure that the multi-language setup is complete.
-
-## [](#usage)Usage
-
-It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
-
-### [](#templates-usage)Templates Usage
-
-Use translations via **translate** pipe.
-
-component.html
-
-```html
-<p>{{ 'HELLO' | translate }}</p>
-```
-
-### [](#translate-service-usage)TranslateService Usage
-
-Use translations via **TranslateService**.
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-
-this.translate.get('WELCOME').subscribe((translated: string) => {
-    console.log('Translated message:', translated);
-});
-```
-
-### [](#with-parameters)With Parameters
-
-Use translations with parameters. Example:
-
-en.json
-
-```json
-{
-  "GREETING": "Hello, {{name}}! Welcome back."
-}
-```
-
-component.html
-
-```html
-<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
-```
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-this.translate.get('GREETING', params).subscribe((translated: string) => {
-    console.log('Translated with params:', translated);
-});
-```
-
-OneCX Multi-language Translations
-====================
-## [](#overview)Overview
-
-In OneCX multi-language support is available via translations using `@ngx-translate` library.
-
-A [OneCX compatible application](../migrations/vanilla-to-onecx/index.html) can be set up for multi-language translation to support multiple languages in the application.
-
-## [](#setup)Setup
-
-To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
-
-## [](#usage)Usage
-
-After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
-
-## [](#language-information)Language Information
-
-The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
 NgRX
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -4507,11 +4756,11 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 
 * [Lazy Loading Tabs with NgRx](#./ngrx/lazy-loading.adoc)
 * Adding Search Criteria:  
-   * [General](#./ngrx/adding-search-criteria/search-criteria.adoc)  
-   * [Autocomplete](#./ngrx/adding-search-criteria/autocomplete/index.adoc)  
-   * [Calendar](#./ngrx/adding-search-criteria/calendar.adoc)  
-   * [Dropdown](#./ngrx/adding-search-criteria/dropdown.adoc)  
-   * [MultiSelect](#./ngrx/adding-search-criteria/multiselect.adoc)
+   * [General](#./ngrx/search-criteria/search-criteria.adoc)  
+   * [Autocomplete](#./ngrx/search-criteria/autocomplete/index.adoc)  
+   * [Calendar](#./ngrx/search-criteria/calendar.adoc)  
+   * [Dropdown](#./ngrx/search-criteria/dropdown.adoc)  
+   * [MultiSelect](#./ngrx/search-criteria/multiselect.adoc)
 
 ## [](#useful-links)Useful Links
 
@@ -4553,7 +4802,7 @@ OneCX PrimeNG Theming
 
 In OneCX PrimeNG theming is handled by the OneCX shell in collaboration with the OneCX Theme Management application.
 
-[OneCX compatible application](../migrations/vanilla-to-onecx/index.html):
+[OneCX compatible application](../app-to-onecx.html):
 
 * can influence PrimeNG design token values for itself.
 
@@ -4638,7 +4887,7 @@ In OneCX, there are requirements for routing inside the application as well as r
 
 ## [](#prerequisites)Prerequisites
 
-Before implementing routing in your OneCX application, ensure your application is [OneCX compatible](../migrations/vanilla-to-onecx/index.html).
+Before implementing routing in your OneCX application, ensure your application is [OneCX compatible](../app-to-onecx.html).
 
 ## [](#reasons-for-restrictions)Reasons for restrictions
 
@@ -4732,6 +4981,273 @@ The [WorkspaceService](../../../onecx-portal-ui-libs/libraries/angular-integrati
 * Resolve endpoint aliases and inject parameters into endpoint paths.
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
+
+OneCX Multi-language Translations
+====================
+## [](#overview)Overview
+
+This document contains instructions on how to set up multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application using the `@ngx-translate` library.
+
+## [](#prerequisites)Prerequisites
+
+Before proceeding, ensure that your application meets the compatibility requirements.
+
+## [](#setup)Setup
+
+To set up the multi-language translations support follow the steps listed below.
+
+### [](#install-ngx-translate)Step 1: Install ngx-translate Library
+
+The `@ngx-translate/core` package has to be installed in the project.
+
+```bash
+npm i @ngx-translate/core
+```
+
+| |  Make sure to add a ^ sign in the package.json file of the project for @ngx-translate/core library. |
+| ----------------------------------------------------------------------------------------------------- |
+
+### [](#share-ngx-translate)Step 2: Share ngx-translate In Webpack Configuration
+
+The `@ngx-translate/core` package has to be added as a shared package in webpack configuration.
+
+```typescript
+const config = withModuleFederationPlugin({
+  ...
+  shared: share({
+    ...
+    '@ngx-translate/core': { requiredVersion: 'auto' },
+    ...
+  }),
+});
+```
+
+This ensures the package is shared between the app and OneCX.
+
+### [](#create-translation-files)Step 3: Create Translation Files
+
+Create translation files (e.g., en.json, de.json) in a directory such as assets/i18n/. These files will contain key-value pairs for each language.
+
+en.json
+
+```json
+{
+  "HELLO": "Hello",
+  "WELCOME": "Welcome"
+}
+```
+
+### [](#import-utilities)Step 4: Import Required Utilities
+
+In your remote module file, import the following:
+
+remote.module.ts
+
+```typescript
+import { addInitializeModuleGuard, AppStateService } from '@onecx/angular-integration-interface';
+import { createTranslateLoader, provideTranslationPathFromMeta } from '@onecx/angular-utils';
+```
+
+### [](#wrap-routes)Step 5: Wrap Routes with Initialization Guard
+
+Wrap your routes with addInitializeModuleGuard to ensure translations are loaded correctly:
+
+remote.module.ts
+
+```typescript
+imports: [
+  ...
+  RouterModule.forRoot(addInitializeModuleGuard(routes)),
+  ...
+]
+```
+
+### [](#configure-translate-module)Step 6: Configure TranslateModule
+
+Add TranslateModule.forRoot() to your module’s imports array (or commonImports if shared):
+
+remote.module.ts
+
+```typescript
+imports: [
+  ...
+  TranslateModule.forRoot({
+    isolate: false,
+    loader: {
+      provide: TranslateLoader,
+      useFactory: createTranslateLoader,
+      deps: [HttpClient]
+    }
+  }),
+  ...
+]
+```
+
+Optionally, if you intend to support multiple locales at the same time in case of missing translations for the current locale, you can utilize the `MultiLanguageMissingTranslationHandler` available via `@onecx/angular-utils`:
+
+remote.module.ts
+
+```typescript
+import {
+  MultiLanguageMissingTranslationHandler
+} from '@onecx/angular-utils'
+
+imports: [
+  ...
+  TranslateModule.forRoot({
+    isolate: false,
+    loader: {
+      provide: TranslateLoader,
+      useFactory: createTranslateLoader,
+      deps: [HttpClient]
+    },
+    missingTranslationHandler: {
+      provide: MissingTranslationHandler,
+      useClass: MultiLanguageMissingTranslationHandler
+    }
+  }),
+  ...
+]
+```
+
+### [](#provide-translation-path)Step 7: Provide Translation Path
+
+Use provideTranslationPathFromMeta(import.meta.url, …​) to specify the location of your translation files:
+
+remote.module.ts
+
+```typescript
+providers: [
+  ...
+  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/'),
+  ...
+]
+```
+
+| |  Replace 'assets/i18n/' with the actual path to your translation files if different. |
+| -------------------------------------------------------------------------------------- |
+
+| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#feature-modules)Step 8: Support in Feature Modules
+
+If any feature modules use ngx-translate features (e.g., translate pipe), ensure TranslateModule is also imported in those modules:
+
+feature.module.ts
+
+```typescript
+@NgModule({
+  imports: [
+    ...
+    TranslateModule,
+    ...
+  ]
+})
+export class FeatureModule {}
+```
+
+## [](#completion-checklist)Completion Checklist
+
+To verify that the setup is complete, ensure the following:
+
+* `@ngx-translate/core` is installed and listed in `package.json` with a `^` sign.
+* Webpack configuration includes `@ngx-translate/core` as a shared package.
+* Translation files are created and accessible.
+* Application routes are wrapped with `addInitializeModuleGuard`.
+* `TranslateModule.forRoot()` is configured in the remote module.  
+   * (Optional) `MultiLanguageMissingTranslationHandler` is set up for full multi-language support.
+* `provideTranslationPathFromMeta` is used to specify the translation files' path.
+* `TranslateModule` is imported in any feature modules using translation features.
+
+## [](#next-steps)Next Steps
+
+After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
+
+OneCX Multi-language Translations Usage
+====================
+## [](#overview)Overview
+
+This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
+
+## [](#prerequisites)Prerequisites
+
+Before proceeding, ensure that the multi-language setup is complete.
+
+## [](#usage)Usage
+
+It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
+
+### [](#templates-usage)Templates Usage
+
+Use translations via **translate** pipe.
+
+component.html
+
+```html
+<p>{{ 'HELLO' | translate }}</p>
+```
+
+### [](#translate-service-usage)TranslateService Usage
+
+Use translations via **TranslateService**.
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+
+this.translate.get('WELCOME').subscribe((translated: string) => {
+    console.log('Translated message:', translated);
+});
+```
+
+### [](#with-parameters)With Parameters
+
+Use translations with parameters. Example:
+
+en.json
+
+```json
+{
+  "GREETING": "Hello, {{name}}! Welcome back."
+}
+```
+
+component.html
+
+```html
+<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
+```
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+this.translate.get('GREETING', params).subscribe((translated: string) => {
+    console.log('Translated with params:', translated);
+});
+```
+
+OneCX Multi-language Translations
+====================
+## [](#overview)Overview
+
+In OneCX multi-language support is available via translations using `@ngx-translate` library.
+
+A [OneCX compatible application](../app-to-onecx.html) can be set up for multi-language translation to support multiple languages in the application.
+
+## [](#setup)Setup
+
+To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
+
+## [](#usage)Usage
+
+After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
+
+## [](#language-information)Language Information
+
+The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
 
 OneCX version 7 changelog
 ====================
@@ -5298,522 +5814,6 @@ export default App;
 
 The `useAppHref` function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the `ConfigurationProvider` and `AppStateProvider` hooks contexts the `@onecx/react-integration-interface` library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
 
-Enable OneCX app to run in standalone
-====================
-The goal of this guide is to provide step by step instructions on how to enable standalone mode for an existing OneCX application and allowing it to run without a shell.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and migrated to be compatible with OneCX.
-
-Note that this guide does not cover general Angular project setup or the steps to migrate to OneCX.
-
-## [](#steps)Steps
-
-The goal of this cookbook is to refactor an existing OneCX compatible app so that it can not only run inside the OneCX platform but also as a standalone application. All steps have been tested in an app generated with Angular CLI and migrated to be compatible with OneCX but should also work in other OneCX compatible Angular apps (e.g. apps generated with NX).
-
-To achieve the goal of running an application in standalone, a second set of entrypoint files has to be created. Similarly to the applications remote module in remote scenarios, the standalone entrypoint files will be used to add necessary imports and providers, and route requests to the correct feature modules. A detailed overview of which files have to be created can be found in later sections of this document.
-
-### [](#install-dependecies)Install `@onecx/standalone-shell`
-
-In order to run a OneCX app in standalone, it’s necessary to mock/provide some of the functionality that would usually be provided by the OneCX platform. To make this easy, `@onecx/standalone-shell` provides all the necessary code wrapped in a importable Angular module. Before using the module, the necessary dependency has to be added to the app. The dependency has to be installed using the version that is also used for other @onecx libraries in the project. The minimum required version of `@onecx/standalone-shell` is `5.31.0`.
-
-```console
-npm i @onecx/standalone-shell
-```
-
-### [](#rename-entrypoint-files)Rename existing entrypoint files
-
-To avoid confusion, the projects `./src/main.ts` and `./src/bootstrap.ts` files should be renamed to `remote-main.ts` and `remote-bootstrap.ts`. Make sure to also adjust references to `./src/main.ts` and `./src/bootstrap.ts` (e.g. in `tsconfig.app.json` and `webpack.config.js`). If `remote-main.ts` and `remote-bootstrap.ts` already exist in the project, no further action is required.
-
-### [](#add-standalone-module)Import `StandaloneShellModule` and modify app.component.html + app.component.ts
-
-When running an app in standalone, `./src/app/app.module.ts`, `./src/app/app.component.html` and `./src/app/app.component.ts` are treated as the application entrypoints. To add standalone capabilities to the application, the `StandaloneShellModule` provided by `@onecx/standalone-shell` has to be added to the imports array of `./src/app/app.module.ts`. **Make sure to add the import as the last entry of the imports array.**
-
-Afterwards the entire application has to be wrapped in a standalone-shell-viewport component provided as part of the imported `StandaloneShellModule`. To achieve this goal the contents of `./src/app/app.component.html` have to be replaced with the following code:
-
-```none
-<ocx-standalone-shell-viewport></ocx-standalone-shell-viewport>
-```
-
-Afterwards it should be ensured that the applications remote entrypoint (e.g. `./src/app/app-entrypoint.component.ts`) and the applications standalone entrypoint (e.g. `./src/app/app.component.ts`) have different selector names. The selector name can be found inside the `@Component` annotation that is placed before the component class in the components TypeScript file.
-
-### [](#align-imports-and-providers-with-remote)Add necessary imports and providers to `app.module.ts`
-
-Since `./src/app/app.module.ts` is not loaded in remote scenarios and the projects remote module is skipped in standalone mode it’s crucial that all critical imports and providers are present in both modules. To achieve this goal it’s recommended to create two exported variables in the remote module file before the actual module class. The variable `commonImports` should contain an array of imports that need to be present in both modules. Similarly the variable `commonProviders` should contain an array of providers that need to be present in both modules. After creating those variables they should be added to the `imports` and `providers` array in both modules. By doing this, the applications remote module is treated as the single source of truth, which helps with preventing import and provider errors.
-
-```none
-// Example providers and imports
-
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { CommonModule } from '@angular/common'
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http'
-
-export const commonProviders = [
-  provideHttpClient(withInterceptorsFromDi()),
-  ...
-]
-
-export const commonImports = [
-  BrowserModule,
-  BrowserAnimationsModule,
-  CommonModule,
-  ...
-]
-
-export class RemoteModule implements DoBootstrap {
-  ...
-}
-```
-
-### [](#update-index-html)Use `AppComponent` selector in `index.html`
-
-To correctly render the standalone entrypoint, it has to be referenced in `index.html`. Therefore the element tag placed inside the body of `./src/index.html` must match the selector name of the applications standalone entrypoint (e.g. `./src/app/app.component.ts`), which can be obtained as mentioned above.
-
-### [](#create-standalone-entrypoints)Create separate `main.ts` and `bootstrap.ts` for standalone
-
-To correctly bootstrap and render the standalone version of an application, it’s necessary to create separate main and bootstrap files alongside the already existing files used for microfrontend bootstrapping (e.g. `./src/remote-main.ts` and `./src/remote-bootstrap.ts`).
-
-The newly created bootstrap file must contain the following code:
-
-```none
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic'
-import { AppModule } from './app/app.module'
-
-platformBrowserDynamic()
-  .bootstrapModule(AppModule)
-  .catch((err) => console.error(err))
-```
-
-The newly created main file should import the bootstrap files and handle potential errors:
-
-```none
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-After creating the files, the newly created main files must be referenced in the `files` array in `tsconfig.app.json` so that it’s included in the applications bundle. Additionally it should be verified that the `build.options.main` property in the applications configuration file (e.g. `angular.json` or `project.json`) points to the newly created main file.
-
-### [](#configure-translation-loading)Optional: Set up `@ngx-translate` translation loading
-
-To ensure correct translation loading in an application using `@ngx-translate` a few more modifications have to be applied to `./src/app/app.module.ts`.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard` from `@onecx/angular-integration-interface`. This ensures correct translation loading for each route. Note that the route configuration might be placed in a separate routing module (e.g. `./src/app/app-routing.module.ts`) or in the `commonImports` you created in your applications remote module.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-3. `TranslateModule.forRoot()` has to be configured in the app modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the application’s remote module. `createTranslateLoader` has to be imported from `@onecx/angular-utils` and ensures that the correct translation files is loaded on app load. If `@onecx/angular-utils` is not yet installed in the project, it has to be installed first. Note that the property `isolate` should not be necessary in a pure standalone setup and is only required when adding the `TranslateModule` configuration to a `commonImports` array.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-    isolate: false,  
-    loader: {  
-      provide: TranslateLoader,  
-      useFactory: createTranslateLoader,  
-      deps: [HttpClient]  
-    }  
-  }),  
-  ...  
-],
-4. The path to the applications translations is provided automatically by the previously imported `StandaloneShellModule`. If any errors occur during translation loading, the network tab of the browsers developer tools can be used to verify that the application’s translation files are placed in the correct location.
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-### [](#verify-standalone-mode)Verify that the app is running in standalone
-
-After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
-
-Migrate vanilla Angular apps to OneCX
-====================
-The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
-
-## [](#general)General
-
-### [](#prerequisites)Prerequisites
-
-This guide assumes that an Angular project is already set up and that a OneCX platform instance is up and running. At the time of writing, some required dependencies are only compatible with Angular version 18\. Therefore the application must be updated to Angular 18 before migrating. Additionally, the Angular application should be based on feature modules, which are lazy loaded before routing or route directly to standalone components.
-
-Note that this guide does not cover general Angular project setup or the steps to configure OneCX.
-
-## [](#migration-steps)Migration steps
-
-The goal of this migration is to transform a "vanilla" Angular app into a OneCX compatible app that exposes a microfrontend which can be loaded and displayed by the OneCX platform. To achieve this goal, a few migration steps have to be completed. All steps have been tested in fresh Angular apps generated with the Angular CLI and the NX CLI (using Webpack as a bundler). Some steps only apply to either Angular CLI or NX based applications and are marked accordingly.
-
-### [](#ensure-functionality)Ensure that your application works as expected
-
-Before starting the migration, the correct functionality of the application in its "pre-migration" state should be verified by running existing tests, building the app and running it in a browser. This ensures that the app functions as expected before the migration, helping to prevent unexpected errors in later stages of the process.
-
-### [](#install-dependencies)Install necessary dependencies
-
-In order to convert an app into a OneCX compatible microfrontend it’s necessary to first install some dependencies which allow wrapping the app inside a OneCX compatible webcomponent and exposing it as a remote entrypoint.
-
-Dependencies
-
-```console
-npm i @angular/elements@18 @angular-architects/module-federation @onecx/angular-integration-interface  @onecx/angular-utils @onecx/angular-webcomponents @webcomponents/webcomponentsjs
-```
-
-Dev-Dependencies (Only Angular CLI)
-
-```console
-npm i -D webpack webpack-merge ngx-build-plus@18
-```
-
-| |  For nx based applications the above mentioned dev dependencies are not needed as these apps already ship with a configurable builder. |
-| ---------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#refactor-angular-json)Refactor `angular.json` to use ngx-build-plus builders (Only Angular CLI)
-
-To correctly bundle an app for use in a microfrontend context, the default Angular bundler must be replaced with ngx-build-plus, and a few additional configuration options need to be specified.
-
-| |  YOUR\_APP\_NAME should be replaced with the name of the actual application, which can be obtained from angular.json. TODO comments should be taken care of and afterwards removed from the file. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-angular.json
-
-```json
-...
-"architect": {
-    "build": {
-        "builder": "ngx-build-plus:browser",
-        "options": {
-            ...
-            // TODO: property "browser" should be removed in favor of "main" if it exists
-            "main": "src/main.ts",
-            "scripts": ["node_modules/@webcomponents/webcomponentsjs/webcomponents-bundle.js"],
-            "extraWebpackConfig": "webpack.config.js",
-            // TODO: Replace "./YOUR_ASSETS_FOLDER" with the path to your projects asset folder.
-            "assets": [
-              {
-                "glob": "**/*",
-                "input": "./YOUR_ASSETS_FOLDER",
-                "output": "assets"
-              },
-              ...
-            ]
-        },
-        ...
-        "configurations": {
-            "production": {
-               ...
-               "extraWebpackConfig": "webpack.prod.config.js"
-            },
-           ...
-        }
-    },
-    "serve": {
-        "builder": "ngx-build-plus:dev-server",
-        "options": {
-            ...
-            "buildTarget": "YOUR_APP_NAME:build",
-            "port": 4200,
-            "publicHost": "http://localhost:4200",
-            "extraWebpackConfig": "webpack.config.js"
-        },
-        "configurations": {
-            ...
-            "production": {
-                ...
-                "extraWebpackConfig": "webpack.prod.config.js"
-            },
-        },
-        ...
-    },
-    "extract-i18n": {
-        "builder": "ngx-build-plus:extract-i18n",
-        "options": {
-            "buildTarget": "YOUR_APP_NAME:build",
-            "extraWebpackConfig": "webpack.config.js"
-        }
-    },
-    ...
-}
-```
-
-### [](#refactor-project-json)Refactor `project.json` to enable custom bundling (Only NX)
-
-To correctly bundle an app for use in a microfrontend context, the default bundler used for NX Angular projects must be replaced with a specific Webpack bundler, and a few additional configuration options need to be specified.
-
-project.json
-
-```json
-...
-"targets": {
-    "build": {
-        "executor": "@nx/angular:webpack-browser",
-        "options": {
-            ...
-            "scripts": ["node_modules/@webcomponents/webcomponentsjs/webcomponents-bundle.js"],
-            "customWebpackConfig": {
-              "path": "webpack.config.js"
-            },
-            // TODO: Replace "./YOUR_ASSETS_FOLDER" with the path to your projects asset folder.
-            "assets": [
-              {
-                "glob": "**/*",
-                "input": "./YOUR_ASSETS_FOLDER",
-                "output": "assets"
-              },
-              ...
-            ]
-        },
-        ...
-        "configurations": {
-            "production": {
-              ...
-              "customWebpackConfig": {
-                "path": "webpack.prod.config.js"
-              }
-            },
-            ...
-        }
-    },
-    "serve": {
-        "builder": "@nx/angular:dev-server",
-        ...
-    },
-    ...
-}
-```
-
-### [](#create-entrypoints)Create app entrypoint files
-
-To enable an app to run both as a standalone application and as a microfrontend, it’s necessary to provide separate entry points for remote and standalone consumption. This guide will focus on the creation of the remote/microfrontend entrypoints and doesn’t require any changes to an Angular apps default entrypoints (app.module.ts, app.component.ts etc.). For instructions on how to prepare a migrated OneCX application and its entrypoints for standalone consumption see the [Standalone Mode](#standalone-mode) section of this document.
-
-#### [](#create-entrypoint-component)Create app-entrypoint-component
-
-This component will serve as the root entrypoint of the application, when served as a microfrontend.
-
-##### [](#create-entrypoint-component-html)Create `src/app/app-entrypoint.component.html`
-
-To provide a router outlet at the root of the exposed microfrontend the components HTML must contain the default Angular router-outlet.
-
-```html
-<router-outlet></router-outlet>
-```
-
-##### [](#create-entrypoint-component-ts)Create `src/app/app-entrypoint.component.ts`
-
-Alongside the created HTML file the following TypeScript file should be created.
-
-```typescript
-import { Component } from '@angular/core'
-@Component({
-  selector: 'app-root',
-  templateUrl: './app-entrypoint.component.html'
-})
-export class AppEntrypointComponent {}
-```
-
-#### [](#create-entrypoint-module)Create remote module `src/app/remote.module.ts`
-
-To declare the entrypoint component and provide a root module for the microfrontend (equivalent to app.module), a separate module has to be created. It serves as sort of a replacement for the normal `app.module.ts` file which will be treated as the application root in the microfrontend context and enables specific module configuration for the different use-cases. Additionally it exposes the previously mentioned entrypoint component as a web component. Apart from the microfrontend specific code, the module should also include all essential imports, providers etc. that would normally be included in the `app.module.ts` file.
-
-To ensure a correct loading of the application microfrontend and a connection between the app’s router and the OneCX router, the module must at least include the following code (`ocx-test-component` should be replaced with whatever name makes sense for the application that is being migrated):
-
-```typescript
-import { APP_INITIALIZER, DoBootstrap, Injector, NgModule } from '@angular/core'
-import { RouterModule, Routes, Router } from '@angular/router'
-import { BrowserModule } from '@angular/platform-browser'
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations'
-import { createAppEntrypoint, initializeRouter, startsWith } from '@onecx/angular-webcomponents'
-import { AppStateService } from '@onecx/angular-integration-interface'
-import { AppEntrypointComponent } from './app-entrypoint.component'
-// TODO: Replace with application routes
-const routes: Routes = [
-  {
-    matcher: startsWith(''),
-    loadChildren: () => import('./feature/feature.module').then((m) => m.FeatureModule)
-  },
-  {
-    matcher: startsWith('additional'),
-    loadChildren: () => import('./feature2/feature2.module').then((m) => m.FeatureModule)
-  }
-]
-@NgModule({
-  declarations: [AppEntrypointComponent],
-  imports: [
-    BrowserModule,
-    BrowserAnimationsModule,
-    RouterModule.forRoot(routes),
-  ],
-  providers: [
-    {
-      provide: APP_INITIALIZER,
-      useFactory: initializeRouter,
-      multi: true,
-      deps: [Router, AppStateService]
-    }
-  ]
-})
-export class RemoteModule implements DoBootstrap {
-  constructor(private readonly injector: Injector) {}
-  ngDoBootstrap(): void {
-    createAppEntrypoint(AppEntrypointComponent, 'ocx-test-component', this.injector)
-  }
-}
-```
-
-In this example the `remote.module.ts` file provides a remote entrypoint component, called ocx-test-component, connects the remote app’s router to the OneCX router and defines two routes that each route to a different feature module.
-
-| |  Depending on the application this file will vary heavily and contain different providers, imports etc.. To ensure correct routing using the Angular router, instead of specifying a path for each route, a matcher should be specified using the startsWith function from the [@onecx/angular-webcomponents](../../../module-federation/webcomponents.html#onecx-angular-webcomponents) package. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-#### [](#configure-remote-module-translation-loading)Optional: Set up `@ngx-translate` translation loading in the remote module
-
-To ensure correct translation loading in an application using `@ngx-translate` a few modifications have to be applied to the remote module mentioned above.
-
-1. The package `@ngx-translate/core` has to be installed in the project.
-2. After installing the package, it has to be added to the `shared` configuration in the `webpack.config.js` file. This ensures that the package is shared between the app and OneCX.  
-const config = withModuleFederationPlugin({  
-  ...  
-  shared: share({  
-    ...  
-    '@ngx-translate/core': { requiredVersion: 'auto' },  
-    ...  
-  }),  
-})
-3. After the initial configuration, translation files can be created and translations can be used in the app.
-4. After creating the translation files, a few imports have to be added at the beginning of the remote module file.  
-import { addInitializeModuleGuard, AppStateService } from '@onecx/angular-integration-interface';  
-import { createTranslateLoader, provideTranslationPathFromMeta } from '@onecx/angular-utils'
-5. The routes passed to `RouterModule.forRoot()` must be wrapped with `addInitializeModuleGuard`. This ensures correct translation loading for each route.  
-imports: [  
-  ...  
-  RouterModule.forRoot(addInitializeModuleGuard(routes)),  
-  ...  
-],
-6. `TranslateModule.forRoot()` has to be configured in the modules imports array or the `commonImports` array that is being shared between `app.module.ts` and the remote module. The factory function `createTranslateLoader` ensures that the correct translation files is loaded on app load.  
-imports: [  
-  ...  
-  TranslateModule.forRoot({  
-      isolate: false,  
-      loader: {  
-        provide: TranslateLoader,  
-        useFactory: createTranslateLoader,  
-        deps: [HttpClient]  
-      }  
-    }),  
-  ...  
-],
-7. The path to the applications translations has to be provided using provideTranslationPathFromMeta(import.meta.url,…​).  
-providers: [  
-  ...  
-  provideTranslationPathFromMeta(import.meta.url, 'assets/i18n/'),  
-  ...  
-]
-
-| |  If the error "Cannot construct translation path from local file path. Please check whether the webpack configuration for importMeta is correct: [https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta"](https://webpack.js.org/configuration/module/#moduleparserjavascriptimportmeta)appears, it means either the provider is used in the application and import.meta.url incorrectly resolves to a local file:// path. or the application does not use provideTranslationPathFromMeta, but is likely using a newer Angular version than the shell or preloader. In this case, modules are loaded from the app’s context, which also leads to a local file:// prefix. To fix this, this line has to be added to module.exports in the webpack.config.js: webpack.config.ts module.exports = {  ...   module: { parser: { javascript: { importMeta: false } } }, } |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Disclaimer: If any of the applications feature modules use ngx-translate features, such as the `translate` pipe, `TranslateModule` might have to be added to the feature modules imports array.
-
-#### [](#expose-entrypoint)Create `remote-bootstrap.ts` and `remote-main.ts`
-
-To correctly bootstrap and later expose the microfrontend application, a file called `src/remote-bootstrap.ts` has to be created with the following contents:
-
-```typescript
-import { bootstrapModule } from '@onecx/angular-webcomponents'
-import { RemoteModule } from './app/remote.module'
-// TODO: Replace this with a dynamic value (e.g. from environment.ts)
-const isProduction = false
-bootstrapModule(RemoteModule, 'microfrontend', isProduction)
-```
-
-Additionally a file called `src/remote-main.ts` should be created. This file will call the newly created bootstrap script and handle any errors. If any additional code has to be executed after a successful bootstrapping of the application, it can be placed in a .then block after the import statement and before the catch statement.
-
-```typescript
-import('./remote-bootstrap').catch((err) => console.error(err))
-```
-
-#### [](#bundle-entrypoint)Add newly created `remote-main.ts` to `files` in tsconfig
-
-To ensure that the newly created file `remote-main.ts` is part of the compiled bundle, its location has to be added to the files array in `tsconfig.app.json`.
-
-```none
-"files": [
-  ...
-  "src/app/remote-main.ts"
-],
-```
-
-### [](#webpack-configuration)Create Webpack config files
-
-After creating all necessary entrypoint files and modifying the build configuration, all that’s left to do is to configure the application to expose all necessary entrypoint code in one consumable file called remoteEntry.js. This file will be used by the OneCX platform to obtain all information, necessary to render the microfrontend version of the application. In order to expose this file and ensure correct dependency sharing between the app and OneCX, a Webpack config file containing specific configuration properties has to be created.
-
-The file, `webpack.config.js`, which should be placed in the root folder of the application must contain the following configuration:
-
-| |  This file is meant to be used as a minimal starting point. Depending on the application the contents of the file, especially the shared config, may need to be adapted. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-```typescript
-const { ModifyEntryPlugin } = require('@angular-architects/module-federation/src/utils/modify-entry-plugin')
-const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
-const config = withModuleFederationPlugin({
-  name: 'YOUR_MFE_NAME',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './RemoteModule': 'src/remote-main.ts',
-  },
-  shared: share({
-    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/common': { requiredVersion: 'auto', includeSecondaries: { skip: ['@angular/common/http/testing'] } },
-    '@angular/common/http': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/forms': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/platform-browser': { requiredVersion: 'auto', includeSecondaries: true },
-    '@angular/router': { requiredVersion: 'auto', includeSecondaries: true },
-    rxjs: { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-utils': { requiredVersion: 'auto', includeSecondaries: true },
-    '@onecx/angular-webcomponents': { requiredVersion: 'auto', includeSecondaries: true },
-  }),
-})
-config.devServer = { allowedHosts: 'all' }
-const plugins = config.plugins.filter((plugin) => !(plugin instanceof ModifyEntryPlugin))
-module.exports = {
-  ...config,
-  plugins,
-  output: { uniqueName: 'YOUR_MFE_NAME', publicPath: 'auto' },
-  experiments: { ...config.experiments, topLevelAwait: true },
-  optimization: { runtimeChunk: false, splitChunks: false }
-}
-```
-
-To allow for a custom Webpack configuration in production environments it’s a good practice to additionally create a `webpack.prod.js` file that will extend the base config:
-
-```typescript
-module.exports = require('./webpack.config')
-```
-
-If necessary, this file can be used to overwrite or extend the contents of the base config with production specific values.
-
-### [](#environment-file)Add environment file `env.json`
-
-During the loading of an app, OneCX will try to load it’s environment file. To avoid any errors, a file called `env.json` should be accessible at <http://localhost:4200/assets/env.json>. This can be achieved by adding the respective file to the assets folder of the application. The file can be used to pass environment variables to OneCX. For now it can just contain an empty object (`{}`).
-
-### [](#test-remote-entrypoint)Verify that the app is exposing a remote entry point
-
-After completing all steps listed above, the application should be ready to be used as a microfrontend in the OneCX platform. After starting the application with its start command (e.g. `npm start`), the applications entrypoint file (remoteEntry.js) should be accessible at <http://localhost:4200/remoteEntry.js>.
-
-## [](#standalone-mode)Standalone Mode
-
-After completing all steps mentioned in this document, a previously existing "vanilla" Angular application should be runnable as a microfrontend in OneCX. If the app additionally has to support running in standalone (e.g. in local development), a few additional steps are necessary. All steps required for running an app in standalone are covered in the separate [Enable OneCX app to run in standalone](../enable-standalone/index.html) cookbook.
-
-## [](#further-reading)Further Reading
-
-For more information on how OneCX loads microfrontends and utilizes web components for content rendering, refer to the [Microfrontend Content Loading in OneCX](../../../module-federation/microfrontend-content-loading.html) and [Web Components in OneCX](../../../module-federation/webcomponents.html) pages of the OneCX Docs.
-
-## [](#troubleshooting)Troubleshooting
-
-### [](#troubleshooting-compilation-error)Compilation error `TypeError: The 'compilation' argument must be an instance of Compilation`
-
-If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
-
 Calendar
 ====================
 ## [](#goal)Goal: Add Calendar Input
@@ -6010,6 +6010,81 @@ _Adapt in File:_ `<feature>-search.component.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -6121,81 +6196,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -11516,7 +11516,7 @@ Impact: Broken environment
 
 Impact: Router out of sync, many potential issues
 
-* For step-by-step instructions on migrating a vanilla Angular App to a OneCX-compatible microfrontend using @onecx/angular-webcomponents among other packages, refer to the [Migration Steps in Vanilla to OneCX Migration Guide](#documentation:docs-guides-ui:angular/app-to-onecx.adoc#migration-steps).
+* For step-by-step instructions on migrating a vanilla Angular App to a OneCX-compatible microfrontend using @onecx/angular-webcomponents among other packages, refer to the [Migration Steps in Vanilla to OneCX Migration Guide](../docs-guides-ui/angular/app-to-onecx.html#migration-steps).
 
 ### [](#module-federation-any-technology)Module-federation with remoteEntry.js (any technology)
 
@@ -11619,7 +11619,7 @@ Impact: Incorrect routing results
 Impact: Translation issues
 
 * Ensure your webpack configuration includes the correct importMeta configuration.
-* For the correct configuration, please refer to the [OneCX Multi-language Translations Guide](#documentation:docs-guides-ui:angular/translation/multi-language-setup.adoc#provide-translation-path) and other information on multi-language in OneCX.
+* For the correct configuration, please refer to the [OneCX Multi-language Translations Guide](../docs-guides-ui/angular/translation/multi-language-setup.html#provide-translation-path) and other information on multi-language in OneCX.
 
 ### [](#package-compatibility)Ensure package compatibility
 
@@ -12962,7 +12962,7 @@ Some components will be removed. Please check if you are using following compone
 * CriteriaTemplateComponent (ocx-criteria-template)  
 ⇒ **Consider using the SearchHeaderComponent (ocx-search-header) from @onecx/angular-accelerator**
 * standaloneInitializer  
-⇒ **Use standalone mode instead [Documentation](../../docs-guides-ui/angular/migrations/enable-standalone/index.html)**
+⇒ **Use standalone mode instead [Documentation](#documentation:docs-guides-ui:angular/migrations/enable-standalone/index.adoc)**
 * ButtonDialogComponent(ocx-button-dialog)  
 ⇒ **This component should be replaced by ocx-dialog-inline in @onecx/angular-accelerator**
 * MenuService  
