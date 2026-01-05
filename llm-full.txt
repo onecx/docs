@@ -5988,6 +5988,139 @@ __Table 8\. Workspace Hook methods__
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
 
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
 @onecx/react-webcomponents
 ====================
 ## [](#overview)Overview
@@ -6182,139 +6315,6 @@ export default App;
 ## [](#routing-utils)Routing Utils
 
 The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
-
-@onecx/react-remote-components
-====================
-## [](#overview)Overview
-
-`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
-
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
-
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
-
-### [](#init)Initialization
-
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
-
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
-```
-
-### [](#register)Register Remote
-
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
-
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
-```
-
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-### [](#fetching)Fetch Remote
-
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
-```
-
-It is asynchronous function so we need to wait for it to be done.
-
-## [](#usage)Usage
-
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
-
-For example
-
-```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
-```
-
-Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
-
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
-```
-
-## [](#vite)Vite
-
-This library works smoothly with vite applications.
-
-## [](#nextjs)Next.js
-
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 Calendar
 ====================
@@ -10391,84 +10391,6 @@ After running the generator, the following actions must be taken:
 
 undefined
 ====================
-### [](#%5Fcheck%5Fyour%5Ftechnical%5Fsetup)Check your technical setup
-
-| |  Check your npm version and please update if necessary Your npm version should be >= 10.2.4 |
-| --------------------------------------------------------------------------------------------- |
-
-npm --version
-
-| |  Check your node version and please update if necessary Your node version should be 20.11.0 |
-| --------------------------------------------------------------------------------------------- |
-
-node  --version
-
-| |  Check your nx version and please update if necessary Nx version should be Local: v19.6.4 Global: v20.0.6 |
-| ----------------------------------------------------------------------------------------------------------- |
-
-nx  --version
-
-| |  How to install the nx CLI npm install –global nx@latest If you face any issues, try the following steps: rm -rf node\_modules npm cache verify npm install -g @nrwl/cli npm install |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcreate%5Fa%5Fnew%5Fonecx%5Fapp)Create a new OneCX app
-
-The fastest way to create a new OneCX app is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-The generator supports three flavors of projects: angular, with and without NgRx. It is **recommended to use the NgRx flavor** because it leads to better structured projects and currently the support in the generator is better for the NgRx flavor.
-
-To run the generator, execute the following commands:
-
-npx <namespaceOfTheGenerator>/create-workspace <flavor> <nameOfTheProduct>
-npm install
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
-* _<flavor>_: `ngrx` (or `angular`).
-* _<nameOfTheProduct>_: The name of the product to create e.g. `theme-mgmt`.
-
-After running the generator take the following actions:
-
-1. [Check for further actions](basic-onecx-app/further-actions.html)
-2. [Commit the changes](basic-onecx-app/commit-changes.html)
-
-Next you might want to generate a feature as this is a preqrequisite to generate a search / details page and more.
-
-undefined
-====================
-### [](#%5Fcreate%5Fa%5Fsearch%5Fpage)Create a search page
-
-The fastest way to create a new search page in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/nx-plugin:search <feature>
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](glossary.html#feature).
-
-| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the resource name, and the api service name as these are shared. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, the following actions must be taken:
-
-1. [Configure search criteria](search/configure-search-criteria.html)
-2. [Configure search results](search/configure-search-results.html)
-3. [Configure result diagram](search/configure-result-diagram.html)
-4. [Update Header Actions](search/update-header-actions.html)
-5. [Update permissions](search/update-permissions.html)
-6. [Check for further actions](search/further-actions.html)
-7. [Commit the changes](search/commit-changes.html)
-
-**Extension Marker in Search Page Spec File**We use the marker:
-
-<<SPEC-EXTENSIONS-MARKER-!!!-DO-NOT-REMOVE-!!!>>
-
-This marker is used as a placeholder for future extensions by newly generated components. Do not remove the marker from the code, as doing so will prevent these future generated functions and tests from being added to the Search Page Spec File.
-
-undefined
-====================
 ## [](#%5Fglossary)Glossary
 
 In this page you can find explanations for relevant terms.
@@ -10507,6 +10429,84 @@ components:
         name:
           type: string
 ```
+
+undefined
+====================
+### [](#%5Fcreate%5Fa%5Fnew%5Fonecx%5Fapp)Create a new OneCX app
+
+The fastest way to create a new OneCX app is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+The generator supports three flavors of projects: angular, with and without NgRx. It is **recommended to use the NgRx flavor** because it leads to better structured projects and currently the support in the generator is better for the NgRx flavor.
+
+To run the generator, execute the following commands:
+
+npx <namespaceOfTheGenerator>/create-workspace <flavor> <nameOfTheProduct>
+npm install
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
+* _<flavor>_: `ngrx` (or `angular`).
+* _<nameOfTheProduct>_: The name of the product to create e.g. `theme-mgmt`.
+
+After running the generator take the following actions:
+
+1. [Check for further actions](basic-onecx-app/further-actions.html)
+2. [Commit the changes](basic-onecx-app/commit-changes.html)
+
+Next you might want to generate a feature as this is a preqrequisite to generate a search / details page and more.
+
+undefined
+====================
+### [](#%5Fcheck%5Fyour%5Ftechnical%5Fsetup)Check your technical setup
+
+| |  Check your npm version and please update if necessary Your npm version should be >= 10.2.4 |
+| --------------------------------------------------------------------------------------------- |
+
+npm --version
+
+| |  Check your node version and please update if necessary Your node version should be 20.11.0 |
+| --------------------------------------------------------------------------------------------- |
+
+node  --version
+
+| |  Check your nx version and please update if necessary Nx version should be Local: v19.6.4 Global: v20.0.6 |
+| ----------------------------------------------------------------------------------------------------------- |
+
+nx  --version
+
+| |  How to install the nx CLI npm install –global nx@latest If you face any issues, try the following steps: rm -rf node\_modules npm cache verify npm install -g @nrwl/cli npm install |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+### [](#%5Fcreate%5Fa%5Fsearch%5Fpage)Create a search page
+
+The fastest way to create a new search page in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/nx-plugin:search <feature>
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](glossary.html#feature).
+
+| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the resource name, and the api service name as these are shared. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, the following actions must be taken:
+
+1. [Configure search criteria](search/configure-search-criteria.html)
+2. [Configure search results](search/configure-search-results.html)
+3. [Configure result diagram](search/configure-result-diagram.html)
+4. [Update Header Actions](search/update-header-actions.html)
+5. [Update permissions](search/update-permissions.html)
+6. [Check for further actions](search/further-actions.html)
+7. [Commit the changes](search/commit-changes.html)
+
+**Extension Marker in Search Page Spec File**We use the marker:
+
+<<SPEC-EXTENSIONS-MARKER-!!!-DO-NOT-REMOVE-!!!>>
+
+This marker is used as a placeholder for future extensions by newly generated components. Do not remove the marker from the code, as doing so will prevent these future generated functions and tests from being added to the Search Page Spec File.
 
 undefined
 ====================
@@ -15514,9 +15514,10 @@ docker exec -it postgresdb psql -U postgres
 ```
 2. Create the database and user  
 ```sql  
-CREATE DATABASE onecx_hello_world;  
 CREATE USER onecx_hello_world WITH ENCRYPTED PASSWORD 'onecx_hello_world';  
+CREATE DATABASE onecx_hello_world with owner onecx_hello_world;  
 GRANT ALL PRIVILEGES ON DATABASE onecx_hello_world TO onecx_hello_world;  
+GRANT ALL PRIVILEGES ON SCHEMA public TO onecx_hello_world;  
 ```
 3. Exit the **psql** shell  
 ```bash  
@@ -15709,21 +15710,6 @@ Frequently Asked Questions
 ====================
 …​coming soon
 
-Add extra Data in OneCX Local Environment
-====================
-parking place
-
-## [](#adding-new-files)Adding New Files - Guidelines here?
-
-To add new files to the `imports` directory, follow these guidelines:
-
-1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
-2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
-3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
-4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
-
-By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
-
 undefined
 ====================
 ```yaml
@@ -15756,6 +15742,21 @@ x-svc-multi_tenancy: &svc_multi_tenancy
   TKIT_RS_CONTEXT_TENANT_ID_MOCK_ENABLED: ${ONECX_RS_CONTEXT_TENANT_ID_MOCK_ENABLED}
   QUARKUS_REST_CLIENT_ONECX_TENANT_URL: "http://onecx-tenant-svc:8080"
 ```
+
+Add extra Data in OneCX Local Environment
+====================
+parking place
+
+## [](#adding-new-files)Adding New Files - Guidelines here?
+
+To add new files to the `imports` directory, follow these guidelines:
+
+1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
+2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
+3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
+4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
+
+By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
 
 Networking in OneCX Local Environment
 ====================
