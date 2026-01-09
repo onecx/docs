@@ -1,58 +1,38 @@
-# docs
-OneCX Documentation
+# OneCX Documentation
 
-## Working with Local Copies
+This repository contains the sources and configuration for the OneCX documentation site built with Antora. 
+It contains some main modules and aggregates multiple modules from other OneCX repositories used to build and preview the docs.
 
-1. Adjust urls in antora-playbook.yml:
+Contents
+- Antora playbook for CI builds
+- Main navigation tree
+- Modules:
+  - OneCX platform overview including architecture
+  - OneCX Applications overview
+  - Guide how to write OneCX documentations
+  - Guide how to start with OneCX
+  - Entry point for all OneCX Development modules
 
-The main documentation repository contains a list of sources that reference remote repositories via their `url` properties. To use local changes during development, you need to replace these remote URLs with your local file paths.
+Usage
+- See documentation guide on https://onecx.github.io/docs/documentation/current/onecx-docs-doc/index.html
 
-If you made changes to documentation in the `onecx-local-env` repository, in the `antora-playbook.yml` replace:
-
-```yaml
- - url: https://github.com/onecx/onecx-local-env.git
-      branches: [HEAD]
-      start_path: docs
-```
-
-with:
-
-```yaml
- - url: /path/to/your/local/onecx-local-env
-      branches: [HEAD]
-      start_path: docs
-```
-
-Additionally, update the path to the main docs repository to your local path by changing:
-
-```yaml
-content:
-  sources:
-    - url: .
-```
-
-to:
-
-```yaml
-content:
-  sources:
-    - url: /path/to/your/local/docs/repo
-```
-
-2. Build the documentation:
+Quick Use
+- Clone the repository locally
+- Install Antora globally (optional):
 
 ```bash
-npx antora antora-playbook.yml
+npm install -g @antora/cli @antora/site-generator
 ```
 
-3. Viewing Local Changes:
+- Build the site with fetching sources:
 
-After a successful build, a `build` directory will be created in the main documentation root. This directory contains all the files needed to display the complete documentation site.
+```bash
+antora --fetch antora-playbook.yml
+```
 
-To access the index.html, open the following file in your browser:
+- Or use npx without global install:
 
-file://wsl.localhost/wsldev/your-path-to-docs-repo/docs/build/site/documentation/current/index.html
+```bash
+npx antora --fetch antora-playbook.yml
+```
 
-Replace `/path/to/your/docs/repo` with the actual path to your local docs repository.
-
-Now you can navigate to the relevant pages and view your local changes.
