@@ -1,6 +1,6 @@
 # OneCX Documentation
 
-This repository contains the sources and configuration for the OneCX documentation site built with Antora. 
+This repository contains the sources and configuration for the [OneCX Platform documentation site](https://onecx.github.io/docs/documentation/current/index.html) built with Antora. 
 It contains some main modules and aggregates multiple modules from other OneCX repositories used to build and preview the docs.
 
 Contents
