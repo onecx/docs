@@ -14,7 +14,7 @@ Contents
   - Entry point for all OneCX Development modules
 
 Usage
-- See documentation guide on https://onecx.github.io/docs/documentation/current/onecx-docs-doc/index.html
+- See [documentation guide](https://onecx.github.io/docs/documentation/current/onecx-docs-doc/index.html)
 
 Quick Use
 - Clone the repository locally
