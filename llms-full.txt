@@ -5905,6 +5905,26 @@ To verify that the setup is complete, ensure the following:
 
 After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
 
+OneCX Multi-language Translations
+====================
+## [](#overview)Overview
+
+In OneCX multi-language support is available via translations using `@ngx-translate` library.
+
+A [OneCX compatible application](../app-to-onecx.html) can be set up for multi-language translation to support multiple languages in the application.
+
+## [](#setup)Setup
+
+To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
+
+## [](#usage)Usage
+
+After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
+
+## [](#language-information)Language Information
+
+The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
 OneCX Multi-language Translations Usage
 ====================
 ## [](#overview)Overview
@@ -5969,26 +5989,6 @@ this.translate.get('GREETING', params).subscribe((translated: string) => {
     console.log('Translated with params:', translated);
 });
 ```
-
-OneCX Multi-language Translations
-====================
-## [](#overview)Overview
-
-In OneCX multi-language support is available via translations using `@ngx-translate` library.
-
-A [OneCX compatible application](../app-to-onecx.html) can be set up for multi-language translation to support multiple languages in the application.
-
-## [](#setup)Setup
-
-To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
-
-## [](#usage)Usage
-
-After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
-
-## [](#language-information)Language Information
-
-The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
 
 OneCX version 7 changelog
 ====================
@@ -6055,6 +6055,139 @@ apiClient.post('/submit', { name: 'John Doe' })
     console.error('Error submitting data:', error);
   });
 ```
+
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 @onecx/react-integration-interface
 ====================
@@ -6229,139 +6362,6 @@ __Table 8\. Workspace Hook methods__
 | -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
-
-@onecx/react-remote-components
-====================
-## [](#overview)Overview
-
-`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
-
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
-
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
-
-### [](#init)Initialization
-
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
-
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
-```
-
-### [](#register)Register Remote
-
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
-
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
-```
-
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-### [](#fetching)Fetch Remote
-
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
-```
-
-It is asynchronous function so we need to wait for it to be done.
-
-## [](#usage)Usage
-
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
-
-For example
-
-```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
-```
-
-Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
-
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
-```
-
-## [](#vite)Vite
-
-This library works smoothly with vite applications.
-
-## [](#nextjs)Next.js
-
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 @onecx/react-webcomponents
 ====================
@@ -10788,92 +10788,6 @@ Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-lib
 
 undefined
 ====================
-## [](#%5Fconfigure%5Fthe%5Fsearch%5Fcriteria%5Fand%5Fparameters)Configure the search criteria and parameters
-
-After generating the search page, you can add filter criteria. These criteria must be defined in the BFF’s OpenAPI spec and represented in TypeScript for use in the UI. Users enter criteria via HTML input fields placed at the top of the page.
-
-### [](#action-1)ACTION S1: Add additional properties to search request schema
-
-The `Search<FeatureName>Request` component in the OpenAPI yaml must be adapted.
-
-You should have a [Search<Feature>Request](../glossary.html#feature) defined in the OpenAPI specification. By modifying the [Search<Feature>Request](../glossary.html#feature), you can add additional parameters to your search request.
-
-_Adapt in File:_ `<feature>-bff.yaml`
-
-Example:
-
-```yml
-Search<Feature>Request:
-      type: object
-      properties:
-        pageNumber:
-          type: integer
-          format: int32
-          default: 0
-          description: 'The number of the page.'
-        pageSize:
-          type: integer
-          format: int32
-          default: 100
-          maximum: 1000
-          description: 'The size of the page.'
-        id:
-          type: string
-        exampleProperty:
-          type: string
-```
-
-Please refer to the [adding search criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html) for more information.
-
-| |  Run the command **npm run apigen** after adapting the OpenAPI to transform the changes into typescript code. |
-| --------------------------------------------------------------------------------------------------------------- |
-
-| |  Remove the "ACTION" comment after working on this task |
-| --------------------------------------------------------- |
-
-### [](#action-2)ACTION S2: Search criteria representation in zod
-
-The criteria you added in "Action S1" now have to be added to the [<feature>SearchCriteriasSchema](../glossary.html#feature). Assure the keys and types match the ones you defined in the OpenAPI specification.
-
-Refer to the [adding search criteria parameters cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#parameters) for more information.
-
-| |  Remove the "ACTION" comment after working on this task |
-| --------------------------------------------------------- |
-
-### [](#action-3)ACTION S3: HTML input fields for search criteria
-
-To make the search criteria visible and usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.
-
-Please refer to the [adding search criteria html cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#html) for more information.
-
-#### [](#examples-for-different-input-fields)Examples for different input fields
-
-Depending on what kind of input fields you want to add, the implementation differs. You can add different types of input fields, like `Text`, `Calendar`, `Dropdown`, `MultiSelect`, `AutoComplete`. Refer to the [adding search criteria examples for different input fields cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#examples-for-different-input-fields).
-
-### [](#action-4)ACTION S4: Add translations
-
-_Adapt in File:_ `de.json` / `en.json`
-
-Please ensure that all input field labels have the necessary translations added.
-
-Example
-
-```json
-  {
-    "EXAMPLE_FEATURE_SEARCH.CRITERIA.ID": "Example input field label"
-  }
-```
-
-Translations are needed for your input fields, additional labels or dropdown values.
-
-Refer to the [Multi-Language Cookbook](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
-
----
-
-Now you can continue with the next section [Configure search results](configure-search-results.html)
-
-undefined
-====================
 ## [](#%5Fconfigure%5Fthe%5Fsearch%5Fresults)Configure the search results.
 
 To configure the search results, the following actions must be taken.
@@ -11020,6 +10934,92 @@ Refer to the [Multi-Language Cookbook](../../../docs-guides-ui/angular/translati
 
 | |  Remove the "ACTION" comment after working on this task |
 | --------------------------------------------------------- |
+
+undefined
+====================
+## [](#%5Fconfigure%5Fthe%5Fsearch%5Fcriteria%5Fand%5Fparameters)Configure the search criteria and parameters
+
+After generating the search page, you can add filter criteria. These criteria must be defined in the BFF’s OpenAPI spec and represented in TypeScript for use in the UI. Users enter criteria via HTML input fields placed at the top of the page.
+
+### [](#action-1)ACTION S1: Add additional properties to search request schema
+
+The `Search<FeatureName>Request` component in the OpenAPI yaml must be adapted.
+
+You should have a [Search<Feature>Request](../glossary.html#feature) defined in the OpenAPI specification. By modifying the [Search<Feature>Request](../glossary.html#feature), you can add additional parameters to your search request.
+
+_Adapt in File:_ `<feature>-bff.yaml`
+
+Example:
+
+```yml
+Search<Feature>Request:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+          format: int32
+          default: 0
+          description: 'The number of the page.'
+        pageSize:
+          type: integer
+          format: int32
+          default: 100
+          maximum: 1000
+          description: 'The size of the page.'
+        id:
+          type: string
+        exampleProperty:
+          type: string
+```
+
+Please refer to the [adding search criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html) for more information.
+
+| |  Run the command **npm run apigen** after adapting the OpenAPI to transform the changes into typescript code. |
+| --------------------------------------------------------------------------------------------------------------- |
+
+| |  Remove the "ACTION" comment after working on this task |
+| --------------------------------------------------------- |
+
+### [](#action-2)ACTION S2: Search criteria representation in zod
+
+The criteria you added in "Action S1" now have to be added to the [<feature>SearchCriteriasSchema](../glossary.html#feature). Assure the keys and types match the ones you defined in the OpenAPI specification.
+
+Refer to the [adding search criteria parameters cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#parameters) for more information.
+
+| |  Remove the "ACTION" comment after working on this task |
+| --------------------------------------------------------- |
+
+### [](#action-3)ACTION S3: HTML input fields for search criteria
+
+To make the search criteria visible and usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.
+
+Please refer to the [adding search criteria html cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#html) for more information.
+
+#### [](#examples-for-different-input-fields)Examples for different input fields
+
+Depending on what kind of input fields you want to add, the implementation differs. You can add different types of input fields, like `Text`, `Calendar`, `Dropdown`, `MultiSelect`, `AutoComplete`. Refer to the [adding search criteria examples for different input fields cookbook](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#examples-for-different-input-fields).
+
+### [](#action-4)ACTION S4: Add translations
+
+_Adapt in File:_ `de.json` / `en.json`
+
+Please ensure that all input field labels have the necessary translations added.
+
+Example
+
+```json
+  {
+    "EXAMPLE_FEATURE_SEARCH.CRITERIA.ID": "Example input field label"
+  }
+```
+
+Translations are needed for your input fields, additional labels or dropdown values.
+
+Refer to the [Multi-Language Cookbook](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
+
+---
+
+Now you can continue with the next section [Configure search results](configure-search-results.html)
 
 undefined
 ====================
@@ -24846,6 +24846,8 @@ undefined
 
 undefined
 ====================
+## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
+
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
@@ -25052,8 +25054,6 @@ Once configured in the extensions slot, any micro frontend can send messages thr
 
 undefined
 ====================
-## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
-
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
