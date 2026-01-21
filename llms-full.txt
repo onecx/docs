@@ -16196,13 +16196,14 @@ Since OneCX runs in a Docker Compose environment, most settings can be managed d
 The following table gives an overview of the available scripts in **onecx-local-env** root directory.  
 
 __Table 1\. Available Scripts__
-| [start-onecx.sh](scripts/start.html)           | Start the local environment including import of inital neccessary data |
-| ---------------------------------------------- | ---------------------------------------------------------------------- |
-| [stop-onecx.sh](scripts/stop.html)             | Stop the local environment                                             |
-| [import-onecx.sh](scripts/import.html)         | Import data into the local environment                                 |
-| [toggle-mfes.sh](scripts/toggle-mfes.html)     | Integrate local running microfrontends directly into OneCX             |
-| [check-images.sh](scripts/check-images.html)   | List local images with state and version                               |
-| [update-images.sh](scripts/update-images.html) | Update local images to the latest available versions                   |
+| [start-onecx.sh](scripts/start.html)                 | Start the local environment including import of inital neccessary data |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| [stop-onecx.sh](scripts/stop.html)                   | Stop the local environment                                             |
+| [import-onecx.sh](scripts/import.html)               | Import data into the local environment                                 |
+| [toggle-mfes.sh](scripts/toggle-mfes.html)           | Integrate local running microfrontends directly into OneCX             |
+| [check-images.sh](scripts/check-images.html)         | List local images with state and version                               |
+| [update-images.sh](scripts/update-images.html)       | Update local images to the latest available versions                   |
+| [setup-truststore.sh](scripts/setup-truststore.html) | Create or update Java Truststore with custom certificates              |
 
 ## [](#additional-utilities)Additional Utilities
 
@@ -16332,19 +16333,20 @@ Since OneCX runs in a Docker Compose environment, most settings can be managed d
 The following table gives an overview of the available scripts in **onecx-local-env** root directory.  
 
 __Table 1\. Available Scripts__
-| [start-onecx.sh](scripts/start.html)           | Start the local environment including import of inital neccessary data |
-| ---------------------------------------------- | ---------------------------------------------------------------------- |
-| [stop-onecx.sh](scripts/stop.html)             | Stop the local environment                                             |
-| [import-onecx.sh](scripts/import.html)         | Import data into the local environment                                 |
-| [toggle-mfes.sh](scripts/toggle-mfes.html)     | Integrate local running microfrontends directly into OneCX             |
-| [check-images.sh](scripts/check-images.html)   | List local images with state and version                               |
-| [update-images.sh](scripts/update-images.html) | Update local images to the latest available versions                   |
+| [start-onecx.sh](scripts/start.html)                 | Start the local environment including import of inital neccessary data |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- |
+| [stop-onecx.sh](scripts/stop.html)                   | Stop the local environment                                             |
+| [import-onecx.sh](scripts/import.html)               | Import data into the local environment                                 |
+| [toggle-mfes.sh](scripts/toggle-mfes.html)           | Integrate local running microfrontends directly into OneCX             |
+| [check-images.sh](scripts/check-images.html)         | List local images with state and version                               |
+| [update-images.sh](scripts/update-images.html)       | Update local images to the latest available versions                   |
+| [setup-truststore.sh](scripts/setup-truststore.html) | Create or update Java Truststore with custom certificates              |
 
 Set up a OneCX Local Environment
 ====================
 This guide provides instructions for setting up and installing **onecx-local-env**, the local development environment for OneCX. Once setup is done the environment can be started, see [Run OneCX](run-onecx.html).
 
-If you want to setup a development environment for writing OneCX documentation, please refer to the [OneCX Docs: Setting up](../onecx-docs-doc/setup.html) guide instead.
+If you want to setup a development environment for writing OneCX documentation, please refer to the [OneCX Docs: Setting up](#documentation:onecx-docs-dev:docs/docs%5Fsetup.adoc) guide instead.
 
 ## [](#prerequisites)Prerequisites
 
@@ -16433,10 +16435,14 @@ Click here to view entries to be added to the **hosts** file
 127.0.0.1 sonar
 
 # OneCX - product services
-127.0.0.1 onecx-announcement-svc
+127.0.0.1 onecx-ai-bff
+127.0.0.1 onecx-ai-svc
 127.0.0.1 onecx-announcement-bff
+127.0.0.1 onecx-announcement-svc
 127.0.0.1 onecx-bookmark-svc
 127.0.0.1 onecx-bookmark-bff
+127.0.0.1 onecx-chat-bff
+127.0.0.1 onecx-chat-svc
 127.0.0.1 onecx-document-svc
 127.0.0.1 onecx-document-bff
 127.0.0.1 onecx-help-svc
@@ -17051,6 +17057,122 @@ To add new files to the `imports` directory, follow these guidelines:
 
 By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
 
+Adding Custom Certificates for Java Applications in Docker
+====================
+The use of custom certificates solves issues with Java applications running inside Docker containers that need to communicate over HTTPS with services using non-standard or self-signed certificates.
+
+## [](#why-is-this-about)Why is this about?
+
+When running Java applications inside Docker containers, HTTPS connections often fail with errors like:
+
+Excerpt from Docker logs of the affected Java service
+
+```text
+PKIX path building failed: unable to find valid certification path to requested target
+```
+
+### [](#common-use-cases)Common Use Cases
+
+Corporate TLS Interception
+
+Tools like Zscaler or internal proxies re-sign certificates with a corporate CA.
+
+Self-Signed Certificates
+
+Internal services using self-signed certs.
+
+Private PKI
+
+Enterprise environments with custom root or intermediate CAs.
+
+### [](#problems-that-arise)Problems that arise
+
+* Outbound HTTPS calls fail (e.g., REST APIs, OAuth, external services).
+* Java throws any TLS/SSL exception e.g. `SunCertPathBuilderException`.
+
+## [](#add-custom-certificates)Add Custom Certificates
+
+To resolve these issues, you need to add the required certificate to a Java Truststore used by your Java applications running inside Docker containers.
+
+### [](#get-the-certificate)Get the Certificate
+
+Identify and export the necessary certificate from the target HTTPS service.  
+Open the HTTPS website (where the error occurs) in your browser (here exemplarily Chrome).
+
+Click the icon left on URL, then
+
+1. Click on **Connection is secure**
+2. Click on **Certificate is valid**
+3. Navigate to **Details** tab  
+   1. Select the certificate with the target URL in **Certificate Hierarchy**  
+   2. Click on **Export** and save as Base-64 encoded `.crt` file.
+
+| |  Alternatively, you can export the certificate using command line tools like openssl or curl or use system-specific certificate management tools to export root and intermediate CAs. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Place the exported files in the **certs** folder inside of **onecx-local-env**
+
+```text
+certs/
+  ├── YourCertificate.crt
+  └── YourCertificate2.crt
+```
+
+### [](#step-2-create-a-java-truststore)Step 2: Create a Java Truststore
+
+Use the provided setup script to create or update a truststore with all your certificates. The script automatically imports all `.crt` and `.pem` files from the specified directory. In some cases, you will prompt to enter the root password for cleanup of existing entries.
+
+Setup Truststore with password "trustjava"
+
+```bash
+./setup-truststore.sh
+```
+
+Result: Truststore location
+
+```none
+certs/truststore.jks
+```
+
+### [](#verify-the-truststore-contents)Verify the Truststore Contents
+
+Optionally, you can check the contents of the truststore by listing all the certificates it contains using the following command:
+
+Verify Truststore Contents
+
+```bash
+keytool -list -keystore ./certs/truststore.jks -storepass trustjava
+```
+
+Expected output showing all imported certificates with their aliases.
+
+![script setup truststore.sh content](../_images/scripts/script_setup-truststore.sh_content.png) 
+
+Figure 1\. Example Output with certificate for ollama.one-cx.org
+
+### [](#step-3-mount-truststore-in-docker-compose)Step 3: Mount Truststore in Docker Compose
+
+Update your Docker Compose file to mount the truststore and configure Java to use it on the relevant services.
+
+Docker Compose Snippet to Mount Truststore (note the password used)
+
+```yaml
+services:
+  onecx-ai-svc:
+    image: ${ONECX_AI_SVC}
+    volumes:
+      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/opt/certs/truststore.jks
+        -Djavax.net.ssl.trustStorePassword=trustjava
+        -Djavax.net.ssl.trustStoreType=JKS
+```
+
+### [](#step-4-restart-and-verify)Step 4: Restart and Verify
+
+Verify the SSL/TLS connection works by triggering an HTTPS call and confirming no `PKIX path building failed` or any other TLS/SSL error appears.
+
 Networking in OneCX Local Environment
 ====================
 This document explains how networking is configured and managed in the OneCX Local Environment.
@@ -17237,7 +17359,7 @@ KC_CLIENT_ID=onecx-shell-ui-client    # Client ID set in shell environment
 
 Environment variable sets defined in Docker Compose 
 
-[Link to GitHub source file](https://raw.githubusercontent.com/onecx/onecx-local-env/refs/heads/main/versions/v2/docker-compose.yaml)
+[Link to GitHub source file](https://raw.githubusercontent.com/onecx/onecx-local-env/refs/heads/main/versions/v2/compose.yaml)
 
 Excerpt from `versions/v2/compose.yaml`
 
@@ -17397,6 +17519,40 @@ The import scripts are using **node.js** and **jq** for reading the data, split 
 ![OneCX Data Structure](../_images/onecx-data-structure.png) 
 
 Figure 1\. Organization of Initial Data
+
+Docker Compose Profiles in OneCX Local Environment
+====================
+[Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/) allow you to define different sets of services and configurations that can be activated or deactivated based on your development or testing needs.  
+This concept is particularly useful in the OneCX Local Environment, where you might want to run only a subset of services for specific scenarios.
+
+The concept of Docker Compose Profiles is limited. While it works well for starting subsets of services, it doesn’t work in the same way for stopping those subsets.
+
+## [](#used-compose-profiles)Used Compose Profiles
+
+In OneCX Local Environment, the following Docker Compose profiles are defined:
+
+base
+
+The **base** profile includes the essential services required to run the OneCX Local Environment.
+
+It is useful for scenarios where you want to run a minimal setup without additional features or services.
+
+all
+
+The **all** profile includes almost all available services in the OneCX Local Environment.  
+Excepted are services that may require additional resources or are not commonly used in standard development scenarios.
+
+This profile is ideal for comprehensive testing or development scenarios where you need access to all common features and services provided by OneCX.
+
+ai
+
+The **ai** profile includes services related to AI functionalities within the OneCX Local Environment.  
+Activate this profile when you want to test or develop AI-related features.
+
+The services in this profile…​
+
+* depend on the **base** profile, so ensure that the base services are running.
+* require an App Key for AI services to function correctly. During import, you will be prompted to provide this key.
 
 Utilities used in OneCX Local Environment
 ====================
@@ -17625,6 +17781,18 @@ Figure 2\. Successful import of **t1** data via authenticated user **onecx\_t1\_
 | |  If you want only import tenant-specific data but do not working afterwards with secure authentication then execute the [start-onecx.sh](start.html) script **without** **\-s** option again. This reset the security option on running services. |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
+Setup Java Truststore with Custom Certificates
+====================
+The **setup-truststore.sh** script is used to create or update a Java Truststore containing custom certificates needed by Java applications running inside Docker containers in the OneCX Local Environment.
+
+There are no parameters required. The script can be run from the root directory of the **onecx-local-env** repository:
+
+```bash
+./setup-truststore.sh
+```
+
+Instructions for preparing the Java Truststore with your certificates can be found under [Custom Certificates](../internal/custom-certificates.html).
+
 Start local OneCX
 ====================
 The **start-onecx.sh** script is used to start the OneCX Local Environment. By default, it will start a minimal set of services and import initial mock data on startup. Data imports will not overwrite any custom data that may already exist in the environment and can be skipped using the appropriate flag. The script can be run from the root directory of the **onecx-local-env** repository:
@@ -17677,7 +17845,7 @@ Skips the import of initial data after starting the services. (Default: import d
 
 ### [](#start-essential-services)Start essential Services
 
-The Docker services **essential** for OneCX are started. The necessary Docker volumes are created and required data are imported. Technically, these services are labelled with the **base** profile in the docker-compose file used.
+The Docker services **essential** for OneCX are started. The necessary Docker volumes are created and required data are imported. Technically, these services are labelled with the **base** profile in the Docker Compose file used.
 
 There is no security context defined, so authentication/authorization on services is disabled.
 
@@ -17690,7 +17858,7 @@ There is no security context defined, so authentication/authorization on service
 
 ### [](#start-all-services)Start ALL Services
 
-**All** Docker services for OneCX are started. The necessary Docker volumes are created and required data are imported. Technically, the relevant services are marked with the **all** profile in the docker-compose file used.
+**All** Docker services for OneCX are started. The necessary Docker volumes are created and required data are imported. Technically, the relevant services are marked with the **all** profile in the Docker Compose file used.
 
 ```bash
 ./start-onecx.sh -p all
