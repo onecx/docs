@@ -6265,6 +6265,139 @@ __Table 8\. Workspace Hook methods__
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
 
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
 @onecx/react-webcomponents
 ====================
 ## [](#overview)Overview
@@ -6460,138 +6593,126 @@ export default App;
 
 The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
 
-@onecx/react-remote-components
+Calendar
 ====================
-## [](#overview)Overview
+## [](#goal)Goal: Add Calendar Input
 
-`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+Add a Calendar as a search criteria input field for your search page.
 
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
 
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
+## [](#parameters)1\. Parameters
+
+First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleDate: z
+        .string()
+        .transform((v) => (v ? new Date(v) : undefined))
+        .optional(),
 ```
 
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+## [](#html)2\. HTML
 
-### [](#init)Initialization
+Next, add the following code to your formGroup in the html file and adapt:
 
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+* by replacing all occurences of `exampleDate` with the actual name which is defined
+* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
 
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
-```
-
-### [](#register)Register Remote
-
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
-
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
-```
-
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-### [](#fetching)Fetch Remote
-
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
-```
-
-It is asynchronous function so we need to wait for it to be done.
-
-## [](#usage)Usage
-
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
-
-For example
+_Adapt in File:_ `<feature>-search.component.html`
 
 ```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+    <span class="p-float-label">
+        <p-calendar
+            id="exampleDate"
+            formControlName="exampleDate"
+            name="exampleDate"
+            ngDefaultControl
+            pInputDate
+            type="text"
+            appendTo="body"
+            [showClear]="true"
+            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
+            >
+        </p-calendar>
+        <label for="exampleDate">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
 ```
 
-Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+## [](#selectors)3\. Selectors
 
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
+Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { Calendar } from 'primeng/calendar';
+    ...
+
+    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
+    ...
+
+    search(formValue: FormGroup) {
+      const searchCriteria = buildSearchCriteria(
+        formValue.getRawValue(),
+        this.calendars, <-- ADD THIS LINE
+        {
+            removeNullValues: true,
+        },
+      );
+      this.store.dispatch(
+      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
+      );
+    }
 ```
 
-## [](#vite)Vite
+## [](#effects)4\. Effects (Optional)
 
-This library works smoothly with vite applications.
+If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
 
-## [](#nextjs)Next.js
+_Adapt in File:_ `<feature>-search.effects.ts`
 
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+```javascript
+  syncParamsToUrl$ = createEffect(
+    () => {
+      return this.actions$.pipe(
+        ofType(
+          <%= featureClassName %>SearchActions.searchButtonClicked,
+          <%= featureClassName %>SearchActions.resetButtonClicked,
+        ),
+        concatLatestFrom(() => [
+          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
+          this.route.queryParams,
+        ]),
+        tap(([, criteria, queryParams]) => {
+          const results =
+            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
+          if (!results.success || !equal(criteria, results.data)) {
+            const params = {
+              ...criteria,
+              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
+            };
+            this.router.navigate([], {
+              relativeTo: this.route,
+              queryParams: params,
+              replaceUrl: true,
+              onSameUrlNavigation: 'ignore',
+            });
+          }
+        }),
+      );
+    },
+    { dispatch: false },
+  );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 Dropdown
 ====================
@@ -6634,6 +6755,81 @@ _Adapt in File:_ `<feature>-search.component.html`
               display="chip"
               [showClear]="true"
         ></p-dropdown>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
         <label for="exampleEnum$">{{
             'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
         }}</label>
@@ -6779,202 +6975,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
-Calendar
-====================
-## [](#goal)Goal: Add Calendar Input
-
-Add a Calendar as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleDate: z
-        .string()
-        .transform((v) => (v ? new Date(v) : undefined))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt:
-
-* by replacing all occurences of `exampleDate` with the actual name which is defined
-* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-calendar
-            id="exampleDate"
-            formControlName="exampleDate"
-            name="exampleDate"
-            ngDefaultControl
-            pInputDate
-            type="text"
-            appendTo="body"
-            [showClear]="true"
-            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
-            >
-        </p-calendar>
-        <label for="exampleDate">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-## [](#selectors)3\. Selectors
-
-Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { Calendar } from 'primeng/calendar';
-    ...
-
-    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
-    ...
-
-    search(formValue: FormGroup) {
-      const searchCriteria = buildSearchCriteria(
-        formValue.getRawValue(),
-        this.calendars, <-- ADD THIS LINE
-        {
-            removeNullValues: true,
-        },
-      );
-      this.store.dispatch(
-      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
-      );
-    }
-```
-
-## [](#effects)4\. Effects (Optional)
-
-If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-  syncParamsToUrl$ = createEffect(
-    () => {
-      return this.actions$.pipe(
-        ofType(
-          <%= featureClassName %>SearchActions.searchButtonClicked,
-          <%= featureClassName %>SearchActions.resetButtonClicked,
-        ),
-        concatLatestFrom(() => [
-          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
-          this.route.queryParams,
-        ]),
-        tap(([, criteria, queryParams]) => {
-          const results =
-            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
-          if (!results.success || !equal(criteria, results.data)) {
-            const params = {
-              ...criteria,
-              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
-            };
-            this.router.navigate([], {
-              relativeTo: this.route,
-              queryParams: params,
-              replaceUrl: true,
-              onSameUrlNavigation: 'ignore',
-            });
-          }
-        }),
-      );
-    },
-    { dispatch: false },
-  );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -10278,48 +10278,6 @@ The following application types and components can be generated:
          * Simple NgRx Page  
    * Pre Commit Validation
 
-undefined
-====================
-### [](#%5Fautomated%5Fcode%5Fmodification%5Fin%5Fyour%5Fapplication)Automated Code Modification in Your Application
-
-#### [](#%5Foverview)Overview
-
-During code generation and updates, the system may automatically modify existing files to insert new components, routes, or configurations. The `safeReplace` mechanism ensures these modifications are applied safely and provides feedback in case of any issues.
-
-#### [](#%5Fhow%5Fit%5Fworks)How It Works
-
-1. When a new feature is generated, existing files are scanned for known patterns.
-2. If a matching pattern is found, it is updated with the new content.
-3. If an issue occurs (e.g. pattern not found), the system:  
-   * Leaves a comment in the affected file describing the issue.  
-   * Logs the error for developers to manually resolve.
-
-#### [](#%5Fwhat%5Fthis%5Fmeans%5Ffor%5Fyou)What This Means for You
-
-* You might notice auto-generated comments in certain files indicating that a modification attempt was unsuccessful.
-* These comments will contain specific instructions for resolving the issue manually.
-* If everything works as expected, you won’t see any errors, and your application will seamlessly integrate new features.
-
-#### [](#%5Fexample%5Fof%5Fan%5Ferror%5Fmessage)Example of an Error Message
-
-If a replacement fails, you may find a comment like this in your code:
-
-```typescript
-// Generator Failure occurred!
-// The goal of the generation was to: Add new feature X
-//
-// The following replacements failed:
-// Could not find the pattern: routes: Routes = [. Attempted to replace with: routes: Routes = [ { path: 'details/:id', component: ${className}DetailsComponent, pathMatch: 'full' },
-//
-// Please perform the replacements manually.
-```
-
-#### [](#%5Fwhat%5Fto%5Fdo%5Fif%5Fyou%5Fsee%5Fthis)What to Do If You See This
-
-1. Open the affected file.
-2. Follow the instructions in the comment to manually apply the required change.
-3. If unsure, consult the development team or refer to the feature documentation.
-
 Create a UI App
 ====================
 What is a UI App?
@@ -10417,6 +10375,48 @@ This command will generate a new feature module named **book** with the necessar
 ![generated feature book](../_images/generated_feature_book.png) 
 
 Figure 1\. Excerpt of generated files and directories
+
+undefined
+====================
+### [](#%5Fautomated%5Fcode%5Fmodification%5Fin%5Fyour%5Fapplication)Automated Code Modification in Your Application
+
+#### [](#%5Foverview)Overview
+
+During code generation and updates, the system may automatically modify existing files to insert new components, routes, or configurations. The `safeReplace` mechanism ensures these modifications are applied safely and provides feedback in case of any issues.
+
+#### [](#%5Fhow%5Fit%5Fworks)How It Works
+
+1. When a new feature is generated, existing files are scanned for known patterns.
+2. If a matching pattern is found, it is updated with the new content.
+3. If an issue occurs (e.g. pattern not found), the system:  
+   * Leaves a comment in the affected file describing the issue.  
+   * Logs the error for developers to manually resolve.
+
+#### [](#%5Fwhat%5Fthis%5Fmeans%5Ffor%5Fyou)What This Means for You
+
+* You might notice auto-generated comments in certain files indicating that a modification attempt was unsuccessful.
+* These comments will contain specific instructions for resolving the issue manually.
+* If everything works as expected, you won’t see any errors, and your application will seamlessly integrate new features.
+
+#### [](#%5Fexample%5Fof%5Fan%5Ferror%5Fmessage)Example of an Error Message
+
+If a replacement fails, you may find a comment like this in your code:
+
+```typescript
+// Generator Failure occurred!
+// The goal of the generation was to: Add new feature X
+//
+// The following replacements failed:
+// Could not find the pattern: routes: Routes = [. Attempted to replace with: routes: Routes = [ { path: 'details/:id', component: ${className}DetailsComponent, pathMatch: 'full' },
+//
+// Please perform the replacements manually.
+```
+
+#### [](#%5Fwhat%5Fto%5Fdo%5Fif%5Fyou%5Fsee%5Fthis)What to Do If You See This
+
+1. Open the affected file.
+2. Follow the instructions in the comment to manually apply the required change.
+3. If unsure, consult the development team or refer to the feature documentation.
 
 Create a Simple NgRx Page
 ====================
@@ -10748,6 +10748,24 @@ Please check if the string 'ACTION' is present in any of the files within the ou
 
 undefined
 ====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  Build & test & run your application Please run the following commands to make sure that the application builds, that the tests are running and that the application starts: npm run build npm run test npm start |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Run your application on another port if needed (4211 is an example) nx serve --port=4211 |
+| ------------------------------------------------------------------------------------------- |
+
+| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Commit your changes Please commit your changes with the following commit message if the build and the tests passed: feat: create-update added for <nameOfTheProduct> Please replace _nameOfTheProduct_ with the real name of your product. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+To ensure clarity and consistency, please follow the naming schema for commit messages. For further details and guidelines, please refer to [Conventional Commits](https://www.conventionalcommits.org).
+
+undefined
+====================
 ## [](#customize-form-fields)Customize form fields
 
 The form fields of the dialog need to be adapted
@@ -10851,24 +10869,6 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  Build & test & run your application Please run the following commands to make sure that the application builds, that the tests are running and that the application starts: npm run build npm run test npm start |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Run your application on another port if needed (4211 is an example) nx serve --port=4211 |
-| ------------------------------------------------------------------------------------------- |
-
-| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Commit your changes Please commit your changes with the following commit message if the build and the tests passed: feat: create-update added for <nameOfTheProduct> Please replace _nameOfTheProduct_ with the real name of your product. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-To ensure clarity and consistency, please follow the naming schema for commit messages. For further details and guidelines, please refer to [Conventional Commits](https://www.conventionalcommits.org).
 
 undefined
 ====================
