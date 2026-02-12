@@ -6091,6 +6091,139 @@ apiClient.post('/submit', { name: 'John Doe' })
   });
 ```
 
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
 @onecx/react-integration-interface
 ====================
 ## [](#overview)Overview
@@ -6264,139 +6397,6 @@ __Table 8\. Workspace Hook methods__
 | -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
-
-@onecx/react-remote-components
-====================
-## [](#overview)Overview
-
-`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
-
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
-
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
-
-### [](#init)Initialization
-
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
-
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
-```
-
-### [](#register)Register Remote
-
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
-
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
-```
-
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-### [](#fetching)Fetch Remote
-
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
-```
-
-It is asynchronous function so we need to wait for it to be done.
-
-## [](#usage)Usage
-
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
-
-For example
-
-```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
-```
-
-Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
-
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
-```
-
-## [](#vite)Vite
-
-This library works smoothly with vite applications.
-
-## [](#nextjs)Next.js
-
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 @onecx/react-webcomponents
 ====================
@@ -10643,31 +10643,6 @@ After running the generator, the following actions must be taken:
 
 undefined
 ====================
-### [](#%5Fcreate%5Fa%5Fnew%5Fonecx%5Fapp)Create a new OneCX app
-
-The fastest way to create a new OneCX app is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-The generator supports three flavors of projects: angular, with and without NgRx. It is **recommended to use the NgRx flavor** because it leads to better structured projects and currently the support in the generator is better for the NgRx flavor.
-
-To run the generator, execute the following commands:
-
-npx <namespaceOfTheGenerator>/create-workspace <flavor> <nameOfTheProduct>
-npm install
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
-For a project specific generator, ask for the namespace of the generators.
-* _<flavor>_: `ngrx` (or `angular`).
-* _<nameOfTheProduct>_: The name of the product to create e.g. `theme-mgmt`.
-
-After running the generator take the following actions:
-
-1. [Check for further actions](basic-onecx-app/further-actions.html)
-2. [Commit the changes](basic-onecx-app/commit-changes.html)
-
-Next you might want to generate a feature as this is a preqrequisite to generate a search / details page and more.
-
-undefined
-====================
 ## [](#%5Fglossary)Glossary
 
 In this page you can find explanations for relevant terms.
@@ -10706,6 +10681,31 @@ components:
         name:
           type: string
 ```
+
+undefined
+====================
+### [](#%5Fcreate%5Fa%5Fnew%5Fonecx%5Fapp)Create a new OneCX app
+
+The fastest way to create a new OneCX app is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+The generator supports three flavors of projects: angular, with and without NgRx. It is **recommended to use the NgRx flavor** because it leads to better structured projects and currently the support in the generator is better for the NgRx flavor.
+
+To run the generator, execute the following commands:
+
+npx <namespaceOfTheGenerator>/create-workspace <flavor> <nameOfTheProduct>
+npm install
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
+For a project specific generator, ask for the namespace of the generators.
+* _<flavor>_: `ngrx` (or `angular`).
+* _<nameOfTheProduct>_: The name of the product to create e.g. `theme-mgmt`.
+
+After running the generator take the following actions:
+
+1. [Check for further actions](basic-onecx-app/further-actions.html)
+2. [Commit the changes](basic-onecx-app/commit-changes.html)
+
+Next you might want to generate a feature as this is a preqrequisite to generate a search / details page and more.
 
 undefined
 ====================
@@ -15368,6 +15368,64 @@ __Table 2\. Output Events__
 | --------------------- | --------------------- | ------------------------------------------------------------------- |
 | resultEmitter         | resultEmitter         | Emits the type of button clicked (e.g. primary, secondary, custom). |
 
+Replace BASE_URL injection token
+====================
+In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
+
+## [](#%5Fupdate%5Fimports)Update imports
+
+* For each remote component replace BASE\_URL import from `@onecx/angular-remote-components` with `REMOTE_COMPONENT_CONFIG` import from `@onecx/angular-utils`
+* For each remote component update import `REMOTE_COMPONENT_CONFIG` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
+* For each remote component update import for `RemoteComponentConfig` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
+
+## [](#%5Fupdate%5Fcomponent%5Fcode)Update component code
+
+* Replace `BASE_URL` in component’s providers array to `REMOTE_COMPONENT_CONFIG`
+* Replace `BASE_URL` in component’s constructor injection to `REMOTE_COMPONENT_CONFIG`
+* Replace `BASE_URL` type `ReplaySubject<string>` to `REMOTE_COMPONENT_CONFIG` type `ReplaySubject<RemoteComponentConfig>`
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { BASE_URL } from "@onecx/angular-remote-components";
+
+@Component({
+  providers: [
+    {
+      provide: BASE_URL,
+      useValue: new ReplaySubject<string>(1)
+    }
+  ]
+})
+export class Example {
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>
+  )
+}
+```
+
+After
+
+```typescript
+import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from "@onecx/angular-utils";
+
+@Component({
+  providers: [
+    {
+      provide: REMOTE_COMPONENT_CONFIG,
+      useValue: new ReplaySubject<RemoteComponentConfig>(1)
+    }
+  ]
+})
+export class Example {
+  constructor(
+    @Inject(REMOTE_COMPONENT_CONFIG) private readonly remoteComponentConfig: ReplaySubject<RemoteComponentConfig>
+  )
+}
+```
+
 Replace SearchCriteriaComponent
 ====================
 In OneCX v6, Replace **SearchCriteriaComponent** with **SearchHeaderComponent**. SearcghHeaderComponent can accept search templates and provides options to add toolbar content with alignment.
@@ -15481,64 +15539,6 @@ __Table 2\. Output Events__
 | search                  | searched              | Emits on search action. Provides nothing                                      |
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
-
-Replace BASE_URL injection token
-====================
-In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
-
-## [](#%5Fupdate%5Fimports)Update imports
-
-* For each remote component replace BASE\_URL import from `@onecx/angular-remote-components` with `REMOTE_COMPONENT_CONFIG` import from `@onecx/angular-utils`
-* For each remote component update import `REMOTE_COMPONENT_CONFIG` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
-* For each remote component update import for `RemoteComponentConfig` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
-
-## [](#%5Fupdate%5Fcomponent%5Fcode)Update component code
-
-* Replace `BASE_URL` in component’s providers array to `REMOTE_COMPONENT_CONFIG`
-* Replace `BASE_URL` in component’s constructor injection to `REMOTE_COMPONENT_CONFIG`
-* Replace `BASE_URL` type `ReplaySubject<string>` to `REMOTE_COMPONENT_CONFIG` type `ReplaySubject<RemoteComponentConfig>`
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { BASE_URL } from "@onecx/angular-remote-components";
-
-@Component({
-  providers: [
-    {
-      provide: BASE_URL,
-      useValue: new ReplaySubject<string>(1)
-    }
-  ]
-})
-export class Example {
-  constructor(
-    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>
-  )
-}
-```
-
-After
-
-```typescript
-import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from "@onecx/angular-utils";
-
-@Component({
-  providers: [
-    {
-      provide: REMOTE_COMPONENT_CONFIG,
-      useValue: new ReplaySubject<RemoteComponentConfig>(1)
-    }
-  ]
-})
-export class Example {
-  constructor(
-    @Inject(REMOTE_COMPONENT_CONFIG) private readonly remoteComponentConfig: ReplaySubject<RemoteComponentConfig>
-  )
-}
-```
 
 Update Component Imports
 ====================
@@ -17285,6 +17285,28 @@ Verify that the services are running
 ./list-containers.sh
 ```
 
+Common Issues
+====================
+This page lists common issues and respective solutions when using OneCX Local Environment.
+
+## [](#keycloak-reported-as-unhealthy)Keycloak reported as unhealthy
+
+If the `keycloak-app` service is reported as unhealthy, please try to re-run the docker compose command to start the service again. In some cases, Keycloak might take a bit longer to start up, and re-running the command can help resolve the issue. This issue is more common in [OneCX Local Environment v1](../versions/v1.html) due to differences in the performed health checks.
+
+## [](#docker-compose-doesnt-wait-for-all-health-checks-to-pass)Docker Compose doesn’t wait for all health checks to pass
+
+In some cases, specifically when services don’t have explicit dependencies defined via the `depends_on` directive, Docker Compose might not wait for all health checks to pass before finalizing the startup process. If you want to force Docker Compose to wait for all health checks to pass, you can use the `--wait` flag when starting the services. Example:
+
+```bash
+  docker compose up -d --wait
+```
+
+## [](#services-are-not-reachable-or-import-of-initial-data-fails)Services are not reachable or import of initial data fails
+
+Some `onecx-local-env` services might take longer than others to start up and become fully operational. This can cause issues if you or a script you are running tries to access a service before it is ready. To prevent any issues it is recommended to wait for at least 30 seconds **after** all services are reported as healthy before accessing any service or running any import scripts. The [import script for OneCX Local Environment v2](https://github.com/onecx/onecx-local-env/blob/main/versions/v2/import-onecx.v2.sh) has a built-in wait time of 30 seconds after all services are healthy to account for this. If you are using [OneCX Local Environment v1](../versions/v1.html), please ensure to manually wait for at least 30 seconds after all services are healthy before running the import script.
+
+If the [import script for OneCX Local Environment v2](https://github.com/onecx/onecx-local-env/blob/main/versions/v2/import-onecx.v2.sh) or other access to services still fails, please try to increase the wait time to 60 seconds and restart the affected services if all else fails.
+
 Integrate a local Microfrontend
 ====================
 This approach enables **hot-reloading** of your locally running micro-frontend: changes you make there are automatically visible in OneCX after the rebuild. The best way for fast frontend development.
@@ -17370,28 +17392,6 @@ http:
 | |  If the microfrontend requires its own backend functionality, then these backend services must also be started and presumably integrated into OneCX. The **./toggle-mfes.sh** script does not check this. See [Integrate Local Docker Images](local-images.html) for details on how to integrate additional backend services. The method described here is for all microfrontends except the OneCX Shell. The OneCX Shell has a special role in OneCX and must be started with a specific command. See [Integrate OneCX Shell](../scripts/toggle-mfes.html#integrate-onecx-shell) for details. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
-Common Issues
-====================
-This page lists common issues and respective solutions when using OneCX Local Environment.
-
-## [](#keycloak-reported-as-unhealthy)Keycloak reported as unhealthy
-
-If the `keycloak-app` service is reported as unhealthy, please try to re-run the docker compose command to start the service again. In some cases, Keycloak might take a bit longer to start up, and re-running the command can help resolve the issue. This issue is more common in [OneCX Local Environment v1](../versions/v1.html) due to differences in the performed health checks.
-
-## [](#docker-compose-doesnt-wait-for-all-health-checks-to-pass)Docker Compose doesn’t wait for all health checks to pass
-
-In some cases, specifically when services don’t have explicit dependencies defined via the `depends_on` directive, Docker Compose might not wait for all health checks to pass before finalizing the startup process. If you want to force Docker Compose to wait for all health checks to pass, you can use the `--wait` flag when starting the services. Example:
-
-```bash
-  docker compose up -d --wait
-```
-
-## [](#services-are-not-reachable-or-import-of-initial-data-fails)Services are not reachable or import of initial data fails
-
-Some `onecx-local-env` services might take longer than others to start up and become fully operational. This can cause issues if you or a script you are running tries to access a service before it is ready. To prevent any issues it is recommended to wait for at least 30 seconds **after** all services are reported as healthy before accessing any service or running any import scripts. The [import script for OneCX Local Environment v2](https://github.com/onecx/onecx-local-env/blob/main/versions/v2/import-onecx.v2.sh) has a built-in wait time of 30 seconds after all services are healthy to account for this. If you are using [OneCX Local Environment v1](../versions/v1.html), please ensure to manually wait for at least 30 seconds after all services are healthy before running the import script.
-
-If the [import script for OneCX Local Environment v2](https://github.com/onecx/onecx-local-env/blob/main/versions/v2/import-onecx.v2.sh) or other access to services still fails, please try to increase the wait time to 60 seconds and restart the affected services if all else fails.
-
 Frequently Asked Questions
 ====================
 …​coming soon
@@ -17410,139 +17410,6 @@ To add new files to the `imports` directory, follow these guidelines:
 4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
 
 By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
-
-Adding Custom Certificates for Java Applications in Docker
-====================
-The use of custom certificates solves issues with Java applications running inside Docker containers that need to communicate over HTTPS with services using non-standard or self-signed certificates.
-
-## [](#why-is-this-about)Why is this about?
-
-When running Java applications inside Docker containers, HTTPS connections often fail with errors like:
-
-Excerpt from Docker logs of the affected Java service
-
-```text
-PKIX path building failed: unable to find valid certification path to requested target
-```
-
-### [](#common-use-cases)Common Use Cases
-
-Corporate TLS Interception
-
-Tools like Zscaler or internal proxies re-sign certificates with a corporate CA.
-
-Self-Signed Certificates
-
-Internal services using self-signed certs.
-
-Private PKI
-
-Enterprise environments with custom root or intermediate CAs.
-
-### [](#problems-that-arise)Problems that arise
-
-* Outbound HTTPS calls fail (e.g., REST APIs, OAuth, external services).
-* Java throws any TLS/SSL exception e.g. `SunCertPathBuilderException`.
-
-## [](#add-custom-certificates)Add Custom Certificates
-
-To resolve these issues, you need to add the required certificate to a Java Truststore used by your Java applications running inside Docker containers.
-
-### [](#1-get-the-certificate)1\. Get the Certificate
-
-Identify and export the necessary certificate from the target HTTPS service.  
-Open the HTTPS website (where the error occurs) in your browser (here exemplarily Chrome).
-
-Click the icon left on URL, then
-
-1. Click on **Connection is secure**
-2. Click on **Certificate is valid**
-3. Navigate to **Details** tab  
-   1. Select the certificate with the target URL in **Certificate Hierarchy**  
-   2. Click on **Export** and save as Base-64 encoded `.crt` file.
-
-| |  Alternatively, you can export the certificate using command line tools like openssl or curl or use system-specific certificate management tools to export root and intermediate CAs. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Use the steps above to export all necessary certificates (root and intermediate CAs) that are required to establish a valid trust chain to the target HTTPS service.
-
-Place the exported files in the **certs** folder inside of **onecx-local-env**
-
-```text
-certs/
-  ├── YourCertificate.crt
-  └── YourCertificate2.crt
-```
-
-### [](#2-create-a-java-truststore)2\. Create a Java Truststore
-
-Use the provided setup script to create or update a truststore with all your certificates. The script automatically imports all `.crt` and `.pem` files from the specified directory. In some cases, you will prompt to enter the root password for cleanup of existing entries.
-
-Setup Truststore with password "trustjava"
-
-```bash
-./setup-truststore.sh
-```
-
-Result: Truststore location
-
-```none
-certs/truststore.jks
-```
-
-### [](#3-verify-the-truststore-contents)3\. Verify the Truststore Contents
-
-Optionally, you can check the contents of the truststore by listing all the certificates it contains using the following command:
-
-Verify Truststore Contents
-
-```bash
-keytool -list -keystore ./certs/truststore.jks -storepass trustjava
-```
-
-Expected output showing all imported certificates with their aliases.
-
-![script setup truststore.sh content](../_images/scripts/script_setup-truststore.sh_content.png) 
-
-Figure 1\. Example Output with certificate for ollama.one-cx.org
-
-### [](#4-use-truststore-in-ai-service)4\. Use Truststore in AI Service
-
-Update your Docker Compose file to mount the truststore and configure Java to use it on the relevant services.
-
-For Default JVM Applications
-
-```yaml
-services:
-  onecx-ai-svc:
-    image: ${ONECX_AI_SVC}
-    volumes:
-      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
-    environment:
-      JAVA_TOOL_OPTIONS: >-
-        -Djavax.net.ssl.trustStore=/opt/certs/truststore.jks
-        -Djavax.net.ssl.trustStorePassword=trustjava
-        -Djavax.net.ssl.trustStoreType=JKS
-```
-
-For GraalVM Native Image Applications
-
-```yaml
-services:
-  onecx-ai-svc:
-    image: ${ONECX_AI_SVC}
-    volumes:
-      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
-    entrypoint: ["/work/application"]
-    command:
-    - "-Djavax.net.ssl.trustStore=/opt/certs/truststore.jks"
-    - "-Djavax.net.ssl.trustStorePassword=trustjava"
-    - "-Djavax.net.ssl.trustStoreType=JKS"
-```
-
-### [](#5-restart-and-verify)5\. Restart and Verify
-
-Verify the SSL/TLS connection works by triggering an HTTPS call and confirming no `PKIX path building failed` or any other TLS/SSL error appears.
 
 Networking in OneCX Local Environment
 ====================
@@ -17860,6 +17727,139 @@ The [Extend OneCX](../extend/extend.html) documentation describes how local runn
 2. Frontend → Traefik → BFF Service
 3. BFF → Keycloak (authentication)
 4. BFF → Backend Services (with token)
+
+Adding Custom Certificates for Java Applications in Docker
+====================
+The use of custom certificates solves issues with Java applications running inside Docker containers that need to communicate over HTTPS with services using non-standard or self-signed certificates.
+
+## [](#why-is-this-about)Why is this about?
+
+When running Java applications inside Docker containers, HTTPS connections often fail with errors like:
+
+Excerpt from Docker logs of the affected Java service
+
+```text
+PKIX path building failed: unable to find valid certification path to requested target
+```
+
+### [](#common-use-cases)Common Use Cases
+
+Corporate TLS Interception
+
+Tools like Zscaler or internal proxies re-sign certificates with a corporate CA.
+
+Self-Signed Certificates
+
+Internal services using self-signed certs.
+
+Private PKI
+
+Enterprise environments with custom root or intermediate CAs.
+
+### [](#problems-that-arise)Problems that arise
+
+* Outbound HTTPS calls fail (e.g., REST APIs, OAuth, external services).
+* Java throws any TLS/SSL exception e.g. `SunCertPathBuilderException`.
+
+## [](#add-custom-certificates)Add Custom Certificates
+
+To resolve these issues, you need to add the required certificate to a Java Truststore used by your Java applications running inside Docker containers.
+
+### [](#1-get-the-certificate)1\. Get the Certificate
+
+Identify and export the necessary certificate from the target HTTPS service.  
+Open the HTTPS website (where the error occurs) in your browser (here exemplarily Chrome).
+
+Click the icon left on URL, then
+
+1. Click on **Connection is secure**
+2. Click on **Certificate is valid**
+3. Navigate to **Details** tab  
+   1. Select the certificate with the target URL in **Certificate Hierarchy**  
+   2. Click on **Export** and save as Base-64 encoded `.crt` file.
+
+| |  Alternatively, you can export the certificate using command line tools like openssl or curl or use system-specific certificate management tools to export root and intermediate CAs. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Use the steps above to export all necessary certificates (root and intermediate CAs) that are required to establish a valid trust chain to the target HTTPS service.
+
+Place the exported files in the **certs** folder inside of **onecx-local-env**
+
+```text
+certs/
+  ├── YourCertificate.crt
+  └── YourCertificate2.crt
+```
+
+### [](#2-create-a-java-truststore)2\. Create a Java Truststore
+
+Use the provided setup script to create or update a truststore with all your certificates. The script automatically imports all `.crt` and `.pem` files from the specified directory. In some cases, you will prompt to enter the root password for cleanup of existing entries.
+
+Setup Truststore with password "trustjava"
+
+```bash
+./setup-truststore.sh
+```
+
+Result: Truststore location
+
+```none
+certs/truststore.jks
+```
+
+### [](#3-verify-the-truststore-contents)3\. Verify the Truststore Contents
+
+Optionally, you can check the contents of the truststore by listing all the certificates it contains using the following command:
+
+Verify Truststore Contents
+
+```bash
+keytool -list -keystore ./certs/truststore.jks -storepass trustjava
+```
+
+Expected output showing all imported certificates with their aliases.
+
+![script setup truststore.sh content](../_images/scripts/script_setup-truststore.sh_content.png) 
+
+Figure 1\. Example Output with certificate for ollama.one-cx.org
+
+### [](#4-use-truststore-in-ai-service)4\. Use Truststore in AI Service
+
+Update your Docker Compose file to mount the truststore and configure Java to use it on the relevant services.
+
+For Default JVM Applications
+
+```yaml
+services:
+  onecx-ai-svc:
+    image: ${ONECX_AI_SVC}
+    volumes:
+      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/opt/certs/truststore.jks
+        -Djavax.net.ssl.trustStorePassword=trustjava
+        -Djavax.net.ssl.trustStoreType=JKS
+```
+
+For GraalVM Native Image Applications
+
+```yaml
+services:
+  onecx-ai-svc:
+    image: ${ONECX_AI_SVC}
+    volumes:
+      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
+    entrypoint: ["/work/application"]
+    command:
+    - "-Djavax.net.ssl.trustStore=/opt/certs/truststore.jks"
+    - "-Djavax.net.ssl.trustStorePassword=trustjava"
+    - "-Djavax.net.ssl.trustStoreType=JKS"
+```
+
+### [](#5-restart-and-verify)5\. Restart and Verify
+
+Verify the SSL/TLS connection works by triggering an HTTPS call and confirming no `PKIX path building failed` or any other TLS/SSL error appears.
 
 Initial Data in OneCX Local Environment
 ====================
@@ -18224,13 +18224,43 @@ Setup Java Truststore with Custom Certificates
 ====================
 The **setup-truststore.sh** script is used to create or update a Java Truststore containing custom certificates needed by Java applications running inside Docker containers in the OneCX Local Environment.
 
-There are no parameters required. The script can be run from the root directory of the **onecx-local-env** repository:
+The script can be run from the root directory of the **onecx-local-env** repository:
 
 ```bash
 ./setup-truststore.sh
 ```
 
 Instructions for preparing the Java Truststore with your certificates can be found under [Custom Certificates](../internal/custom-certificates.html).
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
+
+\-d <directory>
+
+Certificate directory, default: './certs'
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-p <password>
+
+Truststore password, length > 5, default: 'trustjava'
+
+## [](#examples)Examples
+
+### [](#create-truststore-default)Create truststore with default settings
+
+A Java Truststore is created at the default location with the default password. The script looks for certificates in the default directory `./certs` and imports all found certificates into the truststore.
+
+```bash
+./setup-truststore.sh
+```
+
+![script setup truststore.sh default](../_images/scripts/script_setup-truststore.sh_default.png) 
+
+Figure 1\. Creating truststore with default settings
 
 Start local OneCX
 ====================
@@ -28400,24 +28430,6 @@ app:
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                      | Type   | Default       |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------- |
-| [onecx.user-profile.claims.display-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-display-name) User profile display name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_DISPLAY\_NAME          | string | name          |
-| [onecx.user-profile.claims.email](#onecx-user-profile-svc%5Fonecx-user-profile-claims-email) User profile email token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_EMAIL                                       | string | email         |
-| [onecx.user-profile.claims.first-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-first-name) User profile first name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_FIRST\_NAME                  | string | given\_name   |
-| [onecx.user-profile.claims.last-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-last-name) User profile last name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LAST\_NAME                      | string | family\_name  |
-| [onecx.user-profile.claims.organization-id](#onecx-user-profile-svc%5Fonecx-user-profile-claims-organization-id) User profile organization token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_ORGANIZATION\_ID | string | orgId         |
-| [onecx.user-profile.claims.locale](#onecx-user-profile-svc%5Fonecx-user-profile-claims-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LOCALE                                               | string |               |
-| [onecx.user-profile.claims.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-claims-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_TIMEZONE                                       | string |               |
-| [onecx.user-profile.claims.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-claims-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_MENU\_MODE                                       | string |               |
-| [onecx.user-profile.settings.locale](#onecx-user-profile-svc%5Fonecx-user-profile-settings-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_LOCALE                                         | string | en            |
-| [onecx.user-profile.settings.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-settings-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_TIMEZONE                                 | string | Europe/Berlin |
-| [onecx.user-profile.settings.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-settings-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_MENU\_MODE                                 | string | STATIC        |
-
-undefined
-====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 4.6.0   |
@@ -28443,6 +28455,24 @@ undefined
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                      | Type   | Default       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------- |
+| [onecx.user-profile.claims.display-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-display-name) User profile display name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_DISPLAY\_NAME          | string | name          |
+| [onecx.user-profile.claims.email](#onecx-user-profile-svc%5Fonecx-user-profile-claims-email) User profile email token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_EMAIL                                       | string | email         |
+| [onecx.user-profile.claims.first-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-first-name) User profile first name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_FIRST\_NAME                  | string | given\_name   |
+| [onecx.user-profile.claims.last-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-last-name) User profile last name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LAST\_NAME                      | string | family\_name  |
+| [onecx.user-profile.claims.organization-id](#onecx-user-profile-svc%5Fonecx-user-profile-claims-organization-id) User profile organization token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_ORGANIZATION\_ID | string | orgId         |
+| [onecx.user-profile.claims.locale](#onecx-user-profile-svc%5Fonecx-user-profile-claims-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LOCALE                                               | string |               |
+| [onecx.user-profile.claims.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-claims-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_TIMEZONE                                       | string |               |
+| [onecx.user-profile.claims.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-claims-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_MENU\_MODE                                       | string |               |
+| [onecx.user-profile.settings.locale](#onecx-user-profile-svc%5Fonecx-user-profile-settings-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_LOCALE                                         | string | en            |
+| [onecx.user-profile.settings.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-settings-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_TIMEZONE                                 | string | Europe/Berlin |
+| [onecx.user-profile.settings.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-settings-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_MENU\_MODE                                 | string | STATIC        |
 
 undefined
 ====================
@@ -28539,6 +28569,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-user-profile-avatar-svc/pkgs/container/onecx-user-profile-avatar-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -28625,10 +28659,6 @@ app:
         description: OneCX User Profile Avatar Backend Service
         name: OneCX User Profile Avatar SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -29131,10 +29161,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Welcome Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-svc/pkgs/container/onecx-welcome-svc)
@@ -29225,6 +29251,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-svc/pkgs/container/onecx-welcome-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -29339,11 +29369,7 @@ undefined
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
 
-undefined
-====================
-
-
-undefined
+OneCX Welcome Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-bff/pkgs/container/onecx-welcome-bff)
 
@@ -29446,7 +29472,11 @@ app:
         name: OneCX Welcome BFF
 ```
 
-OneCX Welcome Backend For Frontend
+undefined
+====================
+
+
+undefined
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-bff/pkgs/container/onecx-welcome-bff)
 
