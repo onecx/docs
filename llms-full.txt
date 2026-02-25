@@ -5017,6 +5017,625 @@ In OneCX toast messages display is handled via [PortalMessageService](../../onec
 
 Details about the usage can be found in the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html).
 
+Application Bootstrapping
+====================
+## [](#overview)Overview
+
+Bootstrapping a Microfrontend involves configuring the initial setup so it can run independently and integrate with the shell application. This includes directory structure, dependencies, and build configuration.
+
+This document explains how to bootstrap Microfrontend content correctly. The requirements differ based on content type and expose method.
+
+## [](#microfrontend-content-bootstrapping-explained)Microfrontend Content Bootstrapping
+
+Content loading is triggered by route changes **for modules** or Slot Component display **for Remote Components**. The content is loaded via the remote entry file configured in Webpack.
+
+### [](#content-exposed-using-angular-method)Angular Method (Not Recommended)
+
+| |  Using the Angular expose method limits the platform to a single framework version. All Microfrontends must use the same Angular version. |
+| ------------------------------------------------------------------------------------------------------------------------------------------- |
+
+**Requirements:**
+
+* Webpack must expose the module/component file directly (not **main.ts**)
+* The **main.ts** file must bootstrap asynchronously
+
+Example **main.ts**:
+
+```typescript
+import('./bootstrap').catch(err => console.error(err));
+```
+
+Example **bootstrap.ts**:
+
+```typescript
+import { AppModule } from './app/app.module';
+import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
+import { enableProdMode } from '@angular/core';
+import { environment } from './environments/environment';
+
+if (environment.production) {
+  enableProdMode();
+}
+
+platformBrowserDynamic().bootstrapModule(AppModule)
+  .catch(err => console.error(err));
+```
+
+### [](#content-exposed-using-webcomponent-method)Webcomponent Method (Recommended)
+
+This method uses Web Components **Custom Elements** to register content, allowing multiple frameworks and versions.
+
+#### [](#module-bootstrapping-and-configuration)Module Bootstrapping
+
+**Requirements:**
+
+1. Webpack exposes **main.ts**
+2. **main.ts** bootstraps asynchronously
+3. Module handles common angular issues with module federation
+4. Module must:  
+   * Register an entry point as a Custom Element  
+   * Adapt routing for Shell integration  
+   * Configure services for correct resource URLs
+
+**Example Setup:**
+
+webpack.config.js
+
+```typescript
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleModule': './src/main.ts'
+  },
+})
+```
+
+src/main.ts
+
+```typescript
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+src/bootstrap.ts
+
+```typescript
+import { bootstrapModule } from '@onecx/angular-webcomponents'
+import { environment } from './environments/environment'
+import { ExampleModule } from './app/module'
+
+bootstrapModule(ExampleModule, 'microfrontend', environment.production)
+```
+
+The **bootstrap.ts** file uses `@onecx/angular-webcomponents` to bootstrap the module and handle common Angular issues with module federation.
+
+#### [](#create-a-module-with-dobootstrap-and-createappentrypoint)Create a Module with DoBootstrap and CreateAppEntrypoint
+
+`createAppEntrypoint` registers `AppEntrypointComponent` as `<example-webcomponent>`.
+
+src/app/module.ts
+
+```typescript
+import { createAppEntrypoint } from '@onecx/angular-webcomponents'
+export class ExampleModule implements DoBootstrap {
+    constructor(private readonly injector: Injector) {}
+
+    ngDoBootstrap(): void {
+        createAppEntrypoint(AppEntrypointComponent, 'example-webcomponent', this.injector)
+    }
+}
+```
+
+#### [](#adding-initializerouter-provider)Adding initializeRouter Provider
+
+The `initializeRouter` function is configured in the providers.
+
+```typescript
+// In Module
+import { initializeRouter, startsWith } from '@onecx/angular-webcomponents'
+@NgModule({
+providers: [
+        // other providers
+        {
+            provide: APP_INITIALIZER,
+            useFactory: initializeRouter,
+            multi: true,
+            deps: [Router, AppStateService]
+        }
+    ]
+})
+```
+
+#### [](#routes-are-defined-using-matcher-and-startswith)Routes are defined using matcher and startsWith
+
+Router configuration contains `startsWith` and `matcher` to ensure correct routing context.
+
+```typescript
+// Routes configuration
+export const routes: Routes = [
+  {
+    matcher: startsWith(''),
+    loadChildren: () => import('./feature/feature.module').then((mod) => mod.FeatureModule)
+  },
+  {
+    matcher: startsWith('tracking'),
+    loadChildren: () => import('./tracking/tracking.module').then((mod) => mod.TrackingModule)
+  }
+]
+```
+
+| |  When **startsWith** is used with **initializeRouter**, it removes already used parts from the URL, allowing the app to route only within its context instead of the shell’s context. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Configuration
+
+Services use `PortalApiConfiguration` to construct correct URLs based on **CurrentMfeTopic**, ensuring calls go to the right resources (e.g., `deployment_url/mfe/example/bff/search`).
+
+#### [](#remote-component-bootstrapping-and-configuration)Remote Component Bootstrapping
+
+**Requirements:**
+
+1. Webpack exposes **main.ts**
+2. **main.ts** bootstraps asynchronously
+3. Bootstrap handles **Angular issues** (Angular only) and registers Custom Element
+4. Component uses Remote Component initialization mechanism
+
+**Example Setup:**
+
+webpack.config.js
+
+```typescript
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleComponent': './src/app/remotes/example/example.component.main.ts'
+  },
+})
+```
+
+src/app/remotes/example/example.component.main.ts
+
+```typescript
+import('./example.component.bootstrap').catch((err) => console.error(err))
+```
+
+src/app/remotes/example/example.component.bootstrap.ts 
+
+```typescript
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { APP_INITIALIZER, importProvidersFrom } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
+import { UserService } from '@onecx/portal-integration-angular';
+import { ExampleComponent } from './example.component';
+import { BASE_URL, provideTranslateServiceForRoot } from '@onecx/angular-remote-components';
+
+bootstrapRemoteComponent(
+  ExampleComponent,
+  'example-remote-component',
+  environment.production,
+  [
+    provideHttpClient(withInterceptorsFromDi()),
+    { provide: BASE_URL, useValue: new ReplaySubject<string>(1) },
+    provideTranslateServiceForRoot({ isolate: true }),
+    importProvidersFrom(AngularAuthModule, BrowserModule, BrowserAnimationsModule),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: (userService: UserService) => () => userService.isInitialized,
+      deps: [UserService],
+      multi: true,
+    },
+  ]
+)
+```
+
+bootstrapRemoteComponent creates an Angular application with the specified providers, connects to the Shell router, and registers the Custom Element.
+
+src/app/remotes/example/example.component.ts 
+
+```typescript
+import { Component, Inject, Input } from '@angular/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import { UserService } from '@onecx/angular-integration-interface';
+import {
+  AngularRemoteComponentsModule,
+  BASE_URL,
+  ocxRemoteComponent,
+  ocxRemoteWebcomponent,
+  RemoteComponentConfig,
+} from '@onecx/angular-remote-components';
+import { PortalCoreModule } from '@onecx/portal-integration-angular';
+import { ReplaySubject } from 'rxjs';
+
+@Component({
+  standalone: true,
+  imports: [
+    AngularAuthModule,
+    AngularRemoteComponentsModule,
+    PortalCoreModule,
+    TranslateModule,
+  ],
+  selector: 'example-comp',
+  template: `<h1>Hello from Remote Component</h1>`,
+})
+export class ExampleComponent implements ocxRemoteComponent, ocxRemoteWebcomponent {
+  permissions: string[] = [];
+
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
+    private readonly userService: UserService,
+    private readonly translateService: TranslateService,
+    private readonly exampleService: ExampleAPIService
+  ) {
+    this.translateService.use(this.userService.lang$.getValue());
+  }
+
+  @Input() set ocxRemoteComponentConfig(config: RemoteComponentConfig) {
+    this.ocxInitRemoteComponent(config);
+  }
+
+  ocxInitRemoteComponent(config: RemoteComponentConfig): void {
+    this.baseUrl.next(config.baseUrl);
+    this.permissions = config.permissions;
+    this.exampleService.configuration = new Configuration({
+      basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
+    })
+  }
+}
+```
+
+**Key Component Features:**
+
+Component Initialization
+
+The component implements `ocxRemoteWebcomponent` (required) and `ocxRemoteComponent` (optional). When `ocxRemoteComponentConfig` is set by the Slot Component, it should:
+
+* Update `BASE_URL`
+* Update permissions
+* Update service base URLs
+
+RemoteComponentConfig Structure
+
+| Property    | Type       | Description                                       |
+| ----------- | ---------- | ------------------------------------------------- |
+| appId       | string     | Microfrontend unique identifier                   |
+| productName | string     | Application name                                  |
+| permissions | string\[\] | User permissions                                  |
+| baseUrl     | string     | URL for accessing content, e.g., '/mfe/mfe\_name' |
+
+Module Federation in OneCX
+====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
+
+## [](#prerequisites)Prerequisites
+
+Before visiting this guide, let’s visit following concepts:
+
+__Table 1\. Concepts__
+| Name                                                                               | Description                                                                                      |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [Webpack](https://webpack.js.org/concepts/)                                        | Static module bundler for **JavaScript applications** that supports module federation            |
+| [Module Federation](https://module-federation.io/)                                 | Enables scalable, independently deployable frontend architecture with **runtime integration**    |
+| [Webcomponents](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                            |
+| [Microfrontends](https://micro-frontends.org/)                                     | Extends the concepts of micro services to the frontend world                                     |
+| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)             | An **innovative open-source platform** solution enabling seamless **microfrontends integration** |
+| [Types of Microfrontends in OneCX](types-of-microfrontends.html)                   | WebComponentModule, WebComponent script, webcomponent and Angular microfrontends                 |
+
+## [](#usage-of-module-federation-in-onecx)Usage of Module Federation in OneCX
+
+In OneCX, **Module Federation** is used to load microfrontends, expose reusable components, and for dependency sharing.
+
+Following are important concepts where module federation is involved:
+
+__Table 2\. Features__
+| Name                                                            | Description                                           |
+| --------------------------------------------------------------- | ----------------------------------------------------- |
+| [Preloaders](mf-preloaders.html)                                | Preloaders register Module Federation share scopes    |
+| [Shell router](mf-shell-router.html)                            | Shell router - dynamic content loading                |
+| [Dependency Sharing](mf-dependancy-sharing.html)                | Build-time and runtime negotiation of shared packages |
+| [Slot components](mf-slot-components.html)                      | Load remote modules or components in slots            |
+| [Custom Authentication Service](mf-authentication-service.html) | Implementation of a custom authentication service     |
+
+## [](#onecx-recommendations)OneCX Recommendations
+
+The following documents describe how to configure and use Module Federation in OneCX.
+
+| Name                                                             | Description                                                                |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends             |
+| [Application bootstrapping](application-bootstrapping.html)      | Describes how to bootstrap microfrontends content to use module federation |
+
+undefined
+====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
+
+undefined
+====================
+## [](#mf-authentication-service-wrapper)Custom Authentication service
+
+Custom authentication service can be configured and provided. It can be achieved by setting AUTH\_SERVICE and AUTH\_SERVICE\_CUSTOM\_URL in enviroment configuration.
+
+**Module federation** is used to load implementation of custom authentication factory which can handle authentication and authorization of the application.
+
+## [](#%5Fconfiguration%5Fin%5Fenvironment)Configuration in Environment:
+
+* `AUTH_SERVICE` \- Set this to 'custom' to enable custom authentication service
+* `AUTH_SERVICE_CUSTOM_URL` \- URL to load custom authentication service factory via **module federation**. The module federation remote should expose a factory function that returns an implementation of the **authentication service factory**.
+
+Module Federation Dependency Sharing in OneCX
+====================
+**Shell** and **preloaders** share packages in **module federation**. Depending on the preloader or application, all required packages should be shared. These could include:
+
+* technology packages (like @angular/\*)
+* OneCX packages
+* rxjs
+* component library packages etc.
+
+For more details, please refer to [Dependency sharing with module federation](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/).
+
+undefined
+====================
+## [](#mf-preloaders)Module Federation and Preloaders
+
+**Preloaders** are lightweight applications that load before the shell application. They define and provide packages for **Module Federation sharing**.
+
+### [](#%5Fexecution%5Fflow)Execution Flow
+
+Before **shell initialization**, shell is:
+
+* gathering list of preloaders to load
+* scheduling load of all preloaders by using **module federation** and waits on the completion
+* once all complete, starts **bootstrapping the app**
+
+![Diagram](../_images/diag-474b1a1560491351975172d82d6a76c3f131807f.svg) 
+
+Use of Module Federation in Shell router
+====================
+**Shell Router** is the center for dynamic micro frontend loading. **Module federation** is used in **Shell Router** to:
+
+* Configure routes to use **Module federation**
+* Load application modules via **Module federation**
+
+## [](#%5Froute%5Fdefinitions%5Fto%5Fapplication%5Froutes%5Ftransformation)Route Definitions to Application Routes Transformation
+
+The workspace configuration contains route definitions for applications. The shell router transforms these backend route configurations into Angular application routes:
+
+* Receives route configuration from **workspace configuration** (backend definition)
+* Converts each BFF route into an Angular lazy-loaded route
+* Configures the loading mechanism using **Module Federation** and path resolution
+* Merges routes with static Shell routes
+
+## [](#%5Foverview)Overview
+
+### [](#%5Fon%5Froute%5Fconfiguration)On route configuration
+
+![Diagram](../_images/diag-8e07b1b28aae70283de1606f5f4d1f4043c2ae85.svg) 
+
+### [](#%5Fon%5Froute%5Factivation)On route activation
+
+![Diagram](../_images/diag-ed58dc83052c3a7f34781c63afbf06c2dea9caef.svg) 
+
+## [](#%5Fshell%5Froutes%5Fafter%5Ftransformation)Shell Routes After Transformation
+
+After transformation, the Shell Router contains two types of routes:
+
+* **Static routes** \- These are predefined routes in the Shell application, such as **error pages or the about page**.
+* **Application routes** \- These routes are generated by converting backend route configurations into Angular lazy-loaded routes.
+
+These routes are merged to create the final list of routes.
+
+## [](#%5Fhow%5Fshell%5Frouter%5Fworks%5Fwith%5Fmodule%5Ffederation)How **Shell Router** works with **Module Federation**?
+
+Following steps are performed in **Shell Router** to achieve dynamic loading of micro frontends using **Module Federation**:
+
+### [](#%5Frouter%5Fconfiguration%5Fphase)Router Configuration Phase
+
+**Shell router** converts router configuration received from **workspace configuration** into **application route configuration**:
+
+* Parse the workspace router configuration
+* For each route, configure:  
+   * Path matcher  
+   * Micro frontend type  
+   * Lazy-loading callback using **module federation** to load the app on match
+* Merge static Shell routes with application routes
+
+### [](#%5Frouter%5Factivation%5Fphase)Router Activation Phase
+
+When a route is activated, the dynamic loading of a micro frontend is triggered:
+
+* **Route activation** triggers lazy loading of the configured MFE
+* **Module Federation** loads the remote micro frontend
+* **[Negotiate versions](mf-dependancy-sharing.html)** based on current state of federation instance and shared dependencies
+* **Decide MFE rendering method** based on MFE type configuration (see [Types of Microfrontends](types-of-microfrontends.html))
+* **Render** the loaded Microfrontend using the appropriate method
+
+undefined
+====================
+## [](#mf-slot-components)Slots and Module Federation
+
+**Slots** are a mechanism in OneCX to dynamically render **remote components** in **designated locations** on a page using **Module Federation**. **Slots** are configurable at **runtime**.
+
+### [](#%5Fslot%5Frendering%5Fprocess)Slot rendering process
+
+Example flow:
+
+* **App1** owns the page and defines the **slot location**
+* **App2** exposes **remote components** (via module federation as a remote module) that can be placed into that slot
+* Both **App1** and **App2** applications are used in the workspace
+* **App1** slot is **activated** in the workspace
+* **App2** remote component is assigned to the **App1** slot
+* When the **App1** slot is displayed, it will dynamically load the **App2** component using module federation and render it in the slot location using the appropriate technology defined in the remote component configuration
+
+Detailed information about microfrontend loading can be found [here](types-of-microfrontends.html).
+
+undefined
+====================
+## [](#configure-microfrontend-to-use-module-federation)Configure Microfrontend to use Module Federation
+
+This section describes how to configure a microfrontend to use **Module Federation** for loading and dependency sharing in OneCX.
+
+This guide uses **webpack** for the examples, but you can use any other tool that supports **Module Federation**.
+
+Following are the **checkpoints** to set up a microfrontend with **Module Federation**:
+
+### [](#exposed-content)Exposed content
+
+Each Microfrontend can expose multiple modules and Remote Components. Every separate module and Remote Component needs to be defined as a separate, unique entry representing a remote module. Each entry is a Key-Value Pair:
+
+* **Key** \- Name of the exposed module.
+* **Value** \- File to be used for module bootstrap.
+
+As we use webpack for **Module Federation** configuration, the following changes are made in the `webpack.config.js` file of the microfrontend:
+
+Example - Expose **Module** or **Remote Component**
+
+```javascript
+const { withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  // other configuration
+  exposes: {
+    './ExampleModule': './src/main.ts',
+    './ExampleComponent': './src/remotes/example/example.component.main.ts'
+  }
+  // other configuration
+})
+```
+
+### [](#shared-dependencies)Shared dependencies
+
+In OneCX, we recommend sharing all dependencies to take full advantage of **Module Federation** capabilities.
+
+* share all **@onecx** packages
+* share **rxjs**
+
+For **Angular Applications**:
+
+* share all **@angular** packages (make sure to not share as **singleton**)
+* share **primeng**
+* share **@ngx-translate/core**
+
+Example - Share relevant dependencies 
+
+```javascript
+const { withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  // other configuration
+  shared: share({
+    /*All Angular packages */
+    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/forms': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/common': { requiredVersion: 'auto', includeSecondaries: { skip: ['@angular/common/http/testing'] } },
+    '@angular/common/http': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/platform-browser': { requiredVersion: 'auto', includeSecondaries: true },
+    '@angular/router': { requiredVersion: 'auto', includeSecondaries: true },
+
+    /*All @OneCX, primeNg, rxjs and translation packages */
+    '@ngx-translate/core': { requiredVersion: 'auto' },
+    primeng: { requiredVersion: 'auto', includeSecondaries: true },
+    rxjs: { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-auth': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-remote-components': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-testing': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-webcomponents': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/integration-interface': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/keycloak-auth': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/ngrx-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/portal-integration-angular': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/portal-layout-styles': { requiredVersion: 'auto', includeSecondaries: true }
+  }),
+  // other configuration
+})
+```
+
+### [](#shared-mapping-property)Shared Mapping Property
+
+The shared mapping should be empty.
+
+Example - Empty Shared Mapping
+
+```javascript
+const { withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  // other configuration
+  sharedMappings: []
+  // other configuration
+})
+```
+
+### [](#remote-entry-file-name-and-remote-name)Remote entry file name and Remote name
+
+* **Remote File** \- The name of the remote entry file (usually `remoteEntry.js`)
+* **Remote Name** \- The unique name of the Microfrontend
+
+Example - Remote file and name
+
+```javascript
+const { withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+const config = withModuleFederationPlugin({
+  // other configuration
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  // other configuration
+})
+```
+
+Types of microfrontends in OneCX
+====================
+In OneCX, there are four types of microfrontends for bootstrapping different technologies:
+
+![Diagram](../_images/diag-d7194494437fb83f66bd2c353095b0dde3547ff3.svg) 
+
+**WebComponent** technology is used for microfrontends bootstrapping webcomponents, with different loading options:
+
+* **WebComponentModule** \- loads microfrontend as type 'module'
+* **WebComponentScript** \- loads microfrontend as type 'script'
+* **WebComponent** \- generic webcomponent type
+
+**Angular** technology is used for microfrontends bootstrapping angular module/component (not recommended).
+
+## [](#%5Fwebcomponentmodule)WebComponentModule
+
+Technology-based option for bootstrapping webcomponents loaded as type `module`.
+
+* Exposed content is loaded as `ES module`
+* Registers the defined HTML element tag in the **CustomContainersRegistry**
+* Utilities take care of rendering the WebComponent
+* Remote content is rendered as **WebComponent** in the application
+
+## [](#%5Fwebcomponentscript%5Fwebcomponent)WebComponentScript / WebComponent
+
+Technology-based option for bootstrapping webcomponents loaded as type `script`.
+
+* Exposed content is loaded as `script`
+* Remote content is added as global variable once exposed content name matches with global variable name
+* Utilities take care of rendering the WebComponent
+* Remote content is rendered as **WebComponent** in the application
+
+## [](#%5Fangular%5Fnot%5Frecommended)Angular (not recommended)
+
+Used for microfrontends bootstrapping Angular module/component.
+
+* Exposed content which is **angular module** is loaded as `ES module`
+* This exposed module is loaded and rendered as Angular module in the application
+
+| |  It is **NOT recommended** to use the Angular expose method. Doing so restrains the platform from using many frameworks with different versions, which means that all Microfrontends would need to use the same technology and version. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 React Guidelines
 ====================
 * **Component Structure**: Organize your components in a modular fashion, separating presentational and container components. Use functional components with hooks for state management and side effects.
@@ -15056,14 +15675,18 @@ npm run build
 
 After completing the pre-migration steps, you can proceed with upgrading your application to Angular 19\. Follow the official Angular update guide to perform the version upgrade by following this link: [Angular Update Guide](https://angular.dev/update-guide?v=18.0-19.0&l=3).
 
+### [](#upgrade-nx-application-to-angular-19)Upgrade NX application to Angular 19
+
+To upgrade an NX application to Angular 19, follow this guide: [Upgrade NX Application to Angular 19](upgrade-nx-angular-version.html).
+
 ## [](#migration-steps-after-angular-19)Migration Steps after upgrading to Angular 19
 
 Once the previous steps are completed, **the application should be upgraded to Angular 19 and libs v6 should be installed**. After the version updates are completed, the remaining steps of the migration can be followed:
 
+* [Required Package Updates](update-packages.html)
 * [Update Portal API Configuration object parameters](update-portal-api-configuration.html)
 * [Remove @onecx/portal-layout-styles](remove-portal-layout-styles.html)
 * [Remove addInitializeModuleGuard()](remove-add-initialize-module-guard.html)
-* [Required Package Updates](update-packages.html)
 * [Remove PortalCoreModule](remove-portal-core-module.html)
 * [Replace BASE\_URL injection token](update-base-url.html)
 * [Update Theme Service usage](update-theme-service.html)
@@ -15163,23 +15786,29 @@ Remove @onecx/keycloak-auth
 ====================
 In v6 of libs, the `@onecx/keycloak-auth` package has been removed and replaced with `@onecx/angular-auth`.
 
-## [](#update-packages)Update the packages
+## [](#update-packages)Update Packages
 
-1. Uninstall the deprecated package  
+After removing `@onecx/keycloak-auth`, `keycloak-angular` is no longer required and can be removed (unless your application still uses it directly). Update your dependencies as follows:
+
+1. Uninstall the deprecated packages  
 ```bash  
 npm uninstall --save @onecx/keycloak-auth  
+npm uninstall --save keycloak-angular  
 ```
 2. Install the `@onecx/angular-auth` package (if not already installed)  
 ```bash  
 ng add @onecx/angular-auth  
 ```
 
+| |  If you use Keycloak as your identity provider and want to keep using it with the new authentication module, you may need to install keycloak-js. Check whether your application still requires keycloak-js by referencing [Remove keycloak-js](../angular-20/remove-keycloak-js.html). If it is required, install it: npm install keycloak-js |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
 ## [](#update-module-imports)Update module imports
 
 * Replace all imports of `KeycloakAuthModule` from `@onecx/keycloak-auth` with `AngularAuthModule` from `@onecx/angular-auth`.
 * Replace `KeycloakAuthModule` with `AngularAuthModule`.
 
-## [](#%5Fexample)Example
+### [](#%5Fexample)Example
 
 Before
 
@@ -16103,7 +16732,9 @@ If the following packages are used in your project, update them to ensure compat
 | Package                    | Required Version | Notes                                   |
 | -------------------------- | ---------------- | --------------------------------------- |
 | @ngx-translate/core        | ^16.0.0          | Updated for Angular 19 compatibility    |
+| @primeng                   | ^19.0.0          | Updated for Angular 19 compatibility    |
 | @ngx-translate/http-loader | ^8.0.0           | Compatible with @ngx-translate/core v16 |
+| ngrx-store-localstorage    | ^19.0.0          | Updated for Angular 19 compatibility    |
 | ngx-build-plus             | ^19.0.0          | Angular 19 compatible version           |
 
 ## [](#installation-commands)Installation Commands
@@ -16114,6 +16745,12 @@ Run these commands to update the supporting packages:
 # Update translation packages
 npm install @ngx-translate/core@^16.0.0
 npm install @ngx-translate/http-loader@^8.0.0
+
+# Update UI components
+npm install @primeng@^19.0.0
+
+# Update state management
+npm install ngrx-store-localstorage@^19.0.0
 
 # Update build tools
 npm install ngx-build-plus@^19.0.0
@@ -16330,6 +16967,50 @@ bootstrapRemoteComponent(
 )
 ```
 
+Upgrade NX Application to Angular 19
+====================
+This guide describes how to upgrade an NX-based OneCX application to Angular 19\. Complete the pre-migration steps from the main migration guide before you continue.
+
+## [](#%5Fupdate%5Fnx%5Fpackages)Update NX Packages
+
+Update the Angular and NX packages in your workspace by running:
+
+```bash
+nx migrate 20.4.0 --interactive
+```
+
+This command prompts you to apply updates for each major version of Angular and TypeScript. Apply all proposed updates up to Angular 19.1 and TypeScript 5.7.
+
+For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](#https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
+
+For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](#https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
+
+## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update Package Versions in package.json
+
+1. After running the migration command, update the remaining packages manually. Update all `@onecx/*` packages to version `^6.0.0`.
+2. Update the packages listed here to the specified versions: [Required Package Updates](update-packages.html).
+3. The following packages should be removed:  
+   * `@onecx/keycloak-auth` \- Follow the instructions in [Remove @onecx/keycloak-auth](remove-keycloak-auth.html) to update your application accordingly.  
+   * `@onecx/portal-layout-styles`  
+   * `@onecx/portal-integration-angular`
+4. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
+
+| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Frun%5Fnx%5Fmigration)Run NX Migration
+
+After updating the package versions, run the following command to apply the generated migrations:
+
+```bash
+nx migrate --run-migrations
+```
+
+After this step, proceed with the remaining post-migration steps.
+
 Adjust ngrx-accelerator library utilities
 ====================
 Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
@@ -16371,7 +17052,7 @@ You are a senior frontend engineer with expert‑level knowledge of Angular and 
 Your responsibility is to perform all OneCX‑specific migration tasks required to prepare and finalize a OneCX application for an upgrade from Angular 19 → Angular 20.
 Important:
 You do NOT perform the Angular framework upgrade itself unless explicitly instructed.
-You only implement OneCX‑specific post‑migration tasks.
+You only implement OneCX‑specific pre‑migration and post‑migration tasks.
 All actions must strictly follow official OneCX documentation.
 Never skip steps unless explicitly instructed.
 Workflow
@@ -16382,7 +17063,7 @@ Only if the MCP server is unavailable, fall back to the public URL:
 https://onecx.github.io/docs/documentation/current/onecx-portal-ui-libs/migrations/angular-20/index.html
 2. Extract Migration Steps & Create Plan File
 From the documentation:
-Extract post-migration tasks
+Extract pre-migration and post-migration tasks
 Then:
 Combine them into a structured migration plan
 Include the additional tasks provided by the developer
@@ -16391,19 +17072,24 @@ Update the file every time you complete a step
 3. Notify Developer
 Tell the developer:
 Where the plan file is located
-4. Request Developer Action
+That you are starting the pre‑migration phase
+4. Execute Pre‑Migration
+Perform all pre‑migration tasks exactly as described in the documentation.
+Do not skip or reorder steps.
+Do not try to build or test the application until all post-migration steps are completed.
+5. Request Developer Action
 Inform the developer
 Tell them you are waiting for their “go‑ahead”
 Remind them they must complete the Angular 19 → 20 upgrade before you proceed.
-5. Execute Post‑Migration
+6. Execute Post‑Migration
 Once the developer explicitly instructs you:
 Complete all post‑migration tasks in order
-6. Request Version Information
+7. Request Version Information
 After completing all post‑migration steps:
 Ask the developer for the Angular and OneCX versions they want installed
-7. Install Specified Versions
+8. Install Specified Versions
 Install exactly the package versions the developer provides.
-8. Final Verification
+9. Final Verification
 Run:
 Plain Text
 npm run build
@@ -16440,7 +17126,7 @@ You are a senior frontend engineer with expert‑level knowledge of Angular and 
 Your responsibility is to perform all OneCX‑specific migration tasks required to prepare and finalize a OneCX application for an upgrade from Angular 19 → Angular 20.
 Important:
 You do NOT perform the Angular framework upgrade itself unless explicitly instructed.
-You only implement OneCX‑specific post‑migration tasks.
+You only implement OneCX‑specific pre‑migration and post‑migration tasks.
 All actions must strictly follow official OneCX documentation.
 Never skip steps unless explicitly instructed.
 Workflow
@@ -16451,7 +17137,7 @@ Only if the MCP server is unavailable, fall back to the public URL:
 https://onecx.github.io/docs/documentation/current/onecx-portal-ui-libs/migrations/angular-20/index.html
 2. Extract Migration Steps & Create Plan File
 From the documentation:
-Extract post-migration tasks
+Extract pre-migration and post-migration tasks
 Then:
 Combine them into a structured migration plan
 Include the additional tasks provided by the developer
@@ -16460,19 +17146,24 @@ Update the file every time you complete a step
 3. Notify Developer
 Tell the developer:
 Where the plan file is located
-4. Request Developer Action
+That you are starting the pre‑migration phase
+4. Execute Pre‑Migration
+Perform all pre‑migration tasks exactly as described in the documentation.
+Do not skip or reorder steps.
+Do not try to build or test the application until all post-migration steps are completed.
+5. Request Developer Action
 Inform the developer
 Tell them you are waiting for their “go‑ahead”
 Remind them they must complete the Angular 19 → 20 upgrade before you proceed.
-5. Execute Post‑Migration
+6. Execute Post‑Migration
 Once the developer explicitly instructs you:
 Complete all post‑migration tasks in order
-6. Request Version Information
+7. Request Version Information
 After completing all post‑migration steps:
 Ask the developer for the Angular and OneCX versions they want installed
-7. Install Specified Versions
+8. Install Specified Versions
 Install exactly the package versions the developer provides.
-8. Final Verification
+9. Final Verification
 Run:
 Plain Text
 npm run build
@@ -16484,19 +17175,28 @@ Never skip requirements without explicit instruction.
 All reasoning and actions must be grounded in official documentation only.
 Ask for clarification only when strictly necessary.
 
+## [](#migration-steps-before-angular-20)Migration Steps before upgrading to Angular 20
+
+To simplify the migration process, it is recommended to complete the following steps before upgrading to Angular 20\. You can click the name of any change to open a detailed migration guide with instructions, code examples, and explanations.
+
+* [Remove keycloak-js from your application](remove-keycloak-js.html)
+* [Remove @onecx/shell-core](remove-shell-core.html)
+
 ## [](#upgrade-to-angular-20)Upgrade to Angular 20
 
 Follow the official Angular update guide to perform the version upgrade by following this link: [Angular Update Guide](https://angular.dev/update-guide?v=19.0-20.0&l=3).
 
-## [](#migration-checklist)OneCx v7 Libs migration checklist
+### [](#upgrade-nx-application-to-angular-20)Upgrade NX application to Angular 20
 
-This checklist summarizes all breaking changes introduced in OneCx v7 libraries. Each item represents a required migration step that must be completed before your application can run with the new version. You can click the name of any change to open a detailed migration guide with instructions, code examples, and explanations.
+To upgrade an NX application to Angular 20, follow this guide: [Upgrade NX Application to Angular 20](update-nx-angular-version-20.html).
 
-* [Remove @onecx/shell-core](remove-shell-core.html)
+## [](#migration-steps-after-angular-20)Migration Steps after upgrading to Angular 20
+
+Once the previous steps are completed, **the application should be upgraded to Angular 20 and libs v7 should be installed**. After the version updates are completed, the remaining steps of the migration can be followed.
+
 * [Adjust ngrx-accelerator library utilities](adjust-ngrx-accelerator.html)
 * [Update package imports for PrimeNG theming](update-primeng-package.html)
 * [Update package imports for style utilities](update-style-package.html)
-* [Remove keycloak-js from your application](remove-keycloak-js.html)
 * [Migrate to OnecxTranslateLoader translation mechanism](migrate-to-onecx-translate-loader.html)
 * [Use updated ObjectDetailItem interface for PageHeaderComponent](use-new-object-detail-item-interface.html)
 * [Be aware of the PortalDialogService signature changes](portal-dialog-service-signature-changes.html)
@@ -16649,7 +17349,7 @@ In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 2
 
 Remove <code>keycloak-js</code> from your application
 ====================
-Starting with version 7 of the libraries, the `keycloak-js` dependency in `@onecx/angular-auth` has been marked as **optional**. This means:
+The `keycloak-js` dependency in `@onecx/angular-auth` has been marked as **optional**. This means:
 
 * The Onecx Shell application **still requires** `keycloak-js`.
 * Other applications **should remove it** unless they directly use Keycloak inside the app.
@@ -16688,6 +17388,46 @@ npm uninstall --save @onecx/shell-core
 
 | |  The moved components and services are now provided directly by the shell‑ui application and should be consumed from there. |
 | ----------------------------------------------------------------------------------------------------------------------------- |
+
+Upgrade NX Application to Angular 20
+====================
+This guide describes how to upgrade an NX-based OneCX application to Angular 20\. Complete the pre-migration steps from the main migration guide before you continue.
+
+## [](#%5Fupdate%5Fnx%5Fpackages)Update NX Packages
+
+Update the Angular and NX packages in your workspace by running:
+
+```bash
+nx migrate 22.3.0 --interactive
+```
+
+This command prompts you to apply updates for each major version of Angular and TypeScript. Apply all proposed updates up to Angular 20.3 and TypeScript 5.9.
+
+For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](#https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
+
+For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](#https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
+
+## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update Package Versions in package.json
+
+1. After running the migration command, update the remaining packages manually. Update all `@onecx/*` packages to version `^7.0.0`.
+2. Update the packages listed here to the specified versions: [Required Package Updates](update-v7-packages.html).
+3. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
+
+| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Frun%5Fnx%5Fmigration)Run NX Migration
+
+After updating the package versions, run the following command to apply the generated migrations:
+
+```bash
+nx migrate --run-migrations
+```
+
+After this step, proceed with the remaining post-migration steps.
 
 Update package imports for PrimeNG theming
 ====================
@@ -16803,6 +17543,47 @@ import { updateStylesForMfeChange } from '@onecx/angular-utils/style'
 * `dataRcStylesStart`
 * `dataShellStylesAttribute`
 * `dataShellStylesKey`
+
+Required Package Updates
+====================
+If the following packages are used in your project, update them to ensure compatibility with Angular 20:
+
+| Package                               | Required Version | Notes                                                            |
+| ------------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| @ngx-translate/core                   | ^17.0.0          | Updated for Angular 20 compatibility                             |
+| @ngx-translate/http-loader            | ^17.0.0          | Compatible with @ngx-translate/core v17                          |
+| @primeng                              | ^20.3.0          | Updated for Angular 20 compatibility                             |
+| @primeng/themes                       | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngrx-store-localstorage               | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| zod                                   | ^4.0.0           | Updated for Angular 20 and @onecx/ngrx-accelerator compatibility |
+| @angular-architects/module-federation | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngx-build-plus                        | ^20.0.0          | Angular 20 compatible version                                    |
+
+## [](#installation-commands)Installation Commands
+
+Run these commands to update the supporting packages:
+
+```bash
+# Update translation packages
+npm install @ngx-translate/core@^17.0.0
+npm install @ngx-translate/http-loader@^17.0.0
+
+# Update UI components
+npm install @primeng@^20.3.0
+npm install @primeng/themes@^20.0.0
+
+# Update state management
+npm install ngrx-store-localstorage@^20.0.0
+
+# Update validation / schema utilities
+npm install zod@^4.0.0
+
+# Update Module Federation tooling
+npm install @angular-architects/module-federation@^20.0.0
+
+# Update build tools
+npm install ngx-build-plus@^20.0.0
+```
 
 Leverage Angular Guards
 ====================
@@ -27208,7 +27989,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftenant%5Fui)OneCX Tenant UI
+## [](#%5Fonecx%5Ftenant%5Fui)onecx-tenant-ui
+
+## [](#%5Fonecx%5Ftenant%5Fui%5F2)OneCX Tenant UI
 
 ### [](#%5Fwhat%5Fis%5Ftenant%5Fmanagement)What is Tenant Management?
 
@@ -27286,9 +28069,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftenant%5Fui)onecx-tenant-ui
-
-## [](#%5Fonecx%5Ftenant%5Fui%5F2)OneCX Tenant UI
+## [](#%5Fonecx%5Ftenant%5Fui)OneCX Tenant UI
 
 ### [](#%5Fwhat%5Fis%5Ftenant%5Fmanagement)What is Tenant Management?
 
@@ -28555,10 +29336,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX User Profile Backend Service
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -28666,49 +29443,7 @@ app:
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
 
-| Configuration property                                                                                                                                                                                                      | Type   | Default       |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------- |
-| [onecx.user-profile.claims.display-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-display-name) User profile display name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_DISPLAY\_NAME          | string | name          |
-| [onecx.user-profile.claims.email](#onecx-user-profile-svc%5Fonecx-user-profile-claims-email) User profile email token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_EMAIL                                       | string | email         |
-| [onecx.user-profile.claims.first-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-first-name) User profile first name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_FIRST\_NAME                  | string | given\_name   |
-| [onecx.user-profile.claims.last-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-last-name) User profile last name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LAST\_NAME                      | string | family\_name  |
-| [onecx.user-profile.claims.organization-id](#onecx-user-profile-svc%5Fonecx-user-profile-claims-organization-id) User profile organization token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_ORGANIZATION\_ID | string | orgId         |
-| [onecx.user-profile.claims.locale](#onecx-user-profile-svc%5Fonecx-user-profile-claims-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LOCALE                                               | string |               |
-| [onecx.user-profile.claims.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-claims-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_TIMEZONE                                       | string |               |
-| [onecx.user-profile.claims.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-claims-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_MENU\_MODE                                       | string |               |
-| [onecx.user-profile.settings.locale](#onecx-user-profile-svc%5Fonecx-user-profile-settings-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_LOCALE                                         | string | en            |
-| [onecx.user-profile.settings.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-settings-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_TIMEZONE                                 | string | Europe/Berlin |
-| [onecx.user-profile.settings.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-settings-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_MENU\_MODE                                 | string | STATIC        |
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 4.6.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
-| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 2.3.0   |
-| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 4.6.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.27.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.27.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |         |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.27.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
 
 undefined
 ====================
@@ -28796,6 +29531,52 @@ app:
         description: OneCX User Profile Backend Service
         name: OneCX User Profile SVC
 ```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 4.6.0   |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
+| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 2.3.0   |
+| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 4.6.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.27.1  |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.27.1  |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |         |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.27.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                      | Type   | Default       |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------- |
+| [onecx.user-profile.claims.display-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-display-name) User profile display name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_DISPLAY\_NAME          | string | name          |
+| [onecx.user-profile.claims.email](#onecx-user-profile-svc%5Fonecx-user-profile-claims-email) User profile email token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_EMAIL                                       | string | email         |
+| [onecx.user-profile.claims.first-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-first-name) User profile first name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_FIRST\_NAME                  | string | given\_name   |
+| [onecx.user-profile.claims.last-name](#onecx-user-profile-svc%5Fonecx-user-profile-claims-last-name) User profile last name token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LAST\_NAME                      | string | family\_name  |
+| [onecx.user-profile.claims.organization-id](#onecx-user-profile-svc%5Fonecx-user-profile-claims-organization-id) User profile organization token claim Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_ORGANIZATION\_ID | string | orgId         |
+| [onecx.user-profile.claims.locale](#onecx-user-profile-svc%5Fonecx-user-profile-claims-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_LOCALE                                               | string |               |
+| [onecx.user-profile.claims.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-claims-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_TIMEZONE                                       | string |               |
+| [onecx.user-profile.claims.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-claims-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_CLAIMS\_MENU\_MODE                                       | string |               |
+| [onecx.user-profile.settings.locale](#onecx-user-profile-svc%5Fonecx-user-profile-settings-locale) User profile locale Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_LOCALE                                         | string | en            |
+| [onecx.user-profile.settings.timezone](#onecx-user-profile-svc%5Fonecx-user-profile-settings-timezone) User profile timezone Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_TIMEZONE                                 | string | Europe/Berlin |
+| [onecx.user-profile.settings.menu-mode](#onecx-user-profile-svc%5Fonecx-user-profile-settings-menu-mode) User profile menu Environment variable: ONECX\_USER\_PROFILE\_SETTINGS\_MENU\_MODE                                 | string | STATIC        |
 
 undefined
 ====================
@@ -28892,6 +29673,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-user-profile-avatar-svc/pkgs/container/onecx-user-profile-avatar-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -28978,10 +29763,6 @@ app:
         description: OneCX User Profile Avatar Backend Service
         name: OneCX User Profile Avatar SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -29125,32 +29906,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.27.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-user-profile-bff/pkgs/container/onecx-user-profile-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -29251,6 +30006,32 @@ app:
         description: OneCX User Profile Backend For Frontend
         name: OneCX User Profile BFF
 ```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.27.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
 
 undefined
 ====================
