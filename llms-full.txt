@@ -1324,6 +1324,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1696,290 +1980,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -5730,10 +5730,7 @@ Before **shell initialization**, shell is:
 * scheduling load of all preloaders by using **module federation** and waits on the completion
 * once all complete, starts **bootstrapping the app**
 
-graph LR
-  gatherPreloader[Gather Preloaders] --> scheduleLoad[Schedule Load of Preloaders]
-  scheduleLoad --> loadPreloaders[Load Preloaders via Module Federation]
-  loadPreloaders --> bootstrap[Bootstrap Application]
+![Diagram](../_images/diag-474b1a1560491351975172d82d6a76c3f131807f.svg) 
 
 Use of Module Federation in Shell router
 ====================
@@ -5755,12 +5752,7 @@ The workspace configuration contains route definitions for applications. The she
 
 ### [](#%5Fon%5Froute%5Fconfiguration)On route configuration
 
-graph LR
-  bffConfig[BFF Route Configuration] --> routeConfiguration[Convert to Route Config]
-  routeConfiguration --> configureMfePath[Configure MFE path and loading mechanism]
-  configureMfePath --> applicationRoutes[Application Routes]
-  applicationRoutes --> mergeStatic[Merge with Static Routes]
-  mergeStatic --> allRoutes[All Routes]
+![Diagram](../_images/diag-8e07b1b28aae70283de1606f5f4d1f4043c2ae85.svg) 
 
 ### [](#%5Fon%5Froute%5Factivation)On route activation
 
@@ -9066,7 +9058,11 @@ Java classes:
 
 Validation request sequence:
 
-![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
+sequenceDiagram
+    UserRestController->>+UserMapper: map DTO request to internal model
+    UserMapper-->>-UserRestController: internal model
+    UserRestController->>+UserValidationService: validate user request
+    UserValidationService-->>-UserRestController: validation result
 
 Create user request sequence:
 
@@ -15699,108 +15695,6 @@ module.exports = [
 ]
 ```
 
-OneCX IconService
-====================
-This service provides a convenient way to request icons by name and get a CSS class to apply in templates. It is available via `@onecx/angular-integration-interface` and coordinates icon loading through the integration topic system.
-
-## [](#overview)Overview
-
-This document explains how to:
-
-* Request an icon and receive a CSS class for use in templates
-* Await icon availability with an async API
-* Choose the desired rendering style (`IconClassType`)
-* Understand the icon loading flow and cache semantics
-* Topics Used [IconTopic](#./integration-interface.adoc#icon-topic)
-
-## [](#usage)Usage
-
-Follow these steps to use the `IconService`:
-
-1. Inject the `IconService` into your component.  
-```typescript  
-import { inject } from '@angular/core'  
-import { IconService } from '@onecx/angular-integration-interface'  
-class MyComponent {  
-  private readonly iconService = inject(IconService)  
-}  
-```
-2. Request an icon:  
-   * **Synchronous**: Returns a CSS class immediately while the icon assets are loaded asynchronously in the background.  
-   Ideal when:  
-         * The icon is not critical for initial layout  
-         * It can pop in shortly after rendering  
-         * You want fast template binding with no await  
-         ```typescript  
-         homeIcon: string = '';  
-         async ngOnInit() {  
-           homeIcon = this.iconService.requestIcon('mdi:home', 'svg')  
-         }  
-         ```  
-   * **Asynchronous**: Await the icon; resolves to a class string when available or `null` if missing. The method returns a Promise and resolves only when the icon asset is available (or `null` if missing).  
-   Ideal when:  
-         * The icon must render immediately with no flicker  
-         * Rendering or layout logic depends on the icon  
-         * You need to know whether the icon actually exists  
-         ```typescript  
-         accountIcon: string = '';  
-         async ngOnInit() {  
-           const icon = await this.iconService.requestIconAsync('mdi:account', 'svg')  
-           if (icon) {  
-             this.accountIcon = icon  
-           }  
-         }  
-         ```
-3. Apply the icon classes in the template.  
-```html  
-<span [class]="homeIcon"></span>  
-<span [class]="accountIcon"></span>  
-```
-
-## [](#api)API
-
-| Name             | Signature                                                     | Description                                                                                              |
-| ---------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| requestIcon      | (name: string, type?: IconClassType): string                  | Requests an icon and returns a CSS class name to apply. Triggers loading if the icon is not cached.      |
-| requestIconAsync | (name: string, type?: IconClassType): Promise<string \| null> | Requests an icon and resolves when the icon becomes available. Returns null if the icon cannot be found. |
-
-__Table 1\. Icon Class Types (Rendering styles)__
-| Type                        | Behavior                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------- |
-| svg                         | Applies an inline mask based on the SVG and uses currentColor for fill; size 1em. |
-| background                  | Sets the icon as a background-image on the element; size 1em.                     |
-| background-before (default) | Inserts the icon via ::before pseudo-element; container stays inline-flex.        |
-
-| |  Use requestIcon for immediate class assignment and progressive rendering. Use requestIconAsync when you must guarantee icon availability before showing UI. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#flow)Loading Flow and Cache
-
-The icon system uses a global cache and topics for coordination:
-
-* Global cache: `window.onecxIcons: Record<string, IconCache | null | undefined>`  
-   * `undefined` → requested, not yet loaded  
-   * `null` → not found  
-   * `IconCache` → available (contains SVG body and metadata)
-* Requests publish `IconRequested` via [IconTopic](#./integration-interface.adoc#icon-topic); the Shell listens, loads missing icons, injects CSS rules, then publishes `IconsReceived`.
-* Class names are generated as `onecx-theme-icon-<type>-<normalized-name>`.  
-Example  
-```typescript  
-const className = this.iconService.requestIcon('mdi:account', 'background-before')  
-// yields e.g. "onecx-theme-icon-background-before-mdi-account"  
-```
-
-## [](#topics)Topics and Models
-
-| |  See [Icon Topic](#./integration-interface.adoc#icon-topic) for platform-level details and message flow. |
-| ---------------------------------------------------------------------------------------------------------- |
-
-| IconTopic     | Publishes IconRequested and IconsReceived messages.                                                       |
-| ------------- | --------------------------------------------------------------------------------------------------------- |
-| IconRequested | { type: 'IconRequested', name: string } → emitted when an icon is requested and not present in the cache. |
-| IconsReceived | { type: 'IconsReceived' } → emitted when the Shell completes icon injection.                              |
-| IconCache     | { name, type, body, parent? } → holds the SVG body and metadata for a resolved icon.                      |
-
 OneCX PortalDialogService
 ====================
 ## [](#overview)Overview
@@ -16027,6 +15921,108 @@ To control the autofocus of the dialog, use `autoFocusButton` and `autoFocusButt
 #### [](#further-customizations)Further Customizations
 
 For the explanations of further properties, please refer to the [PrimeNg’s DynamicDialog config object documentation](https://primeng.org/dynamicdialog#api.dynamicdialog-config).
+
+OneCX IconService
+====================
+This service provides a convenient way to request icons by name and get a CSS class to apply in templates. It is available via `@onecx/angular-integration-interface` and coordinates icon loading through the integration topic system.
+
+## [](#overview)Overview
+
+This document explains how to:
+
+* Request an icon and receive a CSS class for use in templates
+* Await icon availability with an async API
+* Choose the desired rendering style (`IconClassType`)
+* Understand the icon loading flow and cache semantics
+* Topics Used [IconTopic](#./integration-interface.adoc#icon-topic)
+
+## [](#usage)Usage
+
+Follow these steps to use the `IconService`:
+
+1. Inject the `IconService` into your component.  
+```typescript  
+import { inject } from '@angular/core'  
+import { IconService } from '@onecx/angular-integration-interface'  
+class MyComponent {  
+  private readonly iconService = inject(IconService)  
+}  
+```
+2. Request an icon:  
+   * **Synchronous**: Returns a CSS class immediately while the icon assets are loaded asynchronously in the background.  
+   Ideal when:  
+         * The icon is not critical for initial layout  
+         * It can pop in shortly after rendering  
+         * You want fast template binding with no await  
+         ```typescript  
+         homeIcon: string = '';  
+         async ngOnInit() {  
+           homeIcon = this.iconService.requestIcon('mdi:home', 'svg')  
+         }  
+         ```  
+   * **Asynchronous**: Await the icon; resolves to a class string when available or `null` if missing. The method returns a Promise and resolves only when the icon asset is available (or `null` if missing).  
+   Ideal when:  
+         * The icon must render immediately with no flicker  
+         * Rendering or layout logic depends on the icon  
+         * You need to know whether the icon actually exists  
+         ```typescript  
+         accountIcon: string = '';  
+         async ngOnInit() {  
+           const icon = await this.iconService.requestIconAsync('mdi:account', 'svg')  
+           if (icon) {  
+             this.accountIcon = icon  
+           }  
+         }  
+         ```
+3. Apply the icon classes in the template.  
+```html  
+<span [class]="homeIcon"></span>  
+<span [class]="accountIcon"></span>  
+```
+
+## [](#api)API
+
+| Name             | Signature                                                     | Description                                                                                              |
+| ---------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| requestIcon      | (name: string, type?: IconClassType): string                  | Requests an icon and returns a CSS class name to apply. Triggers loading if the icon is not cached.      |
+| requestIconAsync | (name: string, type?: IconClassType): Promise<string \| null> | Requests an icon and resolves when the icon becomes available. Returns null if the icon cannot be found. |
+
+__Table 1\. Icon Class Types (Rendering styles)__
+| Type                        | Behavior                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| svg                         | Applies an inline mask based on the SVG and uses currentColor for fill; size 1em. |
+| background                  | Sets the icon as a background-image on the element; size 1em.                     |
+| background-before (default) | Inserts the icon via ::before pseudo-element; container stays inline-flex.        |
+
+| |  Use requestIcon for immediate class assignment and progressive rendering. Use requestIconAsync when you must guarantee icon availability before showing UI. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#flow)Loading Flow and Cache
+
+The icon system uses a global cache and topics for coordination:
+
+* Global cache: `window.onecxIcons: Record<string, IconCache | null | undefined>`  
+   * `undefined` → requested, not yet loaded  
+   * `null` → not found  
+   * `IconCache` → available (contains SVG body and metadata)
+* Requests publish `IconRequested` via [IconTopic](#./integration-interface.adoc#icon-topic); the Shell listens, loads missing icons, injects CSS rules, then publishes `IconsReceived`.
+* Class names are generated as `onecx-theme-icon-<type>-<normalized-name>`.  
+Example  
+```typescript  
+const className = this.iconService.requestIcon('mdi:account', 'background-before')  
+// yields e.g. "onecx-theme-icon-background-before-mdi-account"  
+```
+
+## [](#topics)Topics and Models
+
+| |  See [Icon Topic](#./integration-interface.adoc#icon-topic) for platform-level details and message flow. |
+| ---------------------------------------------------------------------------------------------------------- |
+
+| IconTopic     | Publishes IconRequested and IconsReceived messages.                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| IconRequested | { type: 'IconRequested', name: string } → emitted when an icon is requested and not present in the cache. |
+| IconsReceived | { type: 'IconsReceived' } → emitted when the Shell completes icon injection.                              |
+| IconCache     | { name, type, body, parent? } → holds the SVG body and metadata for a resolved icon.                      |
 
 OneCX PortalMessageService
 ====================
@@ -18275,21 +18271,6 @@ export class AppComponent implements OnInit {
 }
 ```
 
-PortalDialogService Signature Changes
-====================
-In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
-
-## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
-
-* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
-
-## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
-
-* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
-
-| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 Remove <code>keycloak-js</code> from your application
 ====================
 The `keycloak-js` dependency in `@onecx/angular-auth` has been marked as **optional**. This means:
@@ -18314,6 +18295,21 @@ Keycloak initialization failed! Could not load keycloak-js library which is requ
 ```
 
 If you see this error, your application **still needs `keycloak-js`**, and you must reinstall it.
+
+PortalDialogService Signature Changes
+====================
+In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
+
+## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
+
+* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
+
+## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
+
+* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
+
+| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Remove @onecx/shell-core
 ====================
@@ -18894,7 +18890,8 @@ Click here to view entries to be added to the **hosts** file
 127.0.0.1 postgresdb
 127.0.0.1 pgadmin
 127.0.0.1 keycloak-app
-
+127.0.0.1 rustfs
+127.0.0.1 rustfs-console
 # OneCX - local services
 127.0.0.1 sonar
 
@@ -18909,6 +18906,7 @@ Click here to view entries to be added to the **hosts** file
 127.0.0.1 onecx-chat-svc
 127.0.0.1 onecx-document-svc
 127.0.0.1 onecx-document-bff
+127.0.0.1 onecx-file-storage-svc
 127.0.0.1 onecx-help-svc
 127.0.0.1 onecx-help-bff
 127.0.0.1 onecx-iam-bff
@@ -27673,20 +27671,6 @@ undefined
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
 | [onecx.product-store.operator.leader-election.lease-name](#onecx-product-store-operator%5Fonecx-product-store-operator-leader-election-lease-name) Lease name Environment variable: ONECX\_PRODUCT\_STORE\_OPERATOR\_LEADER\_ELECTION\_LEASE\_NAME | string | onecx-product-store-operator-lease |
 
-Concept for Microfrontend Parameter
-====================
-1. The Shell requests the parameters from the ShellBFF by product names and application ids of all applications which are part of the current workspace configuration.
-2. The ShellBFF retrieves the parameters from the ParameterSVC for all applications which are part of the current workspace.
-3. The ParameterSVC returns the parameters to the ShellBFF.
-4. The ShellBFF sends the parameters, back to the Shell.
-5. The Shell caches the parameters only if the fetch status indicates success.
-
-Since the ShellBFF is always returning status code 200 when requested for parameters, the response structure implies if the fetching of parameters was successfull or not.
-
-If the response object matches the request object (i.e., all products and applications are included in the response), then the fetch was successful. If there is an issue with the ParameterSVC, the response object will be empty and will not contain any products or applications.
-
-![Diagram](_images/diag-b60f58445d79bdcd767042cfa0f966ccd8d1e081.svg) 
-
 OneCX Shell
 ====================
 ## [](#%5Flicence)Licence
@@ -27725,6 +27709,29 @@ For detailed usage instructions and API documentation, please refer to the respe
 ## [](#%5Froadmap)Roadmap
 
 tbd
+
+Concept for Microfrontend Parameter
+====================
+1. The Shell requests the parameters from the ShellBFF by product names and application ids of all applications which are part of the current workspace configuration.
+2. The ShellBFF retrieves the parameters from the ParameterSVC for all applications which are part of the current workspace.
+3. The ParameterSVC returns the parameters to the ShellBFF.
+4. The ShellBFF sends the parameters, back to the Shell.
+5. The Shell caches the parameters only if the fetch status indicates success.
+
+Since the ShellBFF is always returning status code 200 when requested for parameters, the response structure implies if the fetching of parameters was successfull or not.
+
+If the response object matches the request object (i.e., all products and applications are included in the response), then the fetch was successful. If there is an issue with the ParameterSVC, the response object will be empty and will not contain any products or applications.
+
+ sequenceDiagram
+     Shell->>+ShellBFF: getParameters (body: GetParameterRequest)
+     ShellBFF->>-ParameterSVC: get parameters
+     ParameterSVC-->>+ShellBFF: parameters
+     ShellBFF-->>Shell: return parameters (body: GetParameterResponse)
+     Note over Shell: Cache
+
+undefined
+====================
+
 
 OneCX Shell Backend For Frontend
 ====================
@@ -27889,10 +27896,6 @@ app:
         description: OneCX Shell Backend for Frontend
         name: OneCX Shell BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
