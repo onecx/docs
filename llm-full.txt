@@ -5740,7 +5740,10 @@ Before **shell initialization**, shell is:
 * scheduling load of all preloaders by using **module federation** and waits on the completion
 * once all complete, starts **bootstrapping the app**
 
-![Diagram](../_images/diag-474b1a1560491351975172d82d6a76c3f131807f.svg) 
+graph LR
+  gatherPreloader[Gather Preloaders] --> scheduleLoad[Schedule Load of Preloaders]
+  scheduleLoad --> loadPreloaders[Load Preloaders via Module Federation]
+  loadPreloaders --> bootstrap[Bootstrap Application]
 
 Use of Module Federation in Shell router
 ====================
@@ -5762,16 +5765,16 @@ The workspace configuration contains route definitions for applications. The she
 
 ### [](#%5Fon%5Froute%5Fconfiguration)On route configuration
 
-graph LR
-  bffConfig[BFF Route Configuration] --> routeConfiguration[Convert to Route Config]
-  routeConfiguration --> configureMfePath[Configure MFE path and loading mechanism]
-  configureMfePath --> applicationRoutes[Application Routes]
-  applicationRoutes --> mergeStatic[Merge with Static Routes]
-  mergeStatic --> allRoutes[All Routes]
+![Diagram](../_images/diag-8e07b1b28aae70283de1606f5f4d1f4043c2ae85.svg) 
 
 ### [](#%5Fon%5Froute%5Factivation)On route activation
 
-![Diagram](../_images/diag-ed58dc83052c3a7f34781c63afbf06c2dea9caef.svg) 
+graph LR
+  routeActivation[Route Activated] --> lazyLoading[Lazy loading triggered]
+  lazyLoading --> triggerRemote[Load MFE via Module Federation]
+  triggerRemote --> decideMfeType[Decide MFE Type]
+  decideMfeType --> negotiate[Negotiate versions]
+  negotiate --> render[Render MFE]
 
 ## [](#%5Fshell%5Froutes%5Fafter%5Ftransformation)Shell Routes After Transformation
 
@@ -9068,17 +9071,15 @@ Java classes:
 
 Validation request sequence:
 
-![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
-
-Create user request sequence:
-
 sequenceDiagram
     UserRestController->>+UserMapper: map DTO request to internal model
     UserMapper-->>-UserRestController: internal model
-    UserRestController->>+UserDAO: create user
-    UserDAO-->>-UserRestController: created user
-    UserRestController->>+UserMapper: map internal model to DTO
-    UserMapper-->>-UserRestController: DTO model
+    UserRestController->>+UserValidationService: validate user request
+    UserValidationService-->>-UserRestController: validation result
+
+Create user request sequence:
+
+![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
 
 * RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
 * Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
@@ -16289,6 +16290,42 @@ module.exports = {
 }
 ```
 
+Adjust Packages in Webpack Config
+====================
+In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
+
+## [](#%5Fupdate%5Fconfiguration)Update configuration
+
+* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
+
+### [](#%5Fexample)Example
+
+Before
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { singleton: true, requiredVersion: "auto" },
+    "rxjs": { singleton: true, requiredVersion: "auto" }
+  })
+});
+```
+
+After
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { requiredVersion: "auto" },
+    "rxjs": { requiredVersion: "auto" }
+  })
+});
+```
+
 Add Webpack Plugin for PrimeNG
 ====================
 In OneCX version 6 uses PrimeNG 19 and requires applications to add a Webpack plugin. This change is required after upgrading to Angular 19.
@@ -16341,42 +16378,6 @@ module.exports = {
   ...webpackConfig,
   plugins: [...plugins, modifyPrimeNgPlugin]
 }
-```
-
-Adjust Packages in Webpack Config
-====================
-In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
-
-## [](#%5Fupdate%5Fconfiguration)Update configuration
-
-* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
-
-### [](#%5Fexample)Example
-
-Before
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { singleton: true, requiredVersion: "auto" },
-    "rxjs": { singleton: true, requiredVersion: "auto" }
-  })
-});
-```
-
-After
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { requiredVersion: "auto" },
-    "rxjs": { requiredVersion: "auto" }
-  })
-});
 ```
 
 Adjust Standalone Mode
@@ -16811,114 +16812,6 @@ Once all imports have been migrated, remove the deprecated package:
 npm uninstall @onecx/portal-integration-angular
 ```
 
-Remove @onecx/portal-layout-styles
-====================
-In libs version 6, the `@onecx/portal-layout-styles` package is no longer available and global portal styles are no longer provided.
-
-## [](#%5F1%5Funinstall%5Fthe%5Fdeprecated%5Fpackage)1\. Uninstall the deprecated package
-
-```bash
-npm uninstall --save @onecx/portal-layout-styles
-```
-
-## [](#%5F2%5Fupdate%5Fstyle%5Fimports%5Fand%5Freferences)2\. Update style imports and references
-
-* Remove all references to @onecx/portal-layout-styles from your application
-* Implement replacement styles in your component or global styles
-
-### [](#%5Fexample)Example
-
-Removed References (in styles.scss)
-
-```scss
-@import '@onecx/portal-layout-styles/src/styles/shell/shell.scss';
-@import '@onecx/portal-layout-styles/src/styles/primeng/theme-light.scss';
-```
-
-## [](#%5F3%5Fexpose%5Fstyles%5Fcss%5Fif%5Frequired)3\. Expose styles.css if required
-
-If your application needs to share styles between components, update your build configuration to expose `styles.css` at the application root. The shell expects this file to be accessible as `styles.css` at the top level of your deployed application.
-
-### [](#%5Ffor%5Fnx%5Fapplication%5Fstyles)For NX Application Styles
-
-It is recommended to modify the project.json file to include the following styles configuration:
-
-project.json
-
-```json
-"styles": [
-  {
-    "input": "./src/styles.scss",
-    "bundleName": "styles",
-    "inject": true
-  }
-]
-```
-
-Setting the inject property to true may result in a hashed filename, such as styles.HASH.css, where HASH is generated during the build. If your application requires a predictable filename, ensure the exposed file does not include the hash.
-
-To avoid hashed filenames, you can update the package.json:
-
-package.json
-
-```json
-"scripts": {
-  "build": "nx build && cp dist/name-of-your-ui/styles.*.css dist/name-of-your-ui/styles.css"
-}
-```
-
-Build the project and verify that styles.css is present in the dist folder without a hash in its name.
-
-### [](#%5Ffor%5Fangular%5Fcli%5Fapplication%5Fstyles)For Angular CLI Application Styles
-
-It is recommended to modify the package.json file to include the following styles configuration (my-project-name should be replaced with your modified project):
-
-package.json
-
-```json
-{
-  "scripts": {
-      "postbuild": "mv \"$(find dist/my-project-name -maxdepth 1 -type f -name 'styles.*.css' | head -n 1)\" dist/my-project-name/styles.css",
-  }
-}
-```
-
-### [](#%5Ffor%5Flocal%5Fdevelopment)For local development
-
-To make your styles.css available when serving your app using `npm run start` and include it directly into onecx, you need to adapt your `project.json` to prevent CORS issues.
-
-project.json
-
-```json
-{
-  "serve": {
-    ...
-    "options": {
-        ...
-        "headers": {
-          "Allow": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Headers": "*",
-          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-        }
-    }
-  }
-}
-```
-
-### [](#%5Fimport%5Fonecx%5Flibrary%5Fstyles)Import @Onecx Library styles
-
-Please include related OneCX library styles in your global styles when using OneCX components.
-
-If you are using `@onecx/angular-accelerator` components, add the following import to your `styles.scss` file:
-
-**Example:**
-
-```scss
-// ...Other style imports
-@import 'node_modules/@onecx/angular-accelerator/assets/styles.scss';
-```
-
 Replace DataViewControlsComponent
 ====================
 In OneCX v6, the InteractiveDataViewComponent replaces the following use cases:
@@ -17154,6 +17047,114 @@ After:
     <td>{{ item.value }}</td>
   </tr>
 </ng-template>
+```
+
+Remove @onecx/portal-layout-styles
+====================
+In libs version 6, the `@onecx/portal-layout-styles` package is no longer available and global portal styles are no longer provided.
+
+## [](#%5F1%5Funinstall%5Fthe%5Fdeprecated%5Fpackage)1\. Uninstall the deprecated package
+
+```bash
+npm uninstall --save @onecx/portal-layout-styles
+```
+
+## [](#%5F2%5Fupdate%5Fstyle%5Fimports%5Fand%5Freferences)2\. Update style imports and references
+
+* Remove all references to @onecx/portal-layout-styles from your application
+* Implement replacement styles in your component or global styles
+
+### [](#%5Fexample)Example
+
+Removed References (in styles.scss)
+
+```scss
+@import '@onecx/portal-layout-styles/src/styles/shell/shell.scss';
+@import '@onecx/portal-layout-styles/src/styles/primeng/theme-light.scss';
+```
+
+## [](#%5F3%5Fexpose%5Fstyles%5Fcss%5Fif%5Frequired)3\. Expose styles.css if required
+
+If your application needs to share styles between components, update your build configuration to expose `styles.css` at the application root. The shell expects this file to be accessible as `styles.css` at the top level of your deployed application.
+
+### [](#%5Ffor%5Fnx%5Fapplication%5Fstyles)For NX Application Styles
+
+It is recommended to modify the project.json file to include the following styles configuration:
+
+project.json
+
+```json
+"styles": [
+  {
+    "input": "./src/styles.scss",
+    "bundleName": "styles",
+    "inject": true
+  }
+]
+```
+
+Setting the inject property to true may result in a hashed filename, such as styles.HASH.css, where HASH is generated during the build. If your application requires a predictable filename, ensure the exposed file does not include the hash.
+
+To avoid hashed filenames, you can update the package.json:
+
+package.json
+
+```json
+"scripts": {
+  "build": "nx build && cp dist/name-of-your-ui/styles.*.css dist/name-of-your-ui/styles.css"
+}
+```
+
+Build the project and verify that styles.css is present in the dist folder without a hash in its name.
+
+### [](#%5Ffor%5Fangular%5Fcli%5Fapplication%5Fstyles)For Angular CLI Application Styles
+
+It is recommended to modify the package.json file to include the following styles configuration (my-project-name should be replaced with your modified project):
+
+package.json
+
+```json
+{
+  "scripts": {
+      "postbuild": "mv \"$(find dist/my-project-name -maxdepth 1 -type f -name 'styles.*.css' | head -n 1)\" dist/my-project-name/styles.css",
+  }
+}
+```
+
+### [](#%5Ffor%5Flocal%5Fdevelopment)For local development
+
+To make your styles.css available when serving your app using `npm run start` and include it directly into onecx, you need to adapt your `project.json` to prevent CORS issues.
+
+project.json
+
+```json
+{
+  "serve": {
+    ...
+    "options": {
+        ...
+        "headers": {
+          "Allow": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Headers": "*",
+          "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+        }
+    }
+  }
+}
+```
+
+### [](#%5Fimport%5Fonecx%5Flibrary%5Fstyles)Import @Onecx Library styles
+
+Please include related OneCX library styles in your global styles when using OneCX components.
+
+If you are using `@onecx/angular-accelerator` components, add the following import to your `styles.scss` file:
+
+**Example:**
+
+```scss
+// ...Other style imports
+@import 'node_modules/@onecx/angular-accelerator/assets/styles.scss';
 ```
 
 Replace Removed Components
@@ -21829,38 +21830,6 @@ Figure 5\. Example permission details
 
 Figure 6\. Assign the permission to the role
 
-Add the application to the workspace
-====================
-* In OneCX on the left side panel, choose `Workspace`, then choose `Workspaces` subitem.
-* Click on the workspace you want to add the application to (e.g. `Onecx Admin`). See [OneCX Workspace](../../../onecx-workspace/index.html) documentation for more details on workspaces.
-
-![Select the workspace to which you want to add the application](../../_images/extend/add_application_manually/workspace_left_panel.png) 
-
-Figure 1\. Navigate to the workspace
-
-* Click `Applications` tab in the workspace view, your application should be visible in the list of available applications.
-
-![Find the "Applications" tab in the workspace view](../../_images/extend/add_application_manually/workspaces_applications.png) 
-
-Figure 2\. Applications tab in the workspace
-
-* Click on the application you want to add to the workspace, then click `>` button in the middle of the view.
-
-![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_application_manually/workspace_add_app.png) 
-
-Figure 3\. Add the application to the workspace
-
-* You can access the application in the workspace now by entering the following link:
-
-```bash
-onecx.localhost/onecx-shell/{workspace-base-url}/{application-base-path}
-```
-
-Where `{workspace-base-url}` is the base URL of the workspace (e.g. `admin`) and `{application-base-path}` is the base path of the application defined in the product store (e.g. `my-app`).
-
-| |  Make sure to replace {workspace-base-url} and {application-base-path} with the actual values for your workspace and application. |
-| ----------------------------------------------------------------------------------------------------------------------------------- |
-
 Add the App to the product store
 ====================
 ## [](#add-the-application-to-the-product-store)Add the application to the product store
@@ -21946,6 +21915,38 @@ Figure 7\. Successfully added UI component
 
 | |  If you do not see the added UI component in the list, make sure to check that the Application Name in the management details of the UI component matches the Name field value of the application. |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Add the application to the workspace
+====================
+* In OneCX on the left side panel, choose `Workspace`, then choose `Workspaces` subitem.
+* Click on the workspace you want to add the application to (e.g. `Onecx Admin`). See [OneCX Workspace](../../../onecx-workspace/index.html) documentation for more details on workspaces.
+
+![Select the workspace to which you want to add the application](../../_images/extend/add_application_manually/workspace_left_panel.png) 
+
+Figure 1\. Navigate to the workspace
+
+* Click `Applications` tab in the workspace view, your application should be visible in the list of available applications.
+
+![Find the "Applications" tab in the workspace view](../../_images/extend/add_application_manually/workspaces_applications.png) 
+
+Figure 2\. Applications tab in the workspace
+
+* Click on the application you want to add to the workspace, then click `>` button in the middle of the view.
+
+![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_application_manually/workspace_add_app.png) 
+
+Figure 3\. Add the application to the workspace
+
+* You can access the application in the workspace now by entering the following link:
+
+```bash
+onecx.localhost/onecx-shell/{workspace-base-url}/{application-base-path}
+```
+
+Where `{workspace-base-url}` is the base URL of the workspace (e.g. `admin`) and `{application-base-path}` is the base path of the application defined in the product store (e.g. `my-app`).
+
+| |  Make sure to replace {workspace-base-url} and {application-base-path} with the actual values for your workspace and application. |
+| ----------------------------------------------------------------------------------------------------------------------------------- |
 
 Command Line Interface for OneCX Local Environment
 ====================
@@ -22139,6 +22140,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-announcement-svc/pkgs/container/onecx-announcement-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -22223,10 +22228,6 @@ app:
         description: OneCX Announcement Backend Service
         name: OneCX Announcement SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
