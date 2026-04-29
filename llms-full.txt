@@ -1334,290 +1334,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1990,6 +1706,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -6063,154 +6063,6 @@ The OneCX platform provides several libraries to assist in React application dev
 * **react-remote-components**: A library that enables the use of remote components in React applications, facilitating microfrontend architectures.
 * **react-webcomponents**: A library that allows the creation and use of web components within React applications.
 
-Content Visibility Based on Permissions
-====================
-The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
-
-They are intended for:
-
-* conditionally showing/hiding buttons, links, menu entries, and sections
-* providing an alternative UI via an `elseTemplate`
-* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
-
-| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#ifpermission)`*ocxIfPermission`
-
-Shows the host template only if the user has the required permission(s).
-
-Supported input shapes:
-
-* **Single permission** (string)
-* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
-
-example.html
-
-```html
-<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
-  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
-</button>
-
-<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
-  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
-</button>
-```
-
-## [](#ifnotpermission)`*ocxIfNotPermission`
-
-Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
-
-example.html
-
-```html
-<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
-  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
-</div>
-```
-
-## [](#options)Microsyntax Options
-
-Both directives support the same microsyntax options:
-
-| Option              | Type                | Meaning                                                                                                                              |
-| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
-| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
-| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
-
-## [](#else)`elseTemplate`
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
->
-  {{ 'ORDER.EDIT' | translate }}
-</button>
-
-<ng-template #noEditPermission>
-  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
-</ng-template>
-```
-
-For `*ocxIfNotPermission`, the semantics are inverted:
-
-* `elseTemplate` is rendered when the user **does have** the permission(s)
-
-## [](#disable)`onMissingPermission:'disable'`
-
-This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
->
-  {{ 'ORDER.DELETE' | translate }}
-</button>
-```
-
-| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-OneCX Permissions
-====================
-## [](#overview)Overview
-
-In [OneCX permission management](../../../onecx-permission/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) is available for permission checking.
-
-[OneCX compatible application](../app-to-onecx.html):
-
-* can use the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to check permissions.
-
-## [](#permissions-overview)Permissions Overview
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-## [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-## [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
-
 NgRX
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -6378,6 +6230,65 @@ The structure and inner workings of a dialog that is used in many pages is simil
 For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
+
+NgRx
+====================
+## [](#what-is-ngrx)What Is NgRx?
+
+* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
+* Core building blocks:  
+   * Actions: Plain events that describe what happened.  
+   * Reducers: Pure functions that compute new state from the previous state and an action.  
+   * Selectors: Memoized queries to read and derive data from state.  
+   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
+   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+
+## [](#overview)Overview
+
+Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+
+Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+
+## [](#core-packages)Core Packages
+
+* Store: `@ngrx/store` — application and feature state containers.
+* Effects: `@ngrx/effects` — side-effects and async flows.
+* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
+* Router Store: `@ngrx/router-store` — integrates Angular Router state.
+* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
+* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+
+## [](#getting-started)Getting Started
+
+Install commonly used packages:
+
+```bash
+npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```
+
+High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+
+## [](#onecx-guides-and-examples)OneCX Guides and Examples
+
+* [Lazy Loading Tabs with NgRx](lazy-loading.html)
+* Adding Search Criteria:  
+   * [Search Criteria](search-criteria/search-criteria.html)  
+   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
+   * [Calendar](search-criteria/calendar.html)  
+   * [Dropdown](search-criteria/dropdown.html)  
+   * [MultiSelect](search-criteria/multiselect.html)
+
+## [](#useful-links)Useful Links
+
+* Official website: [NgRx](https://ngrx.io/)
+* Documentation: [Docs](https://ngrx.io/docs)
+* Store: [Store](https://ngrx.io/guide/store)
+* Effects: [Effects](https://ngrx.io/guide/effects)
+* Entity: [Entity](https://ngrx.io/guide/entity)
+* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
+* Router Store: [Router Store](https://ngrx.io/guide/router-store)
+* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
+* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Lazy loading tabs
 ====================
@@ -6566,64 +6477,153 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-NgRx
+Content Visibility Based on Permissions
 ====================
-## [](#what-is-ngrx)What Is NgRx?
+The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
 
-* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
-* Core building blocks:  
-   * Actions: Plain events that describe what happened.  
-   * Reducers: Pure functions that compute new state from the previous state and an action.  
-   * Selectors: Memoized queries to read and derive data from state.  
-   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
-   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+They are intended for:
 
-## [](#overview)Overview
+* conditionally showing/hiding buttons, links, menu entries, and sections
+* providing an alternative UI via an `elseTemplate`
+* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
 
-Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+## [](#ifpermission)`*ocxIfPermission`
 
-## [](#core-packages)Core Packages
+Shows the host template only if the user has the required permission(s).
 
-* Store: `@ngrx/store` — application and feature state containers.
-* Effects: `@ngrx/effects` — side-effects and async flows.
-* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
-* Router Store: `@ngrx/router-store` — integrates Angular Router state.
-* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
-* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+Supported input shapes:
 
-## [](#getting-started)Getting Started
+* **Single permission** (string)
+* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
 
-Install commonly used packages:
+example.html
 
-```bash
-npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```html
+<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
+  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
+</button>
+
+<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
+  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
+</button>
 ```
 
-High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+## [](#ifnotpermission)`*ocxIfNotPermission`
 
-## [](#onecx-guides-and-examples)OneCX Guides and Examples
+Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
 
-* [Lazy Loading Tabs with NgRx](lazy-loading.html)
-* Adding Search Criteria:  
-   * [Search Criteria](search-criteria/search-criteria.html)  
-   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
-   * [Calendar](search-criteria/calendar.html)  
-   * [Dropdown](search-criteria/dropdown.html)  
-   * [MultiSelect](search-criteria/multiselect.html)
+example.html
 
-## [](#useful-links)Useful Links
+```html
+<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
+  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
+</div>
+```
 
-* Official website: [NgRx](https://ngrx.io/)
-* Documentation: [Docs](https://ngrx.io/docs)
-* Store: [Store](https://ngrx.io/guide/store)
-* Effects: [Effects](https://ngrx.io/guide/effects)
-* Entity: [Entity](https://ngrx.io/guide/entity)
-* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
-* Router Store: [Router Store](https://ngrx.io/guide/router-store)
-* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
-* Schematics: [Schematics](https://ngrx.io/guide/schematics)
+## [](#options)Microsyntax Options
+
+Both directives support the same microsyntax options:
+
+| Option              | Type                | Meaning                                                                                                                              |
+| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
+| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
+| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
+
+## [](#else)`elseTemplate`
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
+>
+  {{ 'ORDER.EDIT' | translate }}
+</button>
+
+<ng-template #noEditPermission>
+  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
+</ng-template>
+```
+
+For `*ocxIfNotPermission`, the semantics are inverted:
+
+* `elseTemplate` is rendered when the user **does have** the permission(s)
+
+## [](#disable)`onMissingPermission:'disable'`
+
+This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
+>
+  {{ 'ORDER.DELETE' | translate }}
+</button>
+```
+
+| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+OneCX Permissions
+====================
+## [](#overview)Overview
+
+In [OneCX permission management](../../../onecx-permission/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) is available for permission checking.
+
+[OneCX compatible application](../app-to-onecx.html):
+
+* can use the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to check permissions.
+
+## [](#permissions-overview)Permissions Overview
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+## [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+## [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
 
 PrimeNG
 ====================
@@ -7867,6 +7867,81 @@ _Adapt in File:_ `<feature>-search.component.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -7978,81 +8053,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -8854,48 +8854,6 @@ There are different cases for implementing AutoComplete depending on the array t
 * [AutoComplete with array of type number](autocomplete-number.html)
 * [AutoComplete with array of type object](autocomplete-object.html)
 
-Quarkus in OneCX
-====================
-This guide provides best practices and guidelines for developing microservices using Quarkus within the OneCX platform. It covers project structure, REST API design, backend for frontends (BFF) patterns, backend services, and Kubernetes operator integration.
-
-Quarkus Kubernetes native Java stack comes with an extendable framework.
-
-* Homepage: <https://quarkus.io/>
-* Guides: <https://quarkus.io/guides/>
-* Source code: <https://github.com/quarkusio/quarkus>
-* Quarkus quick starts: <https://github.com/quarkusio/quarkus-quickstarts>
-* Quarkiverse: <https://quarkiverse.github.io/quarkiverse-docs/index/index/index.html>
-* Quarkiverse source code: <https://github.com/quarkiverse>
-* [1000kit Quarkus Extensions](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/index.html)
-* [API Guidelines](../onecx-docs-dev/guidelines/api%5Fguidelines.html)
-
-## [](#%5Ftools)Tools
-
-For the developing the Quarkus application we need to install these tools:
-
-* [IntelliJ IDEA](https://www.jetbrains.com/de-de/idea/download/) **RECOMMENDED!**  
-   * Plugins  
-         * Quarkus Tools by Red-Hat  
-         * Lombok  
-         * Zalando OpenAPI Editor  
-         * SonarLint (disable Automatically trigger analysis)  
-   * Maven  
-         * Use Maven installation from your WSL `\\wsl.localhost....`  
-   * JDK  
-         * Use JDK installation from your WSL `\\wsl.localhost....`
-* [Visual Code](https://code.visualstudio.com/download)
-* [NeoVim](https://neovim.io/)
-
-## [](#%5Fuseful%5Fresources)Useful Resources
-
-* [Quarkus workshop](https://quarkus.io/quarkus-workshops/super-heroes/)
-* [MicroProfile - specification](https://microprofile.io/)
-* [Smallrye - MicroProfile implementation](https://smallrye.io/)
-* [Java tutorial](https://docs.oracle.com/javase/tutorial/)
-* [TestContainers](https://www.testcontainers.org/)
-* [Kubernetes](https://kubernetes.io/)
-* [Docker](https://www.docker.com/)
-
 Create Example Quarkus Project
 ====================
 Quarkus offers the [WEB project generator](https://code.quarkus.io/) or [Maven plugin](https://quarkus.io/guides/maven-tooling) to quickly create Quarkus project.
@@ -9119,6 +9077,48 @@ mvn clean package
 ```
 
 All the quarkus project are microservices where we push docker image and helm chart to registry. The maven `install` does not need to be executed.
+
+Quarkus in OneCX
+====================
+This guide provides best practices and guidelines for developing microservices using Quarkus within the OneCX platform. It covers project structure, REST API design, backend for frontends (BFF) patterns, backend services, and Kubernetes operator integration.
+
+Quarkus Kubernetes native Java stack comes with an extendable framework.
+
+* Homepage: <https://quarkus.io/>
+* Guides: <https://quarkus.io/guides/>
+* Source code: <https://github.com/quarkusio/quarkus>
+* Quarkus quick starts: <https://github.com/quarkusio/quarkus-quickstarts>
+* Quarkiverse: <https://quarkiverse.github.io/quarkiverse-docs/index/index/index.html>
+* Quarkiverse source code: <https://github.com/quarkiverse>
+* [1000kit Quarkus Extensions](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/index.html)
+* [API Guidelines](../onecx-docs-dev/guidelines/api%5Fguidelines.html)
+
+## [](#%5Ftools)Tools
+
+For the developing the Quarkus application we need to install these tools:
+
+* [IntelliJ IDEA](https://www.jetbrains.com/de-de/idea/download/) **RECOMMENDED!**  
+   * Plugins  
+         * Quarkus Tools by Red-Hat  
+         * Lombok  
+         * Zalando OpenAPI Editor  
+         * SonarLint (disable Automatically trigger analysis)  
+   * Maven  
+         * Use Maven installation from your WSL `\\wsl.localhost....`  
+   * JDK  
+         * Use JDK installation from your WSL `\\wsl.localhost....`
+* [Visual Code](https://code.visualstudio.com/download)
+* [NeoVim](https://neovim.io/)
+
+## [](#%5Fuseful%5Fresources)Useful Resources
+
+* [Quarkus workshop](https://quarkus.io/quarkus-workshops/super-heroes/)
+* [MicroProfile - specification](https://microprofile.io/)
+* [Smallrye - MicroProfile implementation](https://smallrye.io/)
+* [Java tutorial](https://docs.oracle.com/javase/tutorial/)
+* [TestContainers](https://www.testcontainers.org/)
+* [Kubernetes](https://kubernetes.io/)
+* [Docker](https://www.docker.com/)
 
 Quarkus Project Structure in OneCX
 ====================
@@ -16787,49 +16787,6 @@ In angular 19+ OneCX is creating its own theme presets per App that utilize Prim
 
 More about how to override the theme elements can be found in [theming documentation](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html).
 
-Remove addInitializeModuleGuard()
-====================
-In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
-
-## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
-
-* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
-* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
-* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
-* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
-
-| |  AngularAcceleratorModule already provides TranslationConnectionService |
-| ------------------------------------------------------------------------- |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-@NgModule({
-  imports: [
-    RouterModule.forRoot(addInitializeModuleGuard(routes)),
-  ],
-})
-export class AppModule {}
-```
-
-After
-
-```typescript
-import { provideTranslationConnectionService } from '@onecx/angular-utils';
-
-@NgModule({
-  imports: [
-    RouterModule.forRoot(routes),
-  ],
-  providers: [
-    provideTranslationConnectionService(),
-  ],
-})
-export class AppModule {}
-```
-
 Remove @onecx/keycloak-auth
 ====================
 In v6 of libs, the `@onecx/keycloak-auth` package has been removed and replaced with `@onecx/angular-auth`.
@@ -16884,6 +16841,49 @@ npm uninstall --save keycloak-angular
 
 | |  If you use Keycloak as your identity provider and want to keep using it with the new authentication module, you may need to install keycloak-js. Check whether your application still requires keycloak-js by referencing [Remove keycloak-js](../angular-20/remove-keycloak-js.html). If it is required, install it: npm install keycloak-js |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+Remove addInitializeModuleGuard()
+====================
+In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
+
+## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
+
+* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
+* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
+* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
+* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
+
+| |  AngularAcceleratorModule already provides TranslationConnectionService |
+| ------------------------------------------------------------------------- |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+@NgModule({
+  imports: [
+    RouterModule.forRoot(addInitializeModuleGuard(routes)),
+  ],
+})
+export class AppModule {}
+```
+
+After
+
+```typescript
+import { provideTranslationConnectionService } from '@onecx/angular-utils';
+
+@NgModule({
+  imports: [
+    RouterModule.forRoot(routes),
+  ],
+  providers: [
+    provideTranslationConnectionService(),
+  ],
+})
+export class AppModule {}
+```
 
 Remove MenuService
 ====================
@@ -17566,27 +17566,6 @@ __Table 2\. Output Events__
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Replace BASE_URL injection token
 ====================
 In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
@@ -17644,6 +17623,27 @@ export class Example {
   )
 }
 ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update Component Imports
 ====================
@@ -19134,41 +19134,6 @@ import { EventsTopic } from '@onecx/integration-interface'
 
 No action is needed. Treat this as awareness-only and continue with migration steps.
 
-Split shell and apps authentication
-====================
-In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
-
-This split separates shell-specific authentication logic from regular application token-based authentication.
-
-| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-The following symbols are no longer exported from `@onecx/angular-auth`:
-
-* `AuthServiceWrapper`
-* `provideAuthService`
-* `KeycloakAuthService`
-* `DisabledAuthService`
-* `AuthService`
-
-In v8 these implementation APIs are provided by `@onecx/shell-auth`.
-
-## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
-
-1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
-2. Uninstall `keycloak-js` dependency.  
-```bash  
-npm uninstall keycloak-js  
-```
-
-## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
-
-1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
-2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
-3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
-
 Migrate OneCX App from Angular 20 to Angular 21
 ====================
 ## [](#overview)Overview
@@ -19276,6 +19241,41 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Move auth implementation imports from @onecx/angular-auth to @onecx/shell-auth](move-auth-to-shell-auth.html)
 * [Update imports to supported public APIs](update-public-api-imports.html)
 * [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
+
+Split shell and apps authentication
+====================
+In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
+
+This split separates shell-specific authentication logic from regular application token-based authentication.
+
+| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+The following symbols are no longer exported from `@onecx/angular-auth`:
+
+* `AuthServiceWrapper`
+* `provideAuthService`
+* `KeycloakAuthService`
+* `DisabledAuthService`
+* `AuthService`
+
+In v8 these implementation APIs are provided by `@onecx/shell-auth`.
+
+## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
+
+1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
+2. Uninstall `keycloak-js` dependency.  
+```bash  
+npm uninstall keycloak-js  
+```
+
+## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
+
+1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
+2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
+3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
 
 Replace removed topic publisher classes
 ====================
@@ -22123,38 +22123,6 @@ Figure 5\. Example permission details
 
 Figure 6\. Assign the permission to the role
 
-Add the application to the workspace
-====================
-* In OneCX on the left side panel, choose `Workspace`, then choose `Workspaces` subitem.
-* Click on the workspace you want to add the application to (e.g. `Onecx Admin`). See [OneCX Workspace](../../../onecx-workspace/index.html) documentation for more details on workspaces.
-
-![Select the workspace to which you want to add the application](../../_images/extend/add_application_manually/workspace_left_panel.png) 
-
-Figure 1\. Navigate to the workspace
-
-* Click `Applications` tab in the workspace view, your application should be visible in the list of available applications.
-
-![Find the "Applications" tab in the workspace view](../../_images/extend/add_application_manually/workspaces_applications.png) 
-
-Figure 2\. Applications tab in the workspace
-
-* Click on the application you want to add to the workspace, then click `>` button in the middle of the view.
-
-![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_application_manually/workspace_add_app.png) 
-
-Figure 3\. Add the application to the workspace
-
-* You can access the application in the workspace now by entering the following link:
-
-```bash
-onecx.localhost/onecx-shell/{workspace-base-url}/{application-base-path}
-```
-
-Where `{workspace-base-url}` is the base URL of the workspace (e.g. `admin`) and `{application-base-path}` is the base path of the application defined in the product store (e.g. `my-app`).
-
-| |  Make sure to replace {workspace-base-url} and {application-base-path} with the actual values for your workspace and application. |
-| ----------------------------------------------------------------------------------------------------------------------------------- |
-
 Add the App to the product store
 ====================
 ## [](#add-the-application-to-the-product-store)Add the application to the product store
@@ -22240,6 +22208,38 @@ Figure 7\. Successfully added UI component
 
 | |  If you do not see the added UI component in the list, make sure to check that the Application Name in the management details of the UI component matches the Name field value of the application. |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Add the application to the workspace
+====================
+* In OneCX on the left side panel, choose `Workspace`, then choose `Workspaces` subitem.
+* Click on the workspace you want to add the application to (e.g. `Onecx Admin`). See [OneCX Workspace](../../../onecx-workspace/index.html) documentation for more details on workspaces.
+
+![Select the workspace to which you want to add the application](../../_images/extend/add_application_manually/workspace_left_panel.png) 
+
+Figure 1\. Navigate to the workspace
+
+* Click `Applications` tab in the workspace view, your application should be visible in the list of available applications.
+
+![Find the "Applications" tab in the workspace view](../../_images/extend/add_application_manually/workspaces_applications.png) 
+
+Figure 2\. Applications tab in the workspace
+
+* Click on the application you want to add to the workspace, then click `>` button in the middle of the view.
+
+![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_application_manually/workspace_add_app.png) 
+
+Figure 3\. Add the application to the workspace
+
+* You can access the application in the workspace now by entering the following link:
+
+```bash
+onecx.localhost/onecx-shell/{workspace-base-url}/{application-base-path}
+```
+
+Where `{workspace-base-url}` is the base URL of the workspace (e.g. `admin`) and `{application-base-path}` is the base path of the application defined in the product store (e.g. `my-app`).
+
+| |  Make sure to replace {workspace-base-url} and {application-base-path} with the actual values for your workspace and application. |
+| ----------------------------------------------------------------------------------------------------------------------------------- |
 
 Command Line Interface for OneCX Local Environment
 ====================
@@ -27484,10 +27484,6 @@ cd onecx-permission
 docker compose up -d traefik postgresdb pgadmin keycloak-app
 ```
 
-undefined
-====================
-
-
 OneCX Permission Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -27578,6 +27574,10 @@ app:
         description: OneCX Permission Operator
         name: OneCX Permission Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -33305,25 +33305,6 @@ app:
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                                                          | Type               | Default                        |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------ |
-| [onecx.workspace.template.import.role-mapping."role-mapping"](#onecx-workspace-svc%5Fonecx-workspace-template-import-role-mapping-role-mapping) Role mapping for the template import Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_IMPORT\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_ | Map<String,String> |                                |
-| [onecx.workspace.template.import.tenants](#onecx-workspace-svc%5Fonecx-workspace-template-import-tenants) Template import tenants Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_IMPORT\_TENANTS                                                                             | list of string     | default                        |
-| [onecx.workspace.template.create.enabled](#onecx-workspace-svc%5Fonecx-workspace-template-create-enabled) Enabled or enable create template configuration. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_ENABLED                                                    | boolean            | true                           |
-| [onecx.workspace.template.create.resource](#onecx-workspace-svc%5Fonecx-workspace-template-create-resource) Create template resource. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_RESOURCE                                                                        | string             | template/workspace-create.json |
-| [onecx.workspace.template.create.class-path-resource](#onecx-workspace-svc%5Fonecx-workspace-template-create-class-path-resource) Class-path resource Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_CLASS\_PATH\_RESOURCE                                           | boolean            | true                           |
-| [onecx.workspace.template.create.role-mapping."role-mapping"](#onecx-workspace-svc%5Fonecx-workspace-template-create-role-mapping-role-mapping) Role mapping for create template. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_    | Map<String,String> |                                |
-| [onecx.workspace.user.menu.mapping."mapping"](#onecx-workspace-svc%5Fonecx-workspace-user-menu-mapping-mapping) Menu mapping keys Environment variable: ONECX\_WORKSPACE\_USER\_MENU\_MAPPING\_\_MAPPING\_                                                                      | Map<String,String> |                                |
-| [onecx.workspace.token.verified](#onecx-workspace-svc%5Fonecx-workspace-token-verified) Verification status Environment variable: ONECX\_WORKSPACE\_TOKEN\_VERIFIED                                                                                                             | boolean            | false                          |
-| [onecx.workspace.token.issuer.public-key-location.suffix](#onecx-workspace-svc%5Fonecx-workspace-token-issuer-public-key-location-suffix) Suffix of public key Environment variable: ONECX\_WORKSPACE\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_SUFFIX                             | string             | /protocol/openid-connect/certs |
-| [onecx.workspace.token.issuer.public-key-location.enabled](#onecx-workspace-svc%5Fonecx-workspace-token-issuer-public-key-location-enabled) Status if public key is enabled Environment variable: ONECX\_WORKSPACE\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_ENABLED               | boolean            | false                          |
-| [onecx.workspace.token.claim.separator](#onecx-workspace-svc%5Fonecx-workspace-token-claim-separator) Separator Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_SEPARATOR                                                                                                 | string             |                                |
-| [onecx.workspace.token.claim.path](#onecx-workspace-svc%5Fonecx-workspace-token-claim-path) Claim path Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_PATH                                                                                                               | string             | realm\_access/roles            |
-
-undefined
-====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
@@ -33350,6 +33331,25 @@ undefined
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                          | Type               | Default                        |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ------------------------------ |
+| [onecx.workspace.template.import.role-mapping."role-mapping"](#onecx-workspace-svc%5Fonecx-workspace-template-import-role-mapping-role-mapping) Role mapping for the template import Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_IMPORT\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_ | Map<String,String> |                                |
+| [onecx.workspace.template.import.tenants](#onecx-workspace-svc%5Fonecx-workspace-template-import-tenants) Template import tenants Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_IMPORT\_TENANTS                                                                             | list of string     | default                        |
+| [onecx.workspace.template.create.enabled](#onecx-workspace-svc%5Fonecx-workspace-template-create-enabled) Enabled or enable create template configuration. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_ENABLED                                                    | boolean            | true                           |
+| [onecx.workspace.template.create.resource](#onecx-workspace-svc%5Fonecx-workspace-template-create-resource) Create template resource. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_RESOURCE                                                                        | string             | template/workspace-create.json |
+| [onecx.workspace.template.create.class-path-resource](#onecx-workspace-svc%5Fonecx-workspace-template-create-class-path-resource) Class-path resource Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_CLASS\_PATH\_RESOURCE                                           | boolean            | true                           |
+| [onecx.workspace.template.create.role-mapping."role-mapping"](#onecx-workspace-svc%5Fonecx-workspace-template-create-role-mapping-role-mapping) Role mapping for create template. Environment variable: ONECX\_WORKSPACE\_TEMPLATE\_CREATE\_ROLE\_MAPPING\_\_ROLE\_MAPPING\_    | Map<String,String> |                                |
+| [onecx.workspace.user.menu.mapping."mapping"](#onecx-workspace-svc%5Fonecx-workspace-user-menu-mapping-mapping) Menu mapping keys Environment variable: ONECX\_WORKSPACE\_USER\_MENU\_MAPPING\_\_MAPPING\_                                                                      | Map<String,String> |                                |
+| [onecx.workspace.token.verified](#onecx-workspace-svc%5Fonecx-workspace-token-verified) Verification status Environment variable: ONECX\_WORKSPACE\_TOKEN\_VERIFIED                                                                                                             | boolean            | false                          |
+| [onecx.workspace.token.issuer.public-key-location.suffix](#onecx-workspace-svc%5Fonecx-workspace-token-issuer-public-key-location-suffix) Suffix of public key Environment variable: ONECX\_WORKSPACE\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_SUFFIX                             | string             | /protocol/openid-connect/certs |
+| [onecx.workspace.token.issuer.public-key-location.enabled](#onecx-workspace-svc%5Fonecx-workspace-token-issuer-public-key-location-enabled) Status if public key is enabled Environment variable: ONECX\_WORKSPACE\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_ENABLED               | boolean            | false                          |
+| [onecx.workspace.token.claim.separator](#onecx-workspace-svc%5Fonecx-workspace-token-claim-separator) Separator Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_SEPARATOR                                                                                                 | string             |                                |
+| [onecx.workspace.token.claim.path](#onecx-workspace-svc%5Fonecx-workspace-token-claim-path) Claim path Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_PATH                                                                                                               | string             | realm\_access/roles            |
 
 undefined
 ====================
@@ -33665,7 +33665,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -33743,9 +33745,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
-
-## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
