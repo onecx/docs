@@ -5689,7 +5689,10 @@ Before **shell initialization**, shell is:
 * scheduling load of all preloaders by using **module federation** and waits on the completion
 * once all complete, starts **bootstrapping the app**
 
-![Diagram](../_images/diag-474b1a1560491351975172d82d6a76c3f131807f.svg) 
+graph LR
+  gatherPreloader[Gather Preloaders] --> scheduleLoad[Schedule Load of Preloaders]
+  scheduleLoad --> loadPreloaders[Load Preloaders via Module Federation]
+  loadPreloaders --> bootstrap[Bootstrap Application]
 
 Use of Module Federation in Shell router
 ====================
@@ -5711,12 +5714,7 @@ The workspace configuration contains route definitions for applications. The she
 
 ### [](#%5Fon%5Froute%5Fconfiguration)On route configuration
 
-graph LR
-  bffConfig[BFF Route Configuration] --> routeConfiguration[Convert to Route Config]
-  routeConfiguration --> configureMfePath[Configure MFE path and loading mechanism]
-  configureMfePath --> applicationRoutes[Application Routes]
-  applicationRoutes --> mergeStatic[Merge with Static Routes]
-  mergeStatic --> allRoutes[All Routes]
+![Diagram](../_images/diag-8e07b1b28aae70283de1606f5f4d1f4043c2ae85.svg) 
 
 ### [](#%5Fon%5Froute%5Factivation)On route activation
 
@@ -5893,7 +5891,12 @@ Types of microfrontends in OneCX
 ====================
 In OneCX, there are four types of microfrontends for bootstrapping different technologies:
 
-![Diagram](../_images/diag-d7194494437fb83f66bd2c353095b0dde3547ff3.svg) 
+graph TD
+    MF["Microfrontends in OneCX"]
+    MF --> WCM["WebComponentModule"]
+    MF --> WCS["WebComponentScript"]
+    MF --> WC["WebComponent"]
+    MF --> AT["Angular (not recommended)"]
 
 **WebComponent** technology is used for microfrontends bootstrapping webcomponents, with different loading options:
 
@@ -6218,6 +6221,193 @@ For a further introduction, please checkout the [NgRX documentation](https://ngr
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
 
+Lazy loading tabs
+====================
+## [](#goal)Goal: Load tabs dynamically
+
+Only load data for a tab when it is selected.
+
+| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------------- |
+
+## [](#state-and-viewmodel)1\. State & viewmodel
+
+Add additional member for the tabs in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-details.state.ts`
+
+```javascript
+...
+    activeTab: 'ExampleDetailsTab' | ... | 'Other';
+...
+```
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts`
+
+```javascript
+...
+    exampleDetailsTab: exampleDetailsTabViewModel;
+...
+```
+
+## [](#actions)2\. Actions
+
+Create following actions to handle the events regarding autocomplete:
+
+_Adapt in File:_ `<feature>-details.actions.ts`
+
+```javascript
+...
+    events: {
+        'other tab selected': emptyProps(),
+        'example details tab selected': emptyProps(),
+        'example details received': props<{
+        exampleDetails: ExampleResponse;
+        }>(),
+        'example details loading failed': props<{ error: string | null }>(),
+    },
+...
+```
+
+## [](#html)3\. HTML
+
+_Adapt in File:_ `<feature>-details.component.html`
+
+```html
+    <ocx-portal-page *ngrxLet="viewModel$; let vm">
+        <p-tabView
+            [(activeIndex)]="activeTabIndex"
+            (onChange)="handleTabChange($event)"
+        >
+            <p-tabPanel
+                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
+            >
+                <div *ngIf="vm" >
+                    <app-example-details-tab
+                        [vm]="vm?.exampleDetails"
+                    ></app-example-details-tab>
+                </div>
+            </p-tabPanel>
+        </p-tabView>
+    </ocx-portal-page>
+```
+
+## [](#component)4\. Component
+
+_Adapt in File:_ `<feature>-details.component.ts`
+
+```javascript
+    handleTabChange(event: { originalEvent: Event; index: number }) {
+        switch (event.index) {
+            case 0:
+                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
+                break;
+            ...
+            default:
+                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
+        }
+    }
+```
+
+## [](#reducers)5\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            activeTab: 'ExampleDetailsTab',
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
+        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: exampleDetails,
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: undefined,
+        })
+    ),
+...
+```
+
+## [](#selectors)6\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-details.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>DetailsViewModel = createSelector(
+        ...
+        selectExampleDetailsTabViewModel,
+        ...
+      (
+        ...
+        exampleDetailsTab,
+        ...
+      ): <%= featureClassName %>DetailsViewModel => ({
+        ...
+        exampleDetailsTab,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)7\. Effects
+
+_Adapt in File:_ `<feature>-details.effects.ts`
+
+```javascript
+    exampleDetailsTab$ = createEffect(() => {
+        return this.actions$.pipe(
+            ofType(
+                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+            ),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
+            ),
+            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
+            ),
+            switchMap(([, id]) => {
+                return this.<%= featureClassName %>DetailsService
+                    .getExampleDetailsTabDataById(id)
+                    .pipe(
+                        map(({ exampleDetailsTabData }) => {
+                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
+                            exampleDetails: exampleDetailsTabData,
+                        });
+                    }),
+                    catchError((error) =>
+                        of(
+                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
+                                error,
+                            }),
+                        ),
+                    ),
+                );
+            }),
+        );
+    });
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 NgRx
 ====================
 ## [](#what-is-ngrx)What Is NgRx?
@@ -6529,193 +6719,6 @@ provideThemeConfig({
   }
 })
 ```
-
-Lazy loading tabs
-====================
-## [](#goal)Goal: Load tabs dynamically
-
-Only load data for a tab when it is selected.
-
-| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------------- |
-
-## [](#state-and-viewmodel)1\. State & viewmodel
-
-Add additional member for the tabs in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-details.state.ts`
-
-```javascript
-...
-    activeTab: 'ExampleDetailsTab' | ... | 'Other';
-...
-```
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts`
-
-```javascript
-...
-    exampleDetailsTab: exampleDetailsTabViewModel;
-...
-```
-
-## [](#actions)2\. Actions
-
-Create following actions to handle the events regarding autocomplete:
-
-_Adapt in File:_ `<feature>-details.actions.ts`
-
-```javascript
-...
-    events: {
-        'other tab selected': emptyProps(),
-        'example details tab selected': emptyProps(),
-        'example details received': props<{
-        exampleDetails: ExampleResponse;
-        }>(),
-        'example details loading failed': props<{ error: string | null }>(),
-    },
-...
-```
-
-## [](#html)3\. HTML
-
-_Adapt in File:_ `<feature>-details.component.html`
-
-```html
-    <ocx-portal-page *ngrxLet="viewModel$; let vm">
-        <p-tabView
-            [(activeIndex)]="activeTabIndex"
-            (onChange)="handleTabChange($event)"
-        >
-            <p-tabPanel
-                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
-            >
-                <div *ngIf="vm" >
-                    <app-example-details-tab
-                        [vm]="vm?.exampleDetails"
-                    ></app-example-details-tab>
-                </div>
-            </p-tabPanel>
-        </p-tabView>
-    </ocx-portal-page>
-```
-
-## [](#component)4\. Component
-
-_Adapt in File:_ `<feature>-details.component.ts`
-
-```javascript
-    handleTabChange(event: { originalEvent: Event; index: number }) {
-        switch (event.index) {
-            case 0:
-                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
-                break;
-            ...
-            default:
-                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
-        }
-    }
-```
-
-## [](#reducers)5\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            activeTab: 'ExampleDetailsTab',
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
-        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: exampleDetails,
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: undefined,
-        })
-    ),
-...
-```
-
-## [](#selectors)6\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-details.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>DetailsViewModel = createSelector(
-        ...
-        selectExampleDetailsTabViewModel,
-        ...
-      (
-        ...
-        exampleDetailsTab,
-        ...
-      ): <%= featureClassName %>DetailsViewModel => ({
-        ...
-        exampleDetailsTab,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)7\. Effects
-
-_Adapt in File:_ `<feature>-details.effects.ts`
-
-```javascript
-    exampleDetailsTab$ = createEffect(() => {
-        return this.actions$.pipe(
-            ofType(
-                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-            ),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
-            ),
-            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
-            ),
-            switchMap(([, id]) => {
-                return this.<%= featureClassName %>DetailsService
-                    .getExampleDetailsTabDataById(id)
-                    .pipe(
-                        map(({ exampleDetailsTabData }) => {
-                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
-                            exampleDetails: exampleDetailsTabData,
-                        });
-                    }),
-                    catchError((error) =>
-                        of(
-                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
-                                error,
-                            }),
-                        ),
-                    ),
-                );
-            }),
-        );
-    });
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 OneCX Routing
 ====================
@@ -7655,125 +7658,76 @@ export default App;
 
 The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
 
-Calendar
+MultiSelect
 ====================
-## [](#goal)Goal: Add Calendar Input
+## [](#goal)Goal: Add MultiSelect Input
 
-Add a Calendar as a search criteria input field for your search page.
+Add a MultiSelect as a search criteria input field for your search page.
 
-| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
 | ------------------------------------------------------------------------------------------------------- |
 
 ## [](#parameters)1\. Parameters
 
-First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
 
 _Adapt in File:_ `<feature>-search.parameters.ts`
 
 ```javascript
-    exampleDate: z
-        .string()
-        .transform((v) => (v ? new Date(v) : undefined))
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
         .optional(),
 ```
 
 ## [](#html)2\. HTML
 
-Next, add the following code to your formGroup in the html file and adapt:
-
-* by replacing all occurences of `exampleDate` with the actual name which is defined
-* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
 
 _Adapt in File:_ `<feature>-search.component.html`
 
 ```html
     <span class="p-float-label">
-        <p-calendar
-            id="exampleDate"
-            formControlName="exampleDate"
-            name="exampleDate"
-            ngDefaultControl
-            pInputDate
-            type="text"
-            appendTo="body"
-            [showClear]="true"
-            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
-            >
-        </p-calendar>
-        <label for="exampleDate">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
         }}</label>
     </span>
 ```
 
-| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+## [](#component)3\. Component
 
-## [](#selectors)3\. Selectors
-
-Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
+Furthermore, the following needs to be done to have the correct translations displayed:
 
 _Adapt in File:_ `<feature>-search.component.ts`
 
 ```javascript
-    import { Calendar } from 'primeng/calendar';
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
     ...
 
-    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
     ...
 
-    search(formValue: FormGroup) {
-      const searchCriteria = buildSearchCriteria(
-        formValue.getRawValue(),
-        this.calendars, <-- ADD THIS LINE
-        {
-            removeNullValues: true,
-        },
-      );
-      this.store.dispatch(
-      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
-      );
-    }
-```
-
-## [](#effects)4\. Effects (Optional)
-
-If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-  syncParamsToUrl$ = createEffect(
-    () => {
-      return this.actions$.pipe(
-        ofType(
-          <%= featureClassName %>SearchActions.searchButtonClicked,
-          <%= featureClassName %>SearchActions.resetButtonClicked,
-        ),
-        concatLatestFrom(() => [
-          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
-          this.route.queryParams,
-        ]),
-        tap(([, criteria, queryParams]) => {
-          const results =
-            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
-          if (!results.success || !equal(criteria, results.data)) {
-            const params = {
-              ...criteria,
-              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
-            };
-            this.router.navigate([], {
-              relativeTo: this.route,
-              queryParams: params,
-              replaceUrl: true,
-              onSameUrlNavigation: 'ignore',
-            });
-          }
-        }),
-      );
-    },
-    { dispatch: false },
-  );
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
 ```
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
@@ -7820,81 +7774,6 @@ _Adapt in File:_ `<feature>-search.component.html`
               display="chip"
               [showClear]="true"
         ></p-dropdown>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
         <label for="exampleEnum$">{{
             'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
         }}</label>
@@ -8040,6 +7919,130 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+Calendar
+====================
+## [](#goal)Goal: Add Calendar Input
+
+Add a Calendar as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleDate: z
+        .string()
+        .transform((v) => (v ? new Date(v) : undefined))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt:
+
+* by replacing all occurences of `exampleDate` with the actual name which is defined
+* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-calendar
+            id="exampleDate"
+            formControlName="exampleDate"
+            name="exampleDate"
+            ngDefaultControl
+            pInputDate
+            type="text"
+            appendTo="body"
+            [showClear]="true"
+            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
+            >
+        </p-calendar>
+        <label for="exampleDate">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#selectors)3\. Selectors
+
+Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { Calendar } from 'primeng/calendar';
+    ...
+
+    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
+    ...
+
+    search(formValue: FormGroup) {
+      const searchCriteria = buildSearchCriteria(
+        formValue.getRawValue(),
+        this.calendars, <-- ADD THIS LINE
+        {
+            removeNullValues: true,
+        },
+      );
+      this.store.dispatch(
+      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
+      );
+    }
+```
+
+## [](#effects)4\. Effects (Optional)
+
+If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+  syncParamsToUrl$ = createEffect(
+    () => {
+      return this.actions$.pipe(
+        ofType(
+          <%= featureClassName %>SearchActions.searchButtonClicked,
+          <%= featureClassName %>SearchActions.resetButtonClicked,
+        ),
+        concatLatestFrom(() => [
+          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
+          this.route.queryParams,
+        ]),
+        tap(([, criteria, queryParams]) => {
+          const results =
+            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
+          if (!results.success || !equal(criteria, results.data)) {
+            const params = {
+              ...criteria,
+              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
+            };
+            this.router.navigate([], {
+              relativeTo: this.route,
+              queryParams: params,
+              replaceUrl: true,
+              onSameUrlNavigation: 'ignore',
+            });
+          }
+        }),
+      );
+    },
+    { dispatch: false },
+  );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -9155,19 +9158,7 @@ pom.xml parent configuration
 
 ## [](#%5Fjava%5Fnamings)Java Namings
 
-flowchart LR
-    classDef service fill:#adebb3,stroke:#333
-    classDef external fill:#b5c7eb,stroke:#333
-    n(Client):::external --> b
-    subgraph microservice
-    b(Boundary service):::service --> e1
-    b --> c
-    b --> i(Intermediate service):::service
-    i --> e1(Entity services):::service
-    i --> c(Client services):::service
-    end
-    e1 --> db[(Database)]:::external
-    c --> e>External system]:::external
+![Diagram](_images/diag-1ec88c3f3f581782c2edae77bff812148dc2028e.svg) 
 
 Basically all our microservice consist of 3 main layers
 
@@ -9188,7 +9179,13 @@ sequenceDiagram
 
 Create user request sequence:
 
-![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
+sequenceDiagram
+    UserRestController->>+UserMapper: map DTO request to internal model
+    UserMapper-->>-UserRestController: internal model
+    UserRestController->>+UserDAO: create user
+    UserDAO-->>-UserRestController: created user
+    UserRestController->>+UserMapper: map internal model to DTO
+    UserMapper-->>-UserRestController: DTO model
 
 * RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
 * Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
@@ -16870,55 +16867,6 @@ Remove MenuService
 ====================
 In OneCX v6, `MenuService` has been removed. Please remove all references to `MenuService` and imports from `@onecx/portal-integration-angular`. To create menu items in your app, create an endpoint in the BFF and implement your own function to load the data.
 
-Remove PortalCoreModule
-====================
-In OneCX v6, `PortalCoreModule` has been replaced with `AngularAcceleratorModule`.
-
-## [](#%5Fupdate%5Fimports)Update imports
-
-* Replace all imports of `PortalCoreModule` from '@onecx/portal-integration-angular' with `AngularAcceleratorModule` from `@onecx/angular-accelerator`.
-* Replace `PortalCoreModule` (also `PortalCoreModule.forRoot()`, `PortalCoreModule.forMicroFrontend()`) with `AngularAcceleratorModule`.
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { PortalCoreModule } from "@onecx/portal-integration-angular";
-
-@Component({
-  standalone: true,
-  imports: [PortalCoreModule]
-})
-```
-
-After
-
-```typescript
-import { AngularAcceleratorModule } from "@onecx/angular-accelerator";
-
-@Component({
-  standalone: true,
-  imports: [AngularAcceleratorModule]
-})
-```
-
-## [](#remove-portal-integration-angular)Remove '@onecx/portal-integration-angular'
-
-`@onecx/portal-integration-angular` is no longer available in OneCX v6 and must be completely removed from the application at this point.
-
-### [](#%5Fverify%5Fall%5Fimports%5Fare%5Fmigrated)Verify All Imports Are Migrated
-
-Before removing the package, ensure that all imports from `@onecx/portal-integration-angular` have been removed or properly migrated to their new locations as outlined in the [Update Component Imports](update-component-imports.html#update-component-imports) section.
-
-### [](#%5Funinstall%5Fthe%5Fpackage)Uninstall the Package
-
-Once all imports have been migrated, remove the deprecated package:
-
-```bash
-npm uninstall @onecx/portal-integration-angular
-```
-
 Remove @onecx/portal-layout-styles
 ====================
 In libs version 6, the `@onecx/portal-layout-styles` package is no longer available and global portal styles are no longer provided.
@@ -17025,6 +16973,55 @@ If you are using `@onecx/angular-accelerator` components, add the following impo
 ```scss
 // ...Other style imports
 @import 'node_modules/@onecx/angular-accelerator/assets/styles.scss';
+```
+
+Remove PortalCoreModule
+====================
+In OneCX v6, `PortalCoreModule` has been replaced with `AngularAcceleratorModule`.
+
+## [](#%5Fupdate%5Fimports)Update imports
+
+* Replace all imports of `PortalCoreModule` from '@onecx/portal-integration-angular' with `AngularAcceleratorModule` from `@onecx/angular-accelerator`.
+* Replace `PortalCoreModule` (also `PortalCoreModule.forRoot()`, `PortalCoreModule.forMicroFrontend()`) with `AngularAcceleratorModule`.
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { PortalCoreModule } from "@onecx/portal-integration-angular";
+
+@Component({
+  standalone: true,
+  imports: [PortalCoreModule]
+})
+```
+
+After
+
+```typescript
+import { AngularAcceleratorModule } from "@onecx/angular-accelerator";
+
+@Component({
+  standalone: true,
+  imports: [AngularAcceleratorModule]
+})
+```
+
+## [](#remove-portal-integration-angular)Remove '@onecx/portal-integration-angular'
+
+`@onecx/portal-integration-angular` is no longer available in OneCX v6 and must be completely removed from the application at this point.
+
+### [](#%5Fverify%5Fall%5Fimports%5Fare%5Fmigrated)Verify All Imports Are Migrated
+
+Before removing the package, ensure that all imports from `@onecx/portal-integration-angular` have been removed or properly migrated to their new locations as outlined in the [Update Component Imports](update-component-imports.html#update-component-imports) section.
+
+### [](#%5Funinstall%5Fthe%5Fpackage)Uninstall the Package
+
+Once all imports have been migrated, remove the deprecated package:
+
+```bash
+npm uninstall @onecx/portal-integration-angular
 ```
 
 Replace DataViewControlsComponent
@@ -17605,27 +17602,6 @@ export class Example {
 }
 ```
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Update Component Imports
 ====================
 The following section covers component, service, and directive changes in OneCX v6\. Components have been deleted, reorganized across libraries or converted to remote components. The following updates can be applied before v6 migration.
@@ -17799,6 +17775,27 @@ To include the remote components in the application, deployment configuration an
      ]  
    }  
    ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update ConfigurationService Usage
 ====================
@@ -29009,8 +29006,6 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
-
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
@@ -29271,6 +29266,8 @@ For further details on version compatibility, refer to the following resources:
 
 undefined
 ====================
+## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
+
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
@@ -32793,9 +32790,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fwelcome%5Fui)onecx-welcome-ui
-
-## [](#%5Fonecx%5Fwelcome%5Fui%5F2)OneCX Welcome UI
+## [](#%5Fonecx%5Fwelcome%5Fui)OneCX Welcome UI
 
 ### [](#%5Fwhat%5Fis%5Fwelcome%5Fmanagement)What is Welcome Management?
 
@@ -32873,7 +32868,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fwelcome%5Fui)OneCX Welcome UI
+## [](#%5Fonecx%5Fwelcome%5Fui)onecx-welcome-ui
+
+## [](#%5Fonecx%5Fwelcome%5Fui%5F2)OneCX Welcome UI
 
 ### [](#%5Fwhat%5Fis%5Fwelcome%5Fmanagement)What is Welcome Management?
 
@@ -34416,23 +34413,23 @@ Extensions List
 
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |         |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |         |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |         |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0   |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
 
 ## [](#%5Fhelm)Helm
 
@@ -34442,7 +34439,7 @@ Default values in src/main/helm/values.yaml
 
 ```yaml
 app:
-  name: auth-bff
+  name: bff
   image:
     repository: "onecx/onecx-service-auth-bff"
   operator:
@@ -34483,23 +34480,23 @@ Extensions List
 
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |         |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |         |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |         |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0   |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
 
 ## [](#%5Fhelm)Helm
 
@@ -34509,7 +34506,7 @@ Default values in src/main/helm/values.yaml
 
 ```yaml
 app:
-  name: auth-bff
+  name: bff
   image:
     repository: "onecx/onecx-service-auth-bff"
   operator:
@@ -34522,23 +34519,23 @@ undefined
 ====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |         |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |         |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |         |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |         |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0   |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
 
 OneCX Service Custom Auth UI
 ====================
