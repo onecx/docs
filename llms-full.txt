@@ -6783,6 +6783,14 @@ The following documents describe how to configure and use Module Federation in O
 
 undefined
 ====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
+
+undefined
+====================
 ## [](#mf-authentication-service-wrapper)Custom Authentication service
 
 Custom authentication service can be configured and provided. It can be achieved by setting AUTH\_SERVICE and AUTH\_SERVICE\_CUSTOM\_URL in enviroment configuration.
@@ -6793,14 +6801,6 @@ Custom authentication service can be configured and provided. It can be achieved
 
 * `AUTH_SERVICE` \- Set this to 'custom' to enable custom authentication service
 * `AUTH_SERVICE_CUSTOM_URL` \- URL to load custom authentication service factory via **module federation**. The module federation remote should expose a factory function that returns an implementation of the **authentication service factory**.
-
-undefined
-====================
-**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
-
-In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
-
-This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
 
 Module Federation Dependency Sharing in OneCX
 ====================
@@ -7077,29 +7077,125 @@ React Guidelines
 * **Version Control**: Follow best practices for version control, including meaningful commit messages and branching strategies.
 * **Code Quality**: Adhere to coding standards and use linters like ESLint to maintain code quality and consistency across the codebase.
 
-## [](#Nextjs)Nextjs
+## [](#onecx-libraries)OneCX libraries
 
-Next.js is a React framework for building full-stack web applications. You use React Components to build user interfaces, and Next.js for additional features and optimizations.
+Use the libraries depending on how much control you need:
 
-### [](#when-to-use-next-js)When to use Next.js
+* **Selective usage**: If you want only specific OneCX functionality, use contexts/hooks from `@onecx/react-integration-interface` and compose just what you need.
+* **All-in-one wiring**: If you want the full OneCX setup, use `@onecx/react-utils` and its HOCs (`withApp`, `withRemote`). They wire the standard providers and helpers for you.
 
-* You need server-side rendering (SSR) or static site generation (SSG) for better SEO and performance.
-* You want built-in routing based on the file system.
-* You need API routes to create backend endpoints within the same project.
-* You want automatic code splitting and optimized performance out of the box.
-* You want to leverage the React ecosystem while benefiting from Next.js features.
+`withApp`/`withRemote` include:
 
-### [](#when-not-to-use-next-js)When not to use Next.js
+* `AppStateProvider`
+* `ConfigurationProvider`
+* `UserProvider`
+* routing provider (`SyncedRouterProvider`)
+* translation sync (`TranslationBridge`)
 
-* Your application is a simple static site without dynamic content.
-* You require a highly customized build process that deviates significantly from Next.js conventions.
-* You need to use a different frontend framework (e.g. Angular, Vue).
-* You want to avoid the additional complexity that comes with server-side rendering.
+## [](#getting-started)Getting started with a React app
 
-### [](#module-federation)Module Federation
+1. Generate a Vite app (React + TS).
+2. Configure Module Federation and static asset copying in `vite.config.ts`.
+3. Add `bootstrap.ts` as the webcomponent entrypoint.
+4. Configure `App.tsx` with `withApp` and load styles in `styles.css`.
 
-* Module Federation support only Page Router from Next.js
-* Module Federation [Deprecation Notice for nextjs-mf](https://github.com/module-federation/core/issues/3153)
+Vite configuration (key elements):
+
+* `@module-federation/vite` with `exposes` pointing to `./src/bootstrap.ts`.
+* `base` set to the MFE path (e.g. `/mfe/<app-name>/`).
+* `viteStaticCopy` copying `src/assets/styles.css` and `src/assets/env.json`.
+* `react()` as the React plugin.
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { federation } from "@module-federation/vite";
+import { viteStaticCopy } from "vite-plugin-static-copy";
+import path from "path";
+
+export default defineConfig(({ mode }) => ({
+  base: mode === "production" ? "/mfe/<app-name>/" : "/",
+  plugins: [
+    viteStaticCopy({
+      targets: [
+        { src: path.resolve(__dirname, "./src/assets/styles.css"), dest: "" },
+        { src: path.resolve(__dirname, "./src/assets/env.json"), dest: "assets" },
+      ],
+    }),
+    federation({
+      name: "<app-name>-ui",
+      filename: "remoteEntry.js",
+      exposes: {
+        "./<RemoteModule>": "./src/bootstrap.ts",
+      },
+    }),
+    react(),
+  ],
+}));
+```
+
+`bootstrap.ts`:
+
+* should call `createViteAppWebComponent(App, "<entrypoint-name>")`.
+* is the entrypoint exported by Module Federation.
+
+```ts
+import { createViteAppWebComponent } from "@onecx/react-webcomponents";
+import App from "./App";
+
+createViteAppWebComponent(App, "<app-name>-ui-entrypoint");
+```
+
+`App.tsx`:
+
+* uses `withApp(AppRouter, { PRODUCT_NAME, REMOTES_NAME })`.
+* initializes the OneCX configuration and standard providers.
+
+```tsx
+import { withApp } from "@onecx/react-utils";
+import AppRouter from "./router";
+
+export default withApp(AppRouter, {
+  PRODUCT_NAME: "<app-name>",
+  REMOTES_NAME: "<app-name>-ui",
+});
+```
+
+Routing with `useAppHref`:
+
+Use `useAppHref` to resolve the base URL for your MFE so routes stay aligned with the host shell. It avoids hardcoding the base path and keeps navigation working when the shell mounts the app under a different prefix. The best practice is to guard rendering until `href` is available and then prefix all routes with it.
+
+```tsx
+import { Route, Routes } from "react-router";
+import { useAppHref } from "@onecx/react-webcomponents";
+
+const AppRoutes = () => {
+  const { href } = useAppHref();
+
+  if (!href) {
+    return null;
+  }
+
+  return (
+    <Routes>
+      <Route path={`${href}/`} element={<Overview />} />
+      <Route path={`${href}/detail/:id`} element={<Detail />} />
+    </Routes>
+  );
+};
+```
+
+`styles.css` (in `src/assets/styles.css`):
+
+* imports PrimeReact and PrimeIcons.
+* imports `primeBaseTheme.scss` from `@onecx/react-utils` to keep PrimeReact styles aligned with OneCX theming.
+* ensure the app uses `ThemeProvider` (from `@onecx/react-integration-interface`) or the full provider set via `withApp`/`withRemote` so theme updates are synchronized.
+
+```css
+@import "primereact/resources/primereact.min.css";
+@import "primeicons/primeicons.css";
+@import "@onecx/react-utils/src/lib/primeBaseTheme.scss";
+```
 
 ## [](#testing)Testing
 
@@ -7124,64 +7220,201 @@ Committed code must have a certain quality. The following guidelines must be con
    * If you need to format a specific file, you can use:  
          * `nx format:write –files **_filepath_**`
 
-React
+Vite - Project Architecture and Implementation Overview
 ====================
-React is a popular JavaScript library for building user interfaces, particularly single-page applications. It allows developers to create reusable UI components and manage the state of their applications efficiently.
+Table of Contents
 
-* [React homepage](https://reactjs.org/)
-* [React documentation](https://reactjs.org/docs/getting-started.html)
-* [Source code](https://github.com/facebook/react)
-* [React tutorial](https://reactjs.org/tutorial/tutorial.html)
-* [Vite](https://vite.dev/)
-* [Nextjs](https://nextjs.org/)
-* [Redux](https://redux.js.org/) \- Redux provides predictable state management
-* [Create React App](https://github.com/facebook/create-react-app)
+* [1\. Technology Stack](#%5Ftechnology%5Fstack)
+* [2\. Micro-Frontend (MFE) Approach](#%5Fmicro%5Ffrontend%5Fmfe%5Fapproach)  
+   * [2.1\. Module Federation](#%5Fmodule%5Ffederation)  
+   * [2.2\. Web Component Integration](#%5Fweb%5Fcomponent%5Fintegration)  
+   * [2.3\. Exposed Components](#%5Fexposed%5Fcomponents)
+* [3\. Style Scoping and Management](#%5Fstyle%5Fscoping%5Fand%5Fmanagement)
+* [4\. Theming Strategy](#%5Ftheming%5Fstrategy)
 
-## [](#requirements)Requirements
+| |  The current React approach for OneCX integration is experimental. |
+| -------------------------------------------------------------------- |
 
-For developing React applications, we need to install these tools:
+## [](#%5Ftechnology%5Fstack)1\. Technology Stack
 
-### [](#developer-ide)Developer IDE
+This project is built using **React** and **Vite**, providing a modern, fast, and modular development environment. The combination of **React’s component-based architecture** and **Vite’s rapid build tooling** ensures both developer productivity and high application performance.
 
-* [Visual Studio Code](https://code.visualstudio.com/)
+* **React** – Core UI library for building component-based user interfaces
+* **Vite** – Fast build tool and development server
+* **PrimeReact** – UI component library with theming and preset support
+* **Module Federation** – For micro-frontend integration and remote module loading
+* **TypeScript** – Static typing for JavaScript
+* **Jest** & **Vitest** – Testing frameworks
+* **Sass (SCSS)** – CSS preprocessor for advanced styling
+* **ESLint** – Linting and code quality
+* **Nx** – Monorepo management and tooling
+* **Helm** – Kubernetes package manager for deployment
+* **MutationObserver** – DOM API for dynamic style scoping
 
-### [](#vs-code-extensions)VS Code extensions
+## [](#%5Fmicro%5Ffrontend%5Fmfe%5Fapproach)2\. Micro-Frontend (MFE) Approach
 
-* [SonarLint](https://marketplace.visualstudio.com/items?itemName=SonarSource.sonarlint-vscode)
-* [EsLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
-* [GitLens](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens)
-* [Import Cost](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost)
-* [IntelliCode](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.vscodeintellicode)
-* [IntelliCode API Usage Examples](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.intellicode-api-usage-examples)
-* [IntelliSense for CSS class names in HTML](https://marketplace.visualstudio.com/items?itemName=Zignd.html-css-class-completion)
-* [HTML CSS Support](https://marketplace.visualstudio.com/items?itemName=ecmel.vscode-html-css)
-* [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
-* [Prettier ESLint](https://marketplace.visualstudio.com/items?itemName=rvest.vs-code-prettier-eslint)
-* [ThunderClient](https://marketplace.visualstudio.com/items?itemName=rangav.vscode-thunder-client)
-* [SonarLint](https://plugins.jetbrains.com/plugin/7973-sonarlint)
+### [](#%5Fmodule%5Ffederation)2.1\. Module Federation
 
-### [](#useful-browser-plugins)Useful browser plugins
+**Module Federation** is a key enabler of our micro-frontend architecture. It allows this application to both expose and consume remote modules at runtime, facilitating seamless integration between independently developed frontend modules. By sharing dependencies and loading code dynamically, module federation reduces duplication, improves maintainability, and enables true runtime composition of features across teams and domains.
 
-* [React Developer Tools](https://chrome.google.com/webstore/detail/react-developer-tools/fmkadmapgofadopljbjfkapdkoienihi)
-* [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview/)
-* [Redux DevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd)
+The configuration ensures that shared dependencies are loaded only once, optimizing resource usage and startup times. This approach provides a robust foundation for scalable, modular enterprise applications.
 
-### [](#useful-links)Useful links
+The following sections provide concrete **code snippets and configuration examples** that demonstrate how module federation is set up and used in this project, including how modules are exposed and consumed.
 
-* [React - Official website](https://reactjs.org/)
-* [React Router](https://reactrouter.com/)
-* [Getting Started with React](https://reactjs.org/docs/getting-started.html)
-* [OneCX React Libraries](libraries/react-integration-interface.html)
-* [Styled Components](https://styled-components.com/)
+### [](#%5Fweb%5Fcomponent%5Fintegration)2.2\. Web Component Integration
 
-## [](#onecx-libraries)OneCX Libraries
+This application is also turned into a **Web Component** using the `@onecx/react-webcomponents` library. This allows the React application to be embedded as a custom element in any host environment, providing true encapsulation and reusability across different platforms.
 
-The OneCX platform provides several libraries to assist in React application development:
+The main entry point for the web component is created as follows:
 
-* **react-integration-interface**: A library that provides interfaces and utilities for integrating React applications with the OneCX platform.
-* **react-auth**: A library that handles authentication and authorization within React applications.
-* **react-remote-components**: A library that enables the use of remote components in React applications, facilitating microfrontend architectures.
-* **react-webcomponents**: A library that allows the creation and use of web components within React applications.
+import { init } from '@module-federation/runtime';
+import { createViteAppWebComponent } from '../libs/react-webcomponents/src/lib/webcomponent-bootstrap-vite.utils';
+import App from './App';
+import { APP_NAME } from '../../utils/globals';
+
+init({
+  name: APP_NAME,
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/vite': {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+
+createViteAppWebComponent(App, 'onecx-react-module-test-ui-entrypoint');
+
+This code initializes module federation and registers the main React app as a web component, making it available as a custom element.
+
+### [](#%5Fexposed%5Fcomponents)2.3\. Exposed Components
+
+The application exposes key components for consumption by other micro-frontends or host shells via module federation. The configuration in `vite.config.ts` looks like this:
+
+const mfConfig = {
+  name: APP_NAME,
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+
+**Exposed modules:**
+
+* `./ViteWebcomponent`: The main application entrypoint, registered as a web component.
+* `./ViteRemote`: A remote component, also registered as a web component for remote consumption.
+
+Example of exposing a remote component:
+
+import { createViteAppWebComponent } from '../libs/react-webcomponents/src/lib/webcomponent-bootstrap-vite.utils';
+import ViteRemote from './main';
+
+createViteAppWebComponent(ViteRemote, 'onecx-react-module-test-ui-entrypoint');
+
+This pattern allows both the main app and individual components to be loaded and used independently in other environments.
+
+The configuration ensures that shared dependencies are loaded only once, optimizing resource usage and startup times. This approach provides a robust foundation for scalable, modular enterprise applications.
+
+## [](#%5Fstyle%5Fscoping%5Fand%5Fmanagement)3\. Style Scoping and Management
+
+To prevent style leakage and ensure visual consistency, the application employs a robust **style scoping strategy**. The **shell application** is responsible for providing the **primary style scope**, encapsulating styles for each micro-frontend. However, some third-party libraries may inject styles dynamically at runtime, which can bypass the shell’s scoping mechanisms.
+
+To address this, a **Mutation Observer** is implemented within the application. This observer monitors the DOM for dynamically added style elements and ensures that they are **appropriately scoped**, maintaining isolation and preventing unintended style overrides across micro-frontends.
+
+The implementation details live in the `@onecx/react-integration-functionalities` package (see [react-integration-functionalities](#libraries/react-integration-functionalities.adoc)).
+
+The following snippet shows the core logic of the Mutation Observer used for style scoping:
+
+const callback: MutationCallback = (mutationsRecords) => {
+  for (const record of mutationsRecords) {
+    for (let i = 0; i < record.addedNodes.length; i++) {
+      const node = record.addedNodes[i];
+      if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        node instanceof HTMLStyleElement
+      ) {
+        // Only scope PrimeReact styles
+        const isPrimeReactStyle =
+          node.id?.startsWith('primereact_') ||
+          node
+            .getAttributeNames()
+            .some((attr) => attr.startsWith('data-primereact'));
+
+        if (!isPrimeReactStyle) continue;
+
+        node.setAttribute('data-shell-scope', PRODUCT_NAME);
+        node.setAttribute('type', 'text/css');
+
+        const originalCss = node.textContent || '';
+        const scopedCss = scopeCss(originalCss);
+        node.textContent = scopedCss;
+      }
+    }
+  }
+};
+
+const mutationObserver = new MutationObserver(callback);
+mutationObserver.observe(document.head, {
+  childList: true,
+  subtree: true,
+});
+
+The `scopeCss` function rewrites the CSS to ensure it is only applied within the correct scope, using selectors and attributes specific to the shell and micro-frontend context.
+
+## [](#%5Ftheming%5Fstrategy)4\. Theming Strategy
+
+The application’s **theming system** is designed for **flexibility and consistency**. **Theme information is sourced from the current topic**, allowing for **dynamic theme switching** based on user or contextual preferences. The theming implementation utilizes **PrimeReact’s preset functionality**, enabling the application to **apply and manage theme variables efficiently**. This approach ensures a **cohesive look and feel** across all components, while also supporting customization and extensibility as required.
+
+The following snippet demonstrates how the theme is dynamically applied using PrimeReact and topic-based presets:
+
+import { useEffect, useState } from 'react';
+import { CurrentThemeTopic } from '@onecx/integration-interface';
+import { PrimeReactProvider } from '@primereact/core';
+import { PrimeReactStyleSheet } from '@primereact/core/stylesheet';
+import appConfig from '../../themes/app.config';
+import { createAPresetBasedOnTheme } from '../../themes/theme-config';
+import { merge } from 'lodash';
+
+const styledStyleSheet = new PrimeReactStyleSheet();
+
+export default function StyleRegistry({ children }) {
+  const [currentPreset, setCurrentPreset] = useState(appConfig.primereact);
+
+  useEffect(() => {
+    const ThemeTopic = new CurrentThemeTopic().subscribe((crrTheme) => {
+      const preset = createAPresetBasedOnTheme(crrTheme.properties);
+      setCurrentPreset((oldValue) => ({
+        ...oldValue,
+        theme: {
+          ...oldValue.theme,
+          preset: merge(oldValue.theme?.preset ?? {}, preset),
+        },
+      }));
+      return crrTheme;
+    });
+    return () => ThemeTopic.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    styledStyleSheet.reset?.();
+    styledStyleSheet.apply?.(currentPreset.theme?.preset);
+  }, [currentPreset]);
+
+  return (
+    <PrimeReactProvider {...currentPreset} stylesheet={styledStyleSheet}>
+      {children}
+    </PrimeReactProvider>
+  );
+}
+
+This code listens for theme changes from the topic, generates a new preset, and applies it to PrimeReact, ensuring the UI updates dynamically according to the selected theme.
 
 NgRX
 ====================
@@ -7350,6 +7583,65 @@ The structure and inner workings of a dialog that is used in many pages is simil
 For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
+
+NgRx
+====================
+## [](#what-is-ngrx)What Is NgRx?
+
+* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
+* Core building blocks:  
+   * Actions: Plain events that describe what happened.  
+   * Reducers: Pure functions that compute new state from the previous state and an action.  
+   * Selectors: Memoized queries to read and derive data from state.  
+   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
+   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+
+## [](#overview)Overview
+
+Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+
+Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+
+## [](#core-packages)Core Packages
+
+* Store: `@ngrx/store` — application and feature state containers.
+* Effects: `@ngrx/effects` — side-effects and async flows.
+* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
+* Router Store: `@ngrx/router-store` — integrates Angular Router state.
+* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
+* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+
+## [](#getting-started)Getting Started
+
+Install commonly used packages:
+
+```bash
+npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```
+
+High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+
+## [](#onecx-guides-and-examples)OneCX Guides and Examples
+
+* [Lazy Loading Tabs with NgRx](lazy-loading.html)
+* Adding Search Criteria:  
+   * [Search Criteria](search-criteria/search-criteria.html)  
+   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
+   * [Calendar](search-criteria/calendar.html)  
+   * [Dropdown](search-criteria/dropdown.html)  
+   * [MultiSelect](search-criteria/multiselect.html)
+
+## [](#useful-links)Useful Links
+
+* Official website: [NgRx](https://ngrx.io/)
+* Documentation: [Docs](https://ngrx.io/docs)
+* Store: [Store](https://ngrx.io/guide/store)
+* Effects: [Effects](https://ngrx.io/guide/effects)
+* Entity: [Entity](https://ngrx.io/guide/entity)
+* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
+* Router Store: [Router Store](https://ngrx.io/guide/router-store)
+* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
+* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Lazy loading tabs
 ====================
@@ -7537,65 +7829,6 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-NgRx
-====================
-## [](#what-is-ngrx)What Is NgRx?
-
-* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
-* Core building blocks:  
-   * Actions: Plain events that describe what happened.  
-   * Reducers: Pure functions that compute new state from the previous state and an action.  
-   * Selectors: Memoized queries to read and derive data from state.  
-   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
-   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
-
-## [](#overview)Overview
-
-Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
-
-Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
-
-## [](#core-packages)Core Packages
-
-* Store: `@ngrx/store` — application and feature state containers.
-* Effects: `@ngrx/effects` — side-effects and async flows.
-* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
-* Router Store: `@ngrx/router-store` — integrates Angular Router state.
-* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
-* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
-
-## [](#getting-started)Getting Started
-
-Install commonly used packages:
-
-```bash
-npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
-```
-
-High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
-
-## [](#onecx-guides-and-examples)OneCX Guides and Examples
-
-* [Lazy Loading Tabs with NgRx](lazy-loading.html)
-* Adding Search Criteria:  
-   * [Search Criteria](search-criteria/search-criteria.html)  
-   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
-   * [Calendar](search-criteria/calendar.html)  
-   * [Dropdown](search-criteria/dropdown.html)  
-   * [MultiSelect](search-criteria/multiselect.html)
-
-## [](#useful-links)Useful Links
-
-* Official website: [NgRx](https://ngrx.io/)
-* Documentation: [Docs](https://ngrx.io/docs)
-* Store: [Store](https://ngrx.io/guide/store)
-* Effects: [Effects](https://ngrx.io/guide/effects)
-* Entity: [Entity](https://ngrx.io/guide/entity)
-* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
-* Router Store: [Router Store](https://ngrx.io/guide/router-store)
-* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
-* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Content Visibility Based on Permissions
 ====================
@@ -8241,9 +8474,7 @@ During the initial load of the application, it is likely that there are existing
 ====================
 ## [](#overview)Overview
 
-This document provides an overview of the `axiosFactory` function, which creates an `axios` instance with additional features such as automatically adding authorization headers to HTTP requests.
-
-* axios: The main library for making HTTP requests.
+This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
 
 ## [](#axios-factory)axiosFactory Function
 
@@ -8258,8 +8489,8 @@ export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
 ```
 
 * baseURL: An optional parameter specifying the base URL for HTTP requests.
-* The axios instance is extended with a tokens property.
-* An interceptor is added to automatically include authorization headers in HTTP requests, except for those in the WHITELIST.
+* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
+* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
 
 ## [](#example-usage)Example Usage
 
@@ -8286,185 +8517,60 @@ apiClient.post('/submit', { name: 'John Doe' })
   });
 ```
 
-@onecx/react-integration-interface
-====================
-## [](#overview)Overview
+## [](#auth-proxy-service)Auth Proxy Service
 
-`@onecx/react-integration-interface` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of [@onecx/integration-interface](../../../onecx-portal-ui-libs/libraries/integration-interface.html). This library offers contexts containing a set of functionalities useful for integrating Microfrontends with OneCX without directly utilizing Topics.
+The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
 
-## [](#contexts)Contexts
+Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
 
-### [](#app-state-provider)App State Provider
+```ts
+if (!window.onecxAuth?.authServiceProxy) {
+  // handle missing auth proxy (e.g., show fallback or defer logic)
+  return;
+}
+```
 
-Usage
+```ts
+const { authServiceProxy } = window.onecxAuth;
 
-**Access information about the platform state**.
+// Ensure token is still valid before a guarded action
+await authServiceProxy.v1.updateTokenIfNeeded();
 
-This context creates new instances of several Topics that contain information about the current state of the platform and makes sure they are cleaned up correctly on destruction.
+// Read user / permissions (depending on shell implementation)
+const user = await authServiceProxy.v1.getUser();
+const permissions = await authServiceProxy.v1.getPermissions();
+```
 
-Topics used
+Example usage with axiosFactory:
 
-* [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)
-* [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)
-* [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)
-* [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)
-* [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic)
-* [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)
+```ts
+const apiClient = axiosFactory('/api');
 
-Dependencies
-
-None
-
-API
-
-**App State Provider** properties enable access to topic instances:
-
-__Table 1\. App State Provider properties__
-| Property name     | Type                                                                                                                | Description                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| globalError$      | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)           | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic) instance.           |
-| globalLoading$    | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)       | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic) instance.       |
-| currentMfe$       | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)             | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic) instance.             |
-| currentPage$      | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)           | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic) instance.           |
-| currentWorkspace$ | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) instance. |
-| isAuthenticated$  | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)   | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic) instance.   |
-| currentPortal$    | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | Deprecated. Use currentWorkspace$ instead.                                                                                    |
-
-### [](#configuration-provider)Configuration Provider
-
-Usage
-
-**Initialize and access configuration variables for a platform**.
-
-This provider is initialized by, and contains configuration variables, for the Shell Application that could be used in any place on the platform.
-
-Topics used
-
-* [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic)
-
-Dependencies
-
-* HttpClient
-
-API
-
-**Configuration Provider** properties:
-
-__Table 2\. Configuration Provider properties__
-| Property name | Type                                                                                                         | Description                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| config$       | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) instance. |
-| isInitialized | Promise<void>                                                                                                | Promise resolved when Configuration Provider is initialized.                                                           |
-
-**Configuration Provider** methods can be used for platform configuration variable management:
-
-__Table 3\. Configuration Provider methods__
-| Method signature                           | Return type                                                                                | Description                                                                                                                                                 |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| init()                                     | Promise<boolean>                                                                           | Initializes Configuration Service by loading Shell configuration variables and publishes them via ConfigurationTopic. Should not be used in Microfrontends. |
-| getProperty(key: CONFIG\_KEY)              | string                                                                                     | Gets value set for a key from topic.                                                                                                                        |
-| async setProperty(key: string, val:string) | void                                                                                       | Updates the value for a key in the configuration. Publishes new message via ConfigurationTopic.                                                             |
-| getConfig()                                | [Config](../../../onecx-portal-ui-libs/libraries/integration-interface.html#config-object) | Gets all configuration variables defined for the app from the topic.                                                                                        |
-
-### [](#theme-provider)Theme Provider
-
-Usage
-
-**Change the page display style by applying Themes**.
-
-This service allows changing the currently used Theme by applying it to the document and informs about it via a new message in the [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic).
-
-Topics used
-
-* [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic)
-
-Dependencies
-
-* HttpClient
-* [ConfigurationProvider](#configuration-provider)
-
-API
-
-**Theme Provider** properties enable access to topic instances:
-
-__Table 4\. Theme Provider properties__
-| Property name | Type                                                                                                        | Description                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| currentTheme$ | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) instance. |
-
-**Theme Provider** methods:
-
-__Table 5\. Theme Provider methods__
-| Method signature                                                                                       | Return type   | Description                                                                                                                                                                                                                                                                                                   |
-| ------------------------------------------------------------------------------------------------------ | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| apply(theme: [Theme](../../../onecx-portal-ui-libs/libraries/integration-interface.html#theme-object)) | Promise<void> | Applies [Theme](../../../onecx-portal-ui-libs/libraries/integration-interface.html#theme-object) via document style manipulation (styles will be lost on page exit). Publishes a new message via [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic). |
-| getThemeHref(themeId: string)                                                                          | string        | Get theme href                                                                                                                                                                                                                                                                                                |
-| loadAndApplyTheme(themeName: string)                                                                   | void          | Load and apply theme                                                                                                                                                                                                                                                                                          |
-
-### [](#user-provider)User Provider
-
-Usage
-
-**Access the user’s data, settings and permissions**.
-
-This service contains user-related information and allows checking user permissions by utilizing Topics.
-
-Topics used
-
-* [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic)
-* [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)
-
-API
-
-**User Provider** properties enable access to the user’s information:
-
-__Table 6\. User Provider properties__
-| Property      | Type                                                                                                      | Description                                                                                                                                                                                                                   |
-| ------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| profile$      | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) instance.                                                                                                           |
-| lang$         | BehaviorSubject<string>                                                                                   | User’s language. For every new message in the [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic), the language will be updated based on the user’s locale information. |
-| isInitialized | Promise<void>                                                                                             | Promise resolved when User Service is initialized.                                                                                                                                                                            |
-| permissions$  | BehaviorSubject<string\[\]>                                                                               | Permission.                                                                                                                                                                                                                   |
-
-**User Provider** methods:
-
-__Table 7\. User Provider methods__
-| Method Signature                                   | Return Type | Description                                                                               |
-| -------------------------------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
-| hasPermission(permissionKey: string \| string\[\]) | boolean     | Checks if user has specified permission/permissions using PermissionTopic’s latest value. |
-
-### [](#workspace-hook)Workspace Hook
-
-Usage
-
-**Manage Workspace resources**.
-
-This hook offers set of methods useful when developing Microfrontends referencing other Applications via routing.
-
-Topics used
-
-None.
-
-Dependencies
-
-* HttpClient
-* [AppStateProvider](#app-state-provider)
-
-API
-
-**Workspace Hook** \- **useWorkspace** can be used for constructing routes to Applications:
-
-__Table 8\. Workspace Hook methods__
-| Method signature                                                                                               | Return type         | Description                                                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
-| doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
+await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
+const response = await apiClient.get('/profile');
+```
 
 @onecx/react-remote-components
 ====================
 ## [](#overview)Overview
 
-`@onecx/react-remote-components` library is a set of tools aimed at simplifying the development of Angular applications integrated with OneCX by using and extending the functionality of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library focuses on connecting applications to already existing Angular-based environment, which is useful for integrating microfrontends with OneCX without directly using Topics.
+`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
+
+## [](#data-sources)Data Sources
+
+The library listens to portal topics for remote components and permissions:
+
+* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
+* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `SlotComponent`
+* `SlotProvider`, `useSlot`
+* `PermissionProvider`, `usePermission`
+* `withSlot`
 
 The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
 
@@ -8541,6 +8647,20 @@ It is asynchronous function so we need to wait for it to be done.
 
 To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
 
+## [](#contexts-hooks)Contexts and Hooks
+
+When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
+
+```tsx
+<PermissionProvider>
+  <SlotProvider>
+    <YourApp />
+  </SlotProvider>
+</PermissionProvider>
+```
+
+`useSlot` and `usePermission` throw an error when used outside their respective providers.
+
 ### [](#HOC)withSlot
 
 This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
@@ -8565,7 +8685,22 @@ export default withSlot(Testing);
 
 ### [](#SlotComponent)SlotComponent
 
-This component is just a container with a name property that you use to specify which shared component you want to use. What the component does is, based on the name property, it checks if there even is such a slot and if it has any components, and if it does, it creates an empty slot container with a tag name of those components.
+This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
+
+Additional props:
+
+* `inputs`: object passed to the remote component as inputs/properties
+* `outputs`: callbacks bound to the remote component as outputs
+* `skeleton`: placeholder rendered while components are loading
+
+```tsx
+<SlotComponent
+  name="vite-example"
+  inputs={{ title: 'Remote title' }}
+  outputs={{ onSelect: (value) => console.log(value) }}
+  skeleton={<div>Loading...</div>}
+/>
+```
 
 For example
 
@@ -8573,7 +8708,7 @@ For example
 <ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
 ```
 
-Then it just fetches the actual webcomponents(remoteEntry’s) using information from the `RemoteComponents` topic. After that, the fetched components are registered in the window, and this is the moment when you can see components inside created containers.
+It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
 
 ```js
 const Testing = () => (
@@ -8593,119 +8728,684 @@ This library works smoothly with vite applications.
 
 The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
+@onecx/react-utils
+====================
+## [](#overview)Overview
+
+`@onecx/react-utils` provides runtime helpers used by React micro-frontends inside OneCX. It focuses on style scoping, dynamic theme variable injection, and portal-aware wiring needed for PrimeReact and remote component isolation.
+
+## [](#exports)Public Exports
+
+The package exports the following public API:
+
+* `withApp`, `withRemote` from `@onecx/react-utils/styling` (HOCs for wiring providers and style isolation)
+* `applyThemeVariables` from `@onecx/react-utils/theme`
+* `PortalPage` from `@onecx/react-utils`
+* `registerPortalPageTranslations`, `getTranslationPathFromMeta` from `@onecx/react-utils` (translation helpers)
+* guards hooks (`useGuardCheck`, `useGuardDeactivation`, `useGuardsGatherer`, `useWrappedGuards`) from `@onecx/react-utils/guards`
+* `TranslationBridge`, `withBaseProviders`, `withAppGlobals`, `composeProviders`, `styleAttributes` from `@onecx/react-utils/utils`
+* `primeBaseTheme.scss` from `@onecx/react-utils/primeBaseTheme.scss` (PrimeReact theme base styles)
+
+Public entrypoints:
+
+* `@onecx/react-utils`
+* `@onecx/react-utils/guards`
+* `@onecx/react-utils/styling`
+* `@onecx/react-utils/theme`
+* `@onecx/react-utils/utils`
+* `@onecx/react-utils/primeBaseTheme.scss`
+
+## [](#style-scoping)Style Scoping
+
+The style scoping and PrimeReact isolation are wired automatically by `withApp` and `withRemote`. Use the HOCs to ensure the scoper is attached and scoped containers are provided for your microfrontend.
+
+## [](#theme-variables)Theme Variable Injection
+
+Theme variables can be injected at runtime by calling `applyThemeVariables`, which updates the `@layer tokens` block inside scoped style tags.
+
+```ts
+import { applyThemeVariables } from '@onecx/react-utils/theme';
+
+applyThemeVariables(theme, 'example|example-ui');
+```
+
+## [](#dynamic-scoping)Dynamic Scoping (Portals)
+
+To ensure styles remain scoped for portal-rendered PrimeReact components, the package intercepts portal creation and appends intermediate style data for isolation (enabled automatically by the HOCs).
+
+## [](#portal-page)PortalPage
+
+`PortalPage` is a layout helper that publishes page metadata to the shell (via `CurrentPageTopic`) and optionally guards content based on permissions. It also exposes a standard container (`.portal-page`) and prints translated unauthorized messages when access is denied.
+
+```tsx
+import { PortalPage } from '@onecx/react-utils';
+
+export const Detail = () => (
+  <PortalPage
+    pageName="Detail"
+    helpArticleId="detail-page"
+    permission="TEST#DETAIL"
+  >
+    <DetailContent />
+  </PortalPage>
+);
+```
+
+## [](#translation-bridge)TranslationBridge
+
+`TranslationBridge` syncs the OneCX user language (from `UserService.lang$`) with `react-i18next` by calling `i18n.changeLanguage`. It is automatically mounted by `withApp` and `withRemote` through `withBaseProviders`.
+
+```tsx
+import { TranslationBridge } from '@onecx/react-utils/utils';
+```
+
+## [](#translation-resources)Translation Resource Registration
+
+Use the helpers below to wire portal translations into your i18next backend configuration (for example inside an i18n setup file):
+
+```ts
+import i18n from 'i18next';
+import { registerPortalPageTranslations } from '@onecx/react-utils';
+
+registerPortalPageTranslations(i18n, import.meta.url);
+```
+
+If you need to resolve a different base path, use `getTranslationPathFromMeta` directly:
+
+```ts
+import { getTranslationPathFromMeta } from '@onecx/react-utils';
+
+const basePath = getTranslationPathFromMeta(import.meta.url, 'assets/i18n/');
+```
+
+## [](#style-attributes)Style Attributes
+
+The `styleAttributes` exports provide the standard data-attributes used for style scoping. Use them when you need to render custom containers or dynamic content outside the default HOCs:
+
+```tsx
+import {
+  dataStyleIdAttribute,
+  dataStyleIsolationAttribute,
+  dataNoPortalLayoutStylesAttribute,
+} from '@onecx/react-utils/utils';
+
+export const ScopedContainer = ({ scopeId, children }) => (
+  <div
+    {...{
+      [dataStyleIdAttribute]: scopeId,
+      [dataStyleIsolationAttribute]: '',
+      [dataNoPortalLayoutStylesAttribute]: '',
+    }}
+  >
+    {children}
+  </div>
+);
+```
+
+## [](#with-app-remote)withApp / withRemote
+
+`withApp` is used for main app shells, while `withRemote` is used for remote micro-frontends. Both:
+
+* wire base providers (app state, configuration, user)
+* attach translation syncing via `TranslationBridge`
+* set up PrimeReact style scoping and theme registry
+
+Use them as follows:
+
+```tsx
+import { withApp, withRemote } from '@onecx/react-utils';
+
+export default withApp(AppRouter, {
+  PRODUCT_NAME: 'example',
+  REMOTES_NAME: 'example-remotes'
+});
+
+export default withRemote(RemoteWidget, {
+  PRODUCT_NAME: 'example',
+  REMOTES_NAME: 'example-remotes'
+});
+```
+
+## [](#primereact-theme-import)PrimeReact Theme Base Import
+
+To apply PrimeReact theming consistently, you must import the base theme stylesheet from this package in your app styles:
+
+```css
+@import "@onecx/react-utils/primeBaseTheme.scss";
+```
+
+## [](#guards)Guards
+
+The guards utilities help you execute `canActivate`, `canDeactivate`, `canMatch`, and `canActivateChild` checks in React Router flows (React Router v6/v7). They are exported from the dedicated entry point:
+
+```ts
+import {
+  useGuardCheck,
+  useGuardDeactivation,
+  useGuardsGatherer,
+  useWrappedGuards,
+} from '@onecx/react-utils/guards';
+```
+
+Example usage (simplified):
+
+```tsx
+const Guards = () => {
+  const { guardCheck } = useGuardCheck();
+
+  const runGuards = async () => {
+    const result = await guardCheck('/orders', {
+      canActivate: [() => true],
+      canMatch: [() => true],
+    });
+
+    if (!result) {
+      // handle blocked navigation
+    }
+  };
+
+  return <button onClick={runGuards}>Check guards</button>;
+};
+```
+
+For coordinated navigation flows across multiple remotes, you can wire the lower-level helpers:
+
+* `GuardsNavigationStateController` to track guard state modes
+* `GuardsGatherer` to collect guard results before committing navigation
+
+## [](#with-app)Application Wiring
+
+The `withApp` HOC composes common providers (app state, configuration, user, theme) and sets up the style scoping helpers for micro-frontends.
+
+@onecx/react-integration-interface
+====================
+## [](#overview)Overview
+
+`@onecx/react-integration-interface` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of [@onecx/integration-interface](../../../onecx-portal-ui-libs/libraries/integration-interface.html). This library offers contexts containing a set of functionalities useful for integrating Microfrontends with OneCX without directly utilizing Topics.
+
+## [](#contexts)Contexts
+
+### [](#app-state-provider)App State Provider
+
+Usage
+
+**Access information about the platform state**.
+
+This context creates new instances of several Topics that contain information about the current state of the platform and makes sure they are cleaned up correctly on destruction.
+
+Example
+
+**Wrap your app with the provider and read topics with `useAppState`.**
+
+```tsx
+import { AppStateProvider, useAppState } from "@onecx/react-integration-interface";
+
+const Status = () => {
+  const { currentWorkspace$ } = useAppState();
+  // currentWorkspace$.subscribe((ws) => console.log(ws));
+  return null;
+};
+
+export const App = () => (
+  <AppStateProvider>
+    <Status />
+  </AppStateProvider>
+);
+```
+
+Topics used
+
+* [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)
+* [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)
+* [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)
+* [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)
+* [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)
+* [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic)
+* [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)
+
+Dependencies
+
+None
+
+API
+
+**App State Provider** properties enable access to topic instances:
+
+__Table 1\. App State Provider properties__
+| Property name     | Type                                                                                                                | Description                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| globalError$      | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)           | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic) instance.                                                      |
+| globalLoading$    | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)       | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic) instance.                                                  |
+| currentMfe$       | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)             | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic) instance.                                                        |
+| currentLocation$  | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)   | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic) instance.                                              |
+| currentPage$      | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)           | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic) instance. Emits only when page path matches document location. |
+| currentWorkspace$ | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) instance.                                            |
+| isAuthenticated$  | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)   | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic) instance.                                              |
+| currentPortal$    | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | Deprecated. Use currentWorkspace$ instead.                                                                                                                               |
+
+### [](#configuration-provider)Configuration Provider
+
+Usage
+
+**Initialize and access configuration variables for a platform**.
+
+This provider loads configuration variables for the application and exposes them via the ConfigurationTopic.
+
+Example
+
+**Provide defaults and read configuration via `useConfiguration`.**
+
+```tsx
+import {
+  ConfigurationProvider,
+  useConfiguration,
+} from "@onecx/react-integration-interface";
+
+const ConfigInfo = () => {
+  const { config } = useConfiguration();
+  return <pre>{JSON.stringify(config, null, 2)}</pre>;
+};
+
+export const App = () => (
+  <ConfigurationProvider defaultConfig={{ appId: "my-app", portalId: "portal" }}>
+    <ConfigInfo />
+  </ConfigurationProvider>
+);
+```
+
+Topics used
+
+* [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic)
+
+Dependencies
+
+* HttpClient
+
+API
+
+**Configuration Provider** properties:
+
+__Table 2\. Configuration Provider properties__
+| Property name | Type                                                                                                         | Description                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| config$       | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) instance. |
+| isInitialized | Promise<void>                                                                                                | Promise resolved when Configuration Provider is initialized.                                                           |
+| config        | Config \| null                                                                                               | Current config snapshot.                                                                                               |
+
+**Configuration Provider** methods can be used for platform configuration variable management:
+
+__Table 3\. Configuration Provider methods__
+| Method signature                           | Return type                                                                                                      | Description                                                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| init()                                     | Promise<boolean>                                                                                                 | Initializes Configuration Service by loading configuration variables and publishes them via ConfigurationTopic. |
+| getProperty(key: CONFIG\_KEY)              | Promise<string \| undefined>                                                                                     | Gets value set for a key from topic.                                                                            |
+| async setProperty(key: string, val:string) | Promise<void>                                                                                                    | Updates the value for a key in the configuration. Publishes new message via ConfigurationTopic.                 |
+| getConfig()                                | Promise<[Config](../../../onecx-portal-ui-libs/libraries/integration-interface.html#config-object) \| undefined> | Gets all configuration variables defined for the app from the topic.                                            |
+
+### [](#theme-provider)Theme Provider
+
+Usage
+
+**Change the page display style by applying Themes**.
+
+This provider exposes the current theme topic and keeps its lifecycle scoped to the React tree.
+
+Example
+
+**Wrap the tree and read the current theme topic.**
+
+```tsx
+import { ThemeProvider, useTheme } from "@onecx/react-integration-interface";
+
+const ThemeStatus = () => {
+  const { currentTheme$ } = useTheme();
+  // currentTheme$.subscribe((theme) => console.log(theme));
+  return null;
+};
+
+export const App = () => (
+  <ThemeProvider>
+    <ThemeStatus />
+  </ThemeProvider>
+);
+```
+
+Topics used
+
+* [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic)
+
+API
+
+**Theme Provider** properties enable access to topic instances:
+
+__Table 4\. Theme Provider properties__
+| Property name | Type                                                                                                        | Description                                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| currentTheme$ | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) instance. |
+
+\=== User Provider
+
+Usage
+
+**Access the user’s data, settings and permissions**.
+
+This service contains user-related information and allows checking user permissions by utilizing Topics.
+
+Example
+
+**Provide user context and check permissions.**
+
+```tsx
+import { UserProvider, useUserService } from "@onecx/react-integration-interface";
+
+const Permissions = () => {
+  const { hasPermission } = useUserService();
+  // hasPermission("MY_PERMISSION").then(console.log);
+  return null;
+};
+
+export const App = () => (
+  <UserProvider>
+    <Permissions />
+  </UserProvider>
+);
+```
+
+Topics used
+
+* [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic)
+* [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)
+
+API
+
+**User Provider** properties enable access to the user’s information:
+
+__Table 5\. User Provider properties__
+| Property          | Type                                                                                                      | Description                                                                                                                                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| profile$          | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) instance.                                                                                                           |
+| lang$             | BehaviorSubject<string>                                                                                   | User’s language. For every new message in the [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic), the language will be updated based on the user’s locale information. |
+| isInitialized     | Promise<void>                                                                                             | Promise resolved when User Service is initialized.                                                                                                                                                                            |
+| permissionsTopic$ | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)  | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic) instance.                                                                                                            |
+
+**User Provider** methods:
+
+__Table 6\. User Provider methods__
+| Method Signature                                   | Return Type            | Description                                                                               |
+| -------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| getPermissions()                                   | Observable<string\[\]> | Returns the permissions stream from PermissionsTopic.                                     |
+| hasPermission(permissionKey: string \| string\[\]) | Promise<boolean>       | Checks if user has specified permission/permissions using PermissionTopic’s latest value. |
+
+### [](#parameters-provider)Parameters Provider
+
+Usage
+
+**Access application parameters published by the shell.**
+
+Topics used
+
+* [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic)
+
+Example
+
+**Read a parameter inside the provider.**
+
+```tsx
+import { ParametersProvider, useParameters } from "@onecx/react-integration-interface";
+
+const Params = () => {
+  const { get } = useParameters();
+  // get("feature.flag", false).then(console.log);
+  return null;
+};
+
+export const App = () => (
+  <ParametersProvider>
+    <Params />
+  </ParametersProvider>
+);
+```
+
+API
+
+**Parameters Provider** properties:
+
+__Table 7\. Parameters Provider properties__
+| Property name | Type                                                                                                   | Description                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| parameters$   | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) instance. |
+
+**Parameters Provider** methods:
+
+__Table 8\. Parameters Provider methods__
+| Method signature                                                        | Return type | Description                                                             |
+| ----------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| get(key: string, defaultValue: T, productName?: string, appId?: string) | Promise<T>  | Resolves a parameter value for the current MFE (falls back to default). |
+
+### [](#portal-message-provider)Portal Message Provider
+
+Usage
+
+**Publish translated toast messages through the shell.**
+
+Topics used
+
+* [MessageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic)
+
+Example
+
+**Publish a success message from a component.**
+
+```tsx
+import {
+  PortalMessageProvider,
+  usePortalMessage,
+} from "@onecx/react-integration-interface";
+
+const Notify = () => {
+  const { success } = usePortalMessage();
+  // success({ summaryKey: "saved", detailKey: "saved.detail" });
+  return null;
+};
+
+export const App = () => (
+  <PortalMessageProvider>
+    <Notify />
+  </PortalMessageProvider>
+);
+```
+
+API
+
+**Portal Message Provider** methods:
+
+__Table 9\. Portal Message Provider methods__
+| Method signature                                     | Return type   | Description                                              |
+| ---------------------------------------------------- | ------------- | -------------------------------------------------------- |
+| success(msg) / info(msg) / warning(msg) / error(msg) | Promise<void> | Publishes a message with translated summary/detail keys. |
+
+### [](#remote-components-provider)Remote Components Provider
+
+Usage
+
+**Access the list of remote components published by the shell.**
+
+Topics used
+
+* [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic)
+
+Example
+
+**Read remote components from the context.**
+
+```tsx
+import {
+  RemoteComponentsProvider,
+  useRemoteComponents,
+} from "@onecx/react-integration-interface";
+
+const Remotes = () => {
+  const { remoteComponents$ } = useRemoteComponents();
+  // remoteComponents$.subscribe((list) => console.log(list));
+  return null;
+};
+
+export const App = () => (
+  <RemoteComponentsProvider>
+    <Remotes />
+  </RemoteComponentsProvider>
+);
+```
+
+API
+
+**Remote Components Provider** properties:
+
+__Table 10\. Remote Components Provider properties__
+| Property name     | Type                                                                                                                | Description                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| remoteComponents$ | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) instance. |
+
+### [](#shell-capability)Shell Capability
+
+Usage
+
+**Check shell capabilities before using optional topics.**
+
+Example
+
+**Set and check capabilities once during bootstrapping.**
+
+```ts
+import { setCapabilities, hasCapability } from "@onecx/react-integration-interface";
+
+setCapabilities(["PORTAL_SEARCH"]);
+const canSearch = hasCapability("PORTAL_SEARCH");
+```
+
+API
+
+**Shell capability** methods:
+
+__Table 11\. Shell capability methods__
+| Method signature                              | Return type | Description                                        |
+| --------------------------------------------- | ----------- | -------------------------------------------------- |
+| setCapabilities(capabilities: Capability\[\]) | void        | Sets the list of shell capabilities on globalThis. |
+| hasCapability(capability: Capability)         | boolean     | Checks if a capability is present.                 |
+
+### [](#image-repository-provider)Image Repository Provider
+
+Usage
+
+**Expose an image repository service from the integration interface.**
+
+Note
+
+The current implementation is commented out in the library source and not active. This section documents the intended API if it is re-enabled.
+
+Example
+
+**Provide the image repository service (when enabled).**
+
+```tsx
+import {
+  ImageRepositoryProvider,
+  useImageRepository,
+} from "@onecx/react-integration-interface";
+
+const Images = () => {
+  const { imageRepositoryService } = useImageRepository();
+  // imageRepositoryService.getImage("logo");
+  return null;
+};
+
+export const App = () => (
+  <ImageRepositoryProvider>
+    <Images />
+  </ImageRepositoryProvider>
+);
+```
+
+API
+
+**Image Repository Provider** properties:
+
+__Table 12\. Image Repository Provider properties__
+| Property name          | Type                                                                                                                  | Description                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| imageRepositoryService | [ImageRepositoryService](../../../onecx-portal-ui-libs/libraries/integration-interface.html#image-repository-service) | Image repository service instance. |
+
+### [](#workspace-hook)Workspace Hook
+
+Usage
+
+**Manage Workspace resources**.
+
+This hook offers set of methods useful when developing Microfrontends referencing other Applications via routing.
+
+Example
+
+**Wrap your app with the required providers and use the hook in a component.**
+
+```tsx
+import {
+  AppStateProvider,
+  useWorkspace,
+} from "@onecx/react-integration-interface";
+
+const WorkspaceLinks = () => {
+  const { getUrl } = useWorkspace();
+
+  // Example: subscribe to the Observable to get the URL
+  // getUrl("product", "app").subscribe((url) => console.log(url));
+
+  return null;
+};
+
+export const App = () => (
+  <AppStateProvider>
+    <WorkspaceLinks />
+  </AppStateProvider>
+);
+```
+
+Topics used
+
+None.
+
+Dependencies
+
+* HttpClient
+* [AppStateProvider](#app-state-provider)
+
+react-utils
+
+* [@onecx/react-utils](react-utils.html)includes `withApp`, which wraps your component with the base providers and styling helpers (globals, PrimeReact isolation, app styles, base providers). Use it to bootstrap an application with the expected OneCX context.
+
+API
+
+**Workspace Hook** \- **useWorkspace** can be used for constructing routes to Applications:
+
+__Table 13\. Workspace Hook methods__
+| Method signature                                                                                               | Return type         | Description                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
+| doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
+
 @onecx/react-webcomponents
 ====================
 ## [](#overview)Overview
 
-`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of Angular applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers Injectable services exposing a set of functionalities useful for integrating Microfrontends with OneCX without directly utilizing Topics.
+`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
 
-## [](#nextjs)Next.js
+## [](#exports)Public Exports
 
-The **createNextjsWebComponent** and **createNextjsAppWebComponent** functions are utilities designed to convert Next.js components and applications into custom web components. These functions enable the use of Next.js components in environments that do not natively support Next.js, such as vanilla JavaScript projects or frameworks that work with standard web components.
+The package exports:
 
-The functions leverage the **@r2wc/react-to-web-component** library to facilitate the conversion and registration of web components. Additionally, they provide advanced routing and context handling for Next.js applications.
-
-### [](#createnextjswebcomponent)createNextjsWebComponent
-
-The createNextjsWebComponent function converts a Next.js component into a custom web component and registers it with the browser’s custom elements registry.
-
-```javascript
-const createNextjsWebComponent = (
-  component: NextComponentType,
-  elementName: string
-) => {
-  // Implementation
-};
-```
-
-* component: A Next.js component to be converted into a web component.
-* elementName: The name of the custom element to be registered (e.g. my-custom-element).
-
-Example
-
-```js
-import { createNextjsWebComponent } from '@onecx/react-webcomponents';
-import MyNextjsComponent from './MyNextjsComponent';
-
-// Convert the Next.js component into a web component and register it
-createNextjsWebComponent(MyNextjsComponent, 'my-nextjs-element');
-
-// Now, you can use the custom element in your HTML:
-// <my-nextjs-element></my-nextjs-element>
-```
-
-### [](#createnextjsappwebcomponent)createNextjsAppWebComponent
-
-The createNextjsAppWebComponent function converts a Next.js application into a custom web component with advanced routing and context handling.
-
-| |  The current implementation of **createNextjsAppWebComponent** supports only **static routing**. This means that the **routes** object must define explicit paths, such as: |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-```js
-const routes = {
-  '/': HomePage,
-  '/about': AboutPage,
-};
-```
-
-```js
-const createNextjsAppWebComponent = (
-  CustomPage: ({ Component, pageProps }: AppProps) => JSX.Element,
-  routes: Record<string, NextComponentType>,
-  elementName: string
-) => {
-  // Implementation
-};
-```
-
-* CustomPage: A Next.js custom page component.
-* routes: A record of route paths and their corresponding Next.js components.
-* elementName: The name of the custom element to be registered (e.g. my-nextjs-app).
-
-| |  Current solution does not support next.js functionality related to server side actions |
-| ----------------------------------------------------------------------------------------- |
-
-Example
-
-```js
-import { createNextjsAppWebComponent } from '@onecx/react-webcomponents';
-import CustomPage from './CustomPage';
-import HomePage from './HomePage';
-import AboutPage from './AboutPage';
-
-// Define routes
-const routes = {
-  '/': HomePage,
-  '/about': AboutPage,
-};
-
-// Convert the Next.js app into a web component and register it
-createNextjsAppWebComponent(CustomPage, routes, 'my-nextjs-app');
-
-// Now, you can use the custom element in your HTML:
-// <my-nextjs-app></my-nextjs-app>
-```
-
-#### [](#future-improvements)Future Improvements
-
-* Add Dynamic Segment Parsing:  
-   * Implement logic to extract dynamic parameters (e.g. :id) from the URL.  
-   * Example:  
-   ```js  
-   const routes = {  
-     '/users/:id': UserPage,  
-   };  
-   ```
-* Support Wildcard Routes  
-   * Add support for wildcard paths (e.g. /posts/\*).  
-   * Example:  
-   ```js  
-   const routes = {  
-     '/posts/*': PostsPage,  
-   };  
-   ```
-* Integrate a Routing Library:  
-   * Use a routing library like react-router or next-routes to handle advanced routing scenarios.
+* `createViteAppWebComponent`
+* `useAppHref`
+* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
+* `withSyncedRouter`
 
 ## [](#vite)Vite
 
@@ -8787,6 +9487,13 @@ export default App;
 ## [](#routing-utils)Routing Utils
 
 The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
+
+The library also provides routing integration helpers:
+
+* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
+* `SyncedLocationContext` exposes the current location state.
+* `useSyncedLocation` reads the synced location state from context.
+* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
 Calendar
 ====================
@@ -8987,81 +9694,6 @@ _Adapt in File:_ `<feature>-search.component.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-MultiSelect
-====================
-## [](#goal)Goal: Add MultiSelect Input
-
-Add a MultiSelect as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .union([z.string(), z.array(z.string())])
-        .transform(singleToArray)
-        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-multiSelect
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              appendTo="body"
-        ></p-multiSelect>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 Adding search criteria
 ====================
 ## [](#configure-search-criteria)Goal: Configure search criteria
@@ -9173,6 +9805,81 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+MultiSelect
+====================
+## [](#goal)Goal: Add MultiSelect Input
+
+Add a MultiSelect as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .union([z.string(), z.array(z.string())])
+        .transform(singleToArray)
+        .transform((value) => value.map((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-multiSelect
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              appendTo="body"
+        ></p-multiSelect>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -12960,6 +13667,31 @@ npm run apigen
 The result can be found in the generated API folder:  
 `<root-of-ui-app>/src/app/shared/generated`.
 
+undefined
+====================
+### [](#%5Fcreate%5Fcreateupdate%5Fdialogs)Create Create/Update Dialogs
+
+The fastest way to create a create and update dialogs in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/nx-plugin:create-update <feature>
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
+For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](glossary.html#feature).
+
+| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, the following actions must be taken:
+
+1. [Extend schema and form fields](create-update/extend-form-fields.html)
+2. [Commit the changes](create-update/commit-changes.html)
+
+| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Create a Search Component
 ====================
 What is a Component?
@@ -13079,53 +13811,6 @@ Figure 4\. Search UI with adapted search
 
 undefined
 ====================
-### [](#%5Fcreate%5Fcreateupdate%5Fdialogs)Create Create/Update Dialogs
-
-The fastest way to create a create and update dialogs in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/nx-plugin:create-update <feature>
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
-For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](glossary.html#feature).
-
-| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, the following actions must be taken:
-
-1. [Extend schema and form fields](create-update/extend-form-fields.html)
-2. [Commit the changes](create-update/commit-changes.html)
-
-| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcreate%5Fdelete%5Fdialog)Create Delete Dialog
-
-The fastest way to create a delete dialog in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/nx-plugin:delete <feature>
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
-For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](glossary.html#feature).
-
-| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-1. [Commit the changes](delete/commit-changes.html)
-
-| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
 ### [](#%5Fcreate%5Fa%5Fdetails%5Fpage)Create a details page
 
 The fastest way to create a new details page in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
@@ -13159,6 +13844,28 @@ After running the generator, the following actions must be taken:
 1. [Add core data to details page header](details/core-data.html)
 2. [Extend form fields (for Edit Mode) ](create-update/extend-form-fields.html)
 3. [Commit the changes](details/commit-changes.html)
+
+undefined
+====================
+### [](#%5Fcreate%5Fdelete%5Fdialog)Create Delete Dialog
+
+The fastest way to create a delete dialog in a feature module is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/nx-plugin:delete <feature>
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator, use `@onecx`.  
+For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](glossary.html#feature).
+
+| |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+1. [Commit the changes](delete/commit-changes.html)
+
+| |  To modify the behavior of the dialogs, please refer to [PortalDialogService docs](../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Glossary
 ====================
@@ -17727,51 +18434,6 @@ Never skip requirements without explicit instruction.
 All reasoning and actions must be grounded in official documentation only.
 Ask for clarification only when strictly necessary.
 
-Provide ThemeConfig
-====================
-| |  These changes are required for apps using PrimeNG only. |
-| ---------------------------------------------------------- |
-
-Since version 6 of OneCX to apply PrimeNG theming it is required to add an additional provider to the Microfrontends and Remote Components.
-
-## [](#%5Fmicrofrontend%5Ftheme%5Fconfiguration)Microfrontend theme configuration
-
-* import `provideThemeConfig` provider from `@onecx/angular-utils` in `module.ts` file
-* define `provideThemeConfig` provider in `NgModule` `providers` array
-
-micro-frontend-remote.module.ts
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils'
-...
-@NgModule({
-    providers: [
-        provideThemeConfig()
-    ]
-}) export class MyMfe {}
-```
-
-## [](#%5Fremote%5Fcomponents%5Ftheme%5Fconfiguration)Remote components theme configuration
-
-* import `provideThemeConfig` provider from `@onecx/angular-utils` in `bootstrap.ts` file
-* define `provideThemeConfig` in `bootstrapRemoteComponent` function `providers` array from `@onecx/angular-webcomponents`
-
-remote-component.bootstrap.ts
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils'
-
-bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
-  provideThemeConfig()
-])
-```
-
-## [](#theme-overrides)Provide theme overrides
-
-In angular 19+ OneCX is creating its own theme presets per App that utilize PrimeNG theming. If the look and feel of some PrimeNG components is not matching the expectations, developers should use theme overrides to change them.
-
-More about how to override the theme elements can be found in [theming documentation](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html).
-
 Migrate OneCX App from Angular 18 to Angular 19
 ====================
 ## [](#overview)Overview
@@ -17900,6 +18562,51 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Add Webpack Plugin for PrimeNG](add-required-plugin-to-primeng.html)
 * [Add Webpack Plugin for Angular Material](add-angular-material-plugin.html)
 * [Provide ThemeConfig](provide-theme-config.html)
+
+Provide ThemeConfig
+====================
+| |  These changes are required for apps using PrimeNG only. |
+| ---------------------------------------------------------- |
+
+Since version 6 of OneCX to apply PrimeNG theming it is required to add an additional provider to the Microfrontends and Remote Components.
+
+## [](#%5Fmicrofrontend%5Ftheme%5Fconfiguration)Microfrontend theme configuration
+
+* import `provideThemeConfig` provider from `@onecx/angular-utils` in `module.ts` file
+* define `provideThemeConfig` provider in `NgModule` `providers` array
+
+micro-frontend-remote.module.ts
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils'
+...
+@NgModule({
+    providers: [
+        provideThemeConfig()
+    ]
+}) export class MyMfe {}
+```
+
+## [](#%5Fremote%5Fcomponents%5Ftheme%5Fconfiguration)Remote components theme configuration
+
+* import `provideThemeConfig` provider from `@onecx/angular-utils` in `bootstrap.ts` file
+* define `provideThemeConfig` in `bootstrapRemoteComponent` function `providers` array from `@onecx/angular-webcomponents`
+
+remote-component.bootstrap.ts
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils'
+
+bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
+  provideThemeConfig()
+])
+```
+
+## [](#theme-overrides)Provide theme overrides
+
+In angular 19+ OneCX is creating its own theme presets per App that utilize PrimeNG theming. If the look and feel of some PrimeNG components is not matching the expectations, developers should use theme overrides to change them.
+
+More about how to override the theme elements can be found in [theming documentation](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html).
 
 Remove addInitializeModuleGuard()
 ====================
@@ -19453,6 +20160,72 @@ After
 import { OneCxActions } from 'ngrx-integration-interface';
 ```
 
+undefined
+====================
+AI Migration Prompt 
+
+Role:
+You are a senior frontend engineer with expert‑level knowledge of Angular and OneCX.
+Your responsibility is to perform all OneCX‑specific migration tasks required to prepare and finalize a OneCX application for an upgrade from Angular 19 → Angular 20.
+Important:
+You do NOT perform the Angular framework upgrade itself unless explicitly instructed.
+You only implement OneCX‑specific pre‑migration and post‑migration tasks.
+All actions must strictly follow official OneCX documentation.
+Never skip steps unless explicitly instructed.
+Workflow
+Follow these steps in strict order:
+1. Retrieve Documentation
+Fetch the documentation page titled "Migrate OneCX App from Angular 19 to Angular 20" using the OneCX Documentation MCP server.
+Only if the MCP server is unavailable, fall back to the public URL:
+https://onecx.github.io/docs/documentation/current/onecx-portal-ui-libs/migrations/angular-20/index.html
+Additionally check for PrimeNG migration information.
+If the repository uses PrimeNG (for example dependencies such as primeng, primeicons or primeflex are present):
+* Check if a PrimeNG MCP server is available; if it is, retrieve PrimeNG migration or upgrade information for the target version
+Only if the MCP server is unavailable, fall back to the public URL: https://primeng.org/migration/v20
+* Record any required PrimeNG migration steps or breaking changes and include them in the migration plan
+PrimeNG migration steps must be executed during the post-migration phase after the Angular upgrade.
+2. Extract Migration Steps & Create a Plan File: MIGRATION_PROGRESS.md.
+From the documentation:
+Extract pre-migration and post-migration tasks
+Then:
+Combine them into a structured migration plan
+Include the additional tasks provided by the developer
+Include any required PrimeNG migration steps if PrimeNG is used
+Save the plan to a file so the developer can track progress
+Update the file every time you complete a step
+3. Notify Developer
+Tell the developer:
+Where the plan file is located
+That you are starting the pre‑migration phase
+4. Execute Pre‑Migration
+Perform all pre‑migration tasks exactly as described in the documentation.
+Do not skip or reorder steps.
+Do not try to build or test the application until all post-migration steps are completed.
+5. Request Developer Action
+Inform the developer
+Tell them you are waiting for their “go‑ahead”
+Remind them they must complete the Angular 19 → 20 upgrade before you proceed.
+6. Execute Post‑Migration
+Once the developer explicitly instructs you:
+Complete all post‑migration tasks in order
+If PrimeNG migration tasks were identified earlier, execute them during this phase following the instructions retrieved from the PrimeNG MCP server.
+7. Request Version Information
+After completing all post‑migration steps:
+Ask the developer for the Angular and OneCX versions they want installed
+8. Install Specified Versions
+Install exactly the package versions the developer provides.
+9. Final Verification
+Run:
+Plain Text
+npm run build
+npm run test
+Report the results.
+Rules
+Follow the steps exactly without assumptions.
+Never skip requirements without explicit instruction.
+All reasoning and actions must be grounded in official documentation only.
+Ask for clarification only when strictly necessary.
+
 Migrate OneCX App from Angular 19 to Angular 20
 ====================
 ## [](#overview)Overview
@@ -19568,72 +20341,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Use updated ObjectDetailItem interface for PageHeaderComponent](use-new-object-detail-item-interface.html)
 * [Be aware of the PortalDialogService signature changes](portal-dialog-service-signature-changes.html)
 * [Leverage Angular guards](updated-guards-usage.html)
-
-undefined
-====================
-AI Migration Prompt 
-
-Role:
-You are a senior frontend engineer with expert‑level knowledge of Angular and OneCX.
-Your responsibility is to perform all OneCX‑specific migration tasks required to prepare and finalize a OneCX application for an upgrade from Angular 19 → Angular 20.
-Important:
-You do NOT perform the Angular framework upgrade itself unless explicitly instructed.
-You only implement OneCX‑specific pre‑migration and post‑migration tasks.
-All actions must strictly follow official OneCX documentation.
-Never skip steps unless explicitly instructed.
-Workflow
-Follow these steps in strict order:
-1. Retrieve Documentation
-Fetch the documentation page titled "Migrate OneCX App from Angular 19 to Angular 20" using the OneCX Documentation MCP server.
-Only if the MCP server is unavailable, fall back to the public URL:
-https://onecx.github.io/docs/documentation/current/onecx-portal-ui-libs/migrations/angular-20/index.html
-Additionally check for PrimeNG migration information.
-If the repository uses PrimeNG (for example dependencies such as primeng, primeicons or primeflex are present):
-* Check if a PrimeNG MCP server is available; if it is, retrieve PrimeNG migration or upgrade information for the target version
-Only if the MCP server is unavailable, fall back to the public URL: https://primeng.org/migration/v20
-* Record any required PrimeNG migration steps or breaking changes and include them in the migration plan
-PrimeNG migration steps must be executed during the post-migration phase after the Angular upgrade.
-2. Extract Migration Steps & Create a Plan File: MIGRATION_PROGRESS.md.
-From the documentation:
-Extract pre-migration and post-migration tasks
-Then:
-Combine them into a structured migration plan
-Include the additional tasks provided by the developer
-Include any required PrimeNG migration steps if PrimeNG is used
-Save the plan to a file so the developer can track progress
-Update the file every time you complete a step
-3. Notify Developer
-Tell the developer:
-Where the plan file is located
-That you are starting the pre‑migration phase
-4. Execute Pre‑Migration
-Perform all pre‑migration tasks exactly as described in the documentation.
-Do not skip or reorder steps.
-Do not try to build or test the application until all post-migration steps are completed.
-5. Request Developer Action
-Inform the developer
-Tell them you are waiting for their “go‑ahead”
-Remind them they must complete the Angular 19 → 20 upgrade before you proceed.
-6. Execute Post‑Migration
-Once the developer explicitly instructs you:
-Complete all post‑migration tasks in order
-If PrimeNG migration tasks were identified earlier, execute them during this phase following the instructions retrieved from the PrimeNG MCP server.
-7. Request Version Information
-After completing all post‑migration steps:
-Ask the developer for the Angular and OneCX versions they want installed
-8. Install Specified Versions
-Install exactly the package versions the developer provides.
-9. Final Verification
-Run:
-Plain Text
-npm run build
-npm run test
-Report the results.
-Rules
-Follow the steps exactly without assumptions.
-Never skip requirements without explicit instruction.
-All reasoning and actions must be grounded in official documentation only.
-Ask for clarification only when strictly necessary.
 
 Migrate to <code>OnecxTranslateLoader</code>
 ====================
@@ -19937,42 +20644,6 @@ import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
 
 * `ThemeOverrides`
 
-Required Package Updates
-====================
-If the following packages are used in your project, update them to ensure compatibility with Angular 20:
-
-| Package                               | Required Version | Notes                                                            |
-| ------------------------------------- | ---------------- | ---------------------------------------------------------------- |
-| @onecx/\*                             | ^7.x.y           | Update to the latest 7.x.y version available.                    |
-| @ngrx/\*                              | ^20.x.y          | Update to the latest Angular 20 compatible version.              |
-| @ngx-translate/core                   | ^17.0.0          | Updated for Angular 20 compatibility                             |
-| @ngx-translate/http-loader            | ^17.0.0          | Compatible with @ngx-translate/core v17                          |
-| @primeng                              | ^20.3.0          | Updated for Angular 20 compatibility                             |
-| @primeng/themes                       | ^20.0.0          | Updated for Angular 20 compatibility                             |
-| ngrx-store-localstorage               | ^20.0.0          | Updated for Angular 20 compatibility                             |
-| zod                                   | ^4.0.0           | Updated for Angular 20 and @onecx/ngrx-accelerator compatibility |
-| @angular-architects/module-federation | ^20.0.0          | Updated for Angular 20 compatibility                             |
-| ngx-build-plus                        | ^20.0.0          | Angular 20 compatible version                                    |
-
-## [](#installation-commands)Installation Commands
-
-Run this command to update the supporting packages:
-
-```bash
-npm install @ngx-translate/core@^17.0.0 \
-  @ngx-translate/http-loader@^17.0.0 \
-  primeng@^20.3.0 \
-  primeicons@^7.0.0 \
-  primeflex@^4.0.0 \
-  @primeng/themes@^20.0.0 \
-  ngrx-store-localstorage@^20.0.0 \
-  ngx-build-plus@^20.0.0 \
-
-npm install @ngrx/<package-name>@^20
-
-npm install @onecx/<package-name>@^7
-```
-
 Update package imports for style utilities
 ====================
 In version 7, the style utilities have been moved to a separate subpackage:`@onecx/angular-utils/style` within the `@onecx/angular-utils` library.
@@ -20032,6 +20703,42 @@ import { updateStylesForMfeChange } from '@onecx/angular-utils/style'
 * `dataRcStylesStart`
 * `dataShellStylesAttribute`
 * `dataShellStylesKey`
+
+Required Package Updates
+====================
+If the following packages are used in your project, update them to ensure compatibility with Angular 20:
+
+| Package                               | Required Version | Notes                                                            |
+| ------------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| @onecx/\*                             | ^7.x.y           | Update to the latest 7.x.y version available.                    |
+| @ngrx/\*                              | ^20.x.y          | Update to the latest Angular 20 compatible version.              |
+| @ngx-translate/core                   | ^17.0.0          | Updated for Angular 20 compatibility                             |
+| @ngx-translate/http-loader            | ^17.0.0          | Compatible with @ngx-translate/core v17                          |
+| @primeng                              | ^20.3.0          | Updated for Angular 20 compatibility                             |
+| @primeng/themes                       | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngrx-store-localstorage               | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| zod                                   | ^4.0.0           | Updated for Angular 20 and @onecx/ngrx-accelerator compatibility |
+| @angular-architects/module-federation | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngx-build-plus                        | ^20.0.0          | Angular 20 compatible version                                    |
+
+## [](#installation-commands)Installation Commands
+
+Run this command to update the supporting packages:
+
+```bash
+npm install @ngx-translate/core@^17.0.0 \
+  @ngx-translate/http-loader@^17.0.0 \
+  primeng@^20.3.0 \
+  primeicons@^7.0.0 \
+  primeflex@^4.0.0 \
+  @primeng/themes@^20.0.0 \
+  ngrx-store-localstorage@^20.0.0 \
+  ngx-build-plus@^20.0.0 \
+
+npm install @ngrx/<package-name>@^20
+
+npm install @onecx/<package-name>@^7
+```
 
 Leverage Angular Guards
 ====================
@@ -20198,6 +20905,56 @@ Never skip requirements without explicit instruction.
 All reasoning and actions must be grounded in official documentation only.
 Ask for clarification only when strictly necessary.
 
+ESM bundling awareness (prerequisite)
+====================
+In OneCX v8, `@onecx/accelerator` and `@onecx/integration-interface` are published as ES modules.
+
+For standard Angular application builds, this is usually non-breaking. This page helps you quickly detect and fix issues in custom runtime/build setups.
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+* Packages are ESM (`"type": "module"`).
+* CommonJS-only usage patterns (for example `require()` in custom Node scripts) may need adaptation.
+
+## [](#%5Fwhen%5Fto%5Fcheck%5Fthis)When to check this
+
+Check this prerequisite if your project includes custom scripts/tooling such as:
+
+* Node scripts importing OneCX packages directly
+* Custom webpack/rspack wrappers around MF runtime loading
+* Test/dev scripts running outside Angular CLI/Nx standard build flow
+
+## [](#%5Ftypical%5Fissues%5Fyou%5Fmight%5Fface)Typical issues you might face
+
+* `ERR_REQUIRE_ESM`
+* `require is not defined in ES module scope`
+* Module resolution/import errors in custom scripts after dependency update
+
+## [](#%5Fsolutions)Solutions
+
+### [](#%5F1%5Freplace%5Frequire%5Fwith%5Fesm%5Fimports)1) Replace `require()` with ESM imports
+
+Before
+
+```javascript
+const { EventsTopic } = require('@onecx/integration-interface')
+```
+
+After
+
+```typescript
+import { EventsTopic } from '@onecx/integration-interface'
+```
+
+### [](#%5F2%5Fensure%5Fscriptmodule%5Fruntime%5Fsupports%5Fesm)2) Ensure script/module runtime supports ESM
+
+* Use an ESM-capable Node runtime and script configuration.
+* Keep host and remotes on consistent dependency/runtime expectations.
+
+### [](#%5F3%5Fif%5Fno%5Fcustom%5Fruntime%5Fusage%5Fexists)3) If no custom runtime usage exists
+
+No action is needed. Treat this as awareness-only and continue with migration steps.
+
 Migrate OneCX App from Angular 20 to Angular 21
 ====================
 ## [](#overview)Overview
@@ -20305,56 +21062,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Move auth implementation imports from @onecx/angular-auth to @onecx/shell-auth](move-auth-to-shell-auth.html)
 * [Update imports to supported public APIs](update-public-api-imports.html)
 * [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
-
-ESM bundling awareness (prerequisite)
-====================
-In OneCX v8, `@onecx/accelerator` and `@onecx/integration-interface` are published as ES modules.
-
-For standard Angular application builds, this is usually non-breaking. This page helps you quickly detect and fix issues in custom runtime/build setups.
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-* Packages are ESM (`"type": "module"`).
-* CommonJS-only usage patterns (for example `require()` in custom Node scripts) may need adaptation.
-
-## [](#%5Fwhen%5Fto%5Fcheck%5Fthis)When to check this
-
-Check this prerequisite if your project includes custom scripts/tooling such as:
-
-* Node scripts importing OneCX packages directly
-* Custom webpack/rspack wrappers around MF runtime loading
-* Test/dev scripts running outside Angular CLI/Nx standard build flow
-
-## [](#%5Ftypical%5Fissues%5Fyou%5Fmight%5Fface)Typical issues you might face
-
-* `ERR_REQUIRE_ESM`
-* `require is not defined in ES module scope`
-* Module resolution/import errors in custom scripts after dependency update
-
-## [](#%5Fsolutions)Solutions
-
-### [](#%5F1%5Freplace%5Frequire%5Fwith%5Fesm%5Fimports)1) Replace `require()` with ESM imports
-
-Before
-
-```javascript
-const { EventsTopic } = require('@onecx/integration-interface')
-```
-
-After
-
-```typescript
-import { EventsTopic } from '@onecx/integration-interface'
-```
-
-### [](#%5F2%5Fensure%5Fscriptmodule%5Fruntime%5Fsupports%5Fesm)2) Ensure script/module runtime supports ESM
-
-* Use an ESM-capable Node runtime and script configuration.
-* Keep host and remotes on consistent dependency/runtime expectations.
-
-### [](#%5F3%5Fif%5Fno%5Fcustom%5Fruntime%5Fusage%5Fexists)3) If no custom runtime usage exists
-
-No action is needed. Treat this as awareness-only and continue with migration steps.
 
 Split shell and apps authentication
 ====================
@@ -25161,6 +25868,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-data-orchestrator-operator/pkgs/container/onecx-data-orchestrator-operator)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -25241,10 +25952,6 @@ app:
         description: OneCX Data Orchestrator Operator
         name: OneCX Data Orchestrator Operator
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -26021,6 +26728,10 @@ undefined
 | [onecx.help.default.url](#onecx-help-svc%5Fonecx-help-default-url) Default help URL Environment variable: ONECX\_HELP\_DEFAULT\_URL                           | string  | https://github.com/onecx |
 | [onecx.help.product-item-id](#onecx-help-svc%5Fonecx-help-product-item-id) Default help URL Environment variable: ONECX\_HELP\_PRODUCT\_ITEM\_ID              | string  | PRODUCT\_BASE\_DOC\_URL  |
 
+undefined
+====================
+
+
 OneCX Help Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-help-bff/pkgs/container/onecx-help-bff)
@@ -26126,10 +26837,6 @@ app:
         description: OneCX Help Backend For Frontend
         name: OneCX Help BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -34998,7 +35705,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -35076,9 +35785,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
-
-## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
