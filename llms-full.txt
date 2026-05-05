@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1692,290 +1976,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -7416,6 +7416,154 @@ export default function StyleRegistry({ children }) {
 
 This code listens for theme changes from the topic, generates a new preset, and applies it to PrimeReact, ensuring the UI updates dynamically according to the selected theme.
 
+Content Visibility Based on Permissions
+====================
+The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
+
+They are intended for:
+
+* conditionally showing/hiding buttons, links, menu entries, and sections
+* providing an alternative UI via an `elseTemplate`
+* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
+
+| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#ifpermission)`*ocxIfPermission`
+
+Shows the host template only if the user has the required permission(s).
+
+Supported input shapes:
+
+* **Single permission** (string)
+* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
+
+example.html
+
+```html
+<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
+  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
+</button>
+
+<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
+  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
+</button>
+```
+
+## [](#ifnotpermission)`*ocxIfNotPermission`
+
+Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
+
+example.html
+
+```html
+<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
+  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
+</div>
+```
+
+## [](#options)Microsyntax Options
+
+Both directives support the same microsyntax options:
+
+| Option              | Type                | Meaning                                                                                                                              |
+| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
+| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
+| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
+
+## [](#else)`elseTemplate`
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
+>
+  {{ 'ORDER.EDIT' | translate }}
+</button>
+
+<ng-template #noEditPermission>
+  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
+</ng-template>
+```
+
+For `*ocxIfNotPermission`, the semantics are inverted:
+
+* `elseTemplate` is rendered when the user **does have** the permission(s)
+
+## [](#disable)`onMissingPermission:'disable'`
+
+This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
+>
+  {{ 'ORDER.DELETE' | translate }}
+</button>
+```
+
+| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+OneCX Permissions
+====================
+## [](#overview)Overview
+
+In [OneCX permission management](../../../onecx-permission/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) is available for permission checking.
+
+[OneCX compatible application](../app-to-onecx.html):
+
+* can use the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to check permissions.
+
+## [](#permissions-overview)Permissions Overview
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+## [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+## [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
+
 NgRX
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -7829,154 +7977,6 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 * Router Store: [Router Store](https://ngrx.io/guide/router-store)
 * DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
 * Schematics: [Schematics](https://ngrx.io/guide/schematics)
-
-Content Visibility Based on Permissions
-====================
-The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
-
-They are intended for:
-
-* conditionally showing/hiding buttons, links, menu entries, and sections
-* providing an alternative UI via an `elseTemplate`
-* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
-
-| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#ifpermission)`*ocxIfPermission`
-
-Shows the host template only if the user has the required permission(s).
-
-Supported input shapes:
-
-* **Single permission** (string)
-* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
-
-example.html
-
-```html
-<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
-  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
-</button>
-
-<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
-  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
-</button>
-```
-
-## [](#ifnotpermission)`*ocxIfNotPermission`
-
-Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
-
-example.html
-
-```html
-<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
-  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
-</div>
-```
-
-## [](#options)Microsyntax Options
-
-Both directives support the same microsyntax options:
-
-| Option              | Type                | Meaning                                                                                                                              |
-| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
-| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
-| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
-
-## [](#else)`elseTemplate`
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
->
-  {{ 'ORDER.EDIT' | translate }}
-</button>
-
-<ng-template #noEditPermission>
-  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
-</ng-template>
-```
-
-For `*ocxIfNotPermission`, the semantics are inverted:
-
-* `elseTemplate` is rendered when the user **does have** the permission(s)
-
-## [](#disable)`onMissingPermission:'disable'`
-
-This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
->
-  {{ 'ORDER.DELETE' | translate }}
-</button>
-```
-
-| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-OneCX Permissions
-====================
-## [](#overview)Overview
-
-In [OneCX permission management](../../../onecx-permission/index.html) and validation is done by core applications of the platform. The Permission Management application is in charge of managing permissions. For Angular applications [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) is available for permission checking.
-
-[OneCX compatible application](../app-to-onecx.html):
-
-* can use the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to check permissions.
-
-## [](#permissions-overview)Permissions Overview
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-## [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-## [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
 
 PrimeNG
 ====================
@@ -10947,208 +10947,6 @@ For the developing the Quarkus application we need to install these tools:
 * [Kubernetes](https://kubernetes.io/)
 * [Docker](https://www.docker.com/)
 
-Quarkus Project Structure in OneCX
-====================
-| |  The source code of the sample application is located in the documentation repository [Base example](https://github.com/onecx/docs-guides-quarkus/tree/main/docs/modules/quarkus/examples/quarkus/base/example) |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fmaven%5Fproject%5Fstructure)Maven Project Structure
-
-OneCx Quarkus project is [Maven](https://maven.apache.org/) project.We use **default maven structure** which includes: java code and resources, helm templates and dockerfile.
-
-Maven project structure
-
-```java
-.github                         // github configuration
-src                             // source code directory
-  main                          // main resources
-     docker                     // docker configuration
-        Dockerfile.jvm          // JVM docker image
-        Dockerfile.native       // Native docker image
-     helm                       // helm template
-        Chart.yaml              // helm chart for application
-        values.yaml             // helm chart values for the application
-     openapi                    // openapi definitions
-        example-openapi.yaml    // example api definition
-     java                       // java source code
-     resources                  // application resources
-       application.properties   // quarkus configuration
-  test                          // test resources
-     java                       // java tests
-     resources                  // test resources
-pom.xml                         // maven project configuration
-```
-
-The helm template are in the `src/main/helm` and dockerfile is in the `src/main/docker` directory. GitHub project configuration is defined in the `.github` directory.
-
-## [](#%5Fmaven%5Fconfiguration)Maven Configuration
-
-pom.xml parent configuration
-
-```xml
-<parent>
-    <groupId>org.tkit.onecx</groupId>
-    <artifactId>onecx-quarkus3-parent</artifactId>
-    <version>0.67.0</version>
-</parent>
-```
-
-## [](#%5Fjava%5Fnamings)Java Namings
-
-![Diagram](_images/diag-1ec88c3f3f581782c2edae77bff812148dc2028e.svg) 
-
-Basically all our microservice consist of 3 main layers
-
-* Boundary components providing REST api ( or AMQP, Events, …​) to outside world.
-* IntermediateService which implements business logic. These components are often omitted.
-* Entity services are components taking care of data management, basically fetching storing the data from/to database
-* Client services which are
-
-Java classes:
-
-Validation request sequence:
-
-![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
-
-Create user request sequence:
-
-![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
-
-* RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
-* Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
-* Mapper - Object mapper for mapping DTO to internal models and vice versa. For example: `UserMapper`.
-* DAO - Data access object (JPA entity wrapper) For example: `UserDAO`
-
-Each project should have own package which contains the domain of the project. All projects in the `onecx` context start with a package `org.tkit.onecx` and package `<artefactId | simplified>`
-
-For example our Maven project:
-
-* groupId = `org.tkit.onecx`
-* artefactId = `onecx-quarkus-example`
-
-```shell
-src
-  main
-    java
-      org.tkit.onecx.quarkus.example
-```
-
-Microservice package structure:
-
-```java
-domain.models                       // JPA entities
-domain.criteria                     // JPA criteria
-domain.daos                         // DAO and search criteria for the entities
-domain.services                     // Common intermediate shared domain services
-rs                                  // common rs classes (CORSFilter, JaxRSActivator..)
-rs.internal.controllers             // REST controllers
-rs.internal.mappers                 // internal DTOs mappers
-rs.internal.services                // internal intermediate services
-rs.external.<version>.controllers            // REST controllers
-rs.external.<version>.logs                   // log mappers
-rs.external.<version>.mappers                // external DTOs mappers
-rs.external.<version>.services               // Intermediate services for the rest <version> interface
-```
-
-Our [org.tkit.onecx](#example$quarkus/base/example/src/main/java/org/tkit/onecx) package of our example application.
-
-```java
-org.tkit.onecx
-    quarkus
-        example
-            domain
-                models              // JPA entities
-                daos                // DAO for the entities
-                services            // DAO for the entities
-            rs                      //common rs classes (CORSFilter, JaxRSActivator..)
-                controllers         // REST controllers
-                internal
-                mappers             // internal DTOs mappers
-                external
-                    <version>
-                        controllers // REST controllers
-                        mappers     // external DTOs mappers
-```
-
-| |  For the rest-controllers we need to have two types of the rest endpoints: internal - which are us only for the internal domain, for example for UI <version \| external> - these REST controllers are external interfaces to rest of the world. For these we need to have version. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fdocker)Docker
-
-In the project we have defined two docker files, one for java base docker image and one for native build docker image. The source code for the base docker image can be found in the GitHub repositories [docker-quarkus-native](https://github.com/onecx/docker-quarkus-jvm) and [docker-quarkus-jvm](https://github.com/onecx/docker-quarkus-jvm).
-
-The two `Dockerfiles` look like this:
-
-Dockerfile.jvm definition
-
-```dockerfile
-FROM ghcr.io/onecx/docker-quarkus-jvm:0.15.0
-
-COPY --chown=185 target/quarkus-app/lib/ /deployments/lib/
-COPY --chown=185 target/quarkus-app/*.jar /deployments/
-COPY --chown=185 target/quarkus-app/app/ /deployments/app/
-COPY --chown=185 target/quarkus-app/quarkus/ /deployments/quarkus/
-USER 185
-```
-
-Dockerfile.native definition
-
-```dockerfile
-FROM ghcr.io/onecx/docker-quarkus-native:0.10.0
-
-COPY --chown=1001:root target/*-runner /work/application
-```
-
-| |  Docker build configuration is defined in the maven parent project. |
-| --------------------------------------------------------------------- |
-
-| |  For more information about Quarkus docker extension, please check the official documentation [quarkus-container-image-docker](https://quarkus.io/guides/container-image). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fhelm)Helm
-
-In the `src/main/helm` we muss define `Chart.yaml` in version `v2` and `values.yaml`. The alias for every onecx quarkus application is `app`. The GitHub pipeline will replace the chart `version` and `appVersion` during the build with current service version.
-
-Chart.yaml
-
-```yaml
-apiVersion: v2
-name: onecx-quarkus-example
-version: 0.0.0
-appVersion: 0.0.0
-description: Onecx quarkus example
-keywords:
-  - example
-sources:
-  - https://github.com/onecx/onecx-quarkus-example
-maintainers:
-  - name: Tkit Developer
-    email: tkit_dev@1000kit.org
-dependencies:
-  - name: helm-quarkus-app
-    alias: app
-    version: ^0
-    repository: oci://ghcr.io/onecx/charts
-```
-
-values.yaml
-
-```yaml
-app:
- name: svc
- db:
-   enabled: true
- image:
-  repository: "onecx/onecx-quarkus-example"
-```
-
-In our example we did activate the `database` configuration `app.db.enabled: true`.
-
-| |  For product base delivery helm-of-helm we do need to specify the app.name, which is the name of the component in the product (for example svc, bff, operator). |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-For more details of the helm template configuration check the repository of [helm-quarkus-app](https://github.com/onecx/helm-quarkus-app) and the [Helm documentation](https://helm.sh/docs/).
-
 Backend for Frontends (BFF) with Quarkus
 ====================
 A backend for frontend (BFF) is a specialized backend service that serves the needs of a specific frontend application or user interface.  
@@ -12060,6 +11858,208 @@ permissions.json
   }
 ]
 ```
+
+Quarkus Project Structure in OneCX
+====================
+| |  The source code of the sample application is located in the documentation repository [Base example](https://github.com/onecx/docs-guides-quarkus/tree/main/docs/modules/quarkus/examples/quarkus/base/example) |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fmaven%5Fproject%5Fstructure)Maven Project Structure
+
+OneCx Quarkus project is [Maven](https://maven.apache.org/) project.We use **default maven structure** which includes: java code and resources, helm templates and dockerfile.
+
+Maven project structure
+
+```java
+.github                         // github configuration
+src                             // source code directory
+  main                          // main resources
+     docker                     // docker configuration
+        Dockerfile.jvm          // JVM docker image
+        Dockerfile.native       // Native docker image
+     helm                       // helm template
+        Chart.yaml              // helm chart for application
+        values.yaml             // helm chart values for the application
+     openapi                    // openapi definitions
+        example-openapi.yaml    // example api definition
+     java                       // java source code
+     resources                  // application resources
+       application.properties   // quarkus configuration
+  test                          // test resources
+     java                       // java tests
+     resources                  // test resources
+pom.xml                         // maven project configuration
+```
+
+The helm template are in the `src/main/helm` and dockerfile is in the `src/main/docker` directory. GitHub project configuration is defined in the `.github` directory.
+
+## [](#%5Fmaven%5Fconfiguration)Maven Configuration
+
+pom.xml parent configuration
+
+```xml
+<parent>
+    <groupId>org.tkit.onecx</groupId>
+    <artifactId>onecx-quarkus3-parent</artifactId>
+    <version>0.67.0</version>
+</parent>
+```
+
+## [](#%5Fjava%5Fnamings)Java Namings
+
+![Diagram](_images/diag-1ec88c3f3f581782c2edae77bff812148dc2028e.svg) 
+
+Basically all our microservice consist of 3 main layers
+
+* Boundary components providing REST api ( or AMQP, Events, …​) to outside world.
+* IntermediateService which implements business logic. These components are often omitted.
+* Entity services are components taking care of data management, basically fetching storing the data from/to database
+* Client services which are
+
+Java classes:
+
+Validation request sequence:
+
+![Diagram](_images/diag-c94b3f7d34ab9ca18a9f4ef0f4cf369942390d0c.svg) 
+
+Create user request sequence:
+
+![Diagram](_images/diag-3c4d8eacdfd4da4ba759013fb5949931a6ff7752.svg) 
+
+* RestController – Any class named RestController is supposed to expose API to outside world For example: `UserRestController`
+* Service – (IntermediateService) the core components containing business logic, shareable piece of codes for other components usually controllers or other services as well. For example: `UserValidationService`
+* Mapper - Object mapper for mapping DTO to internal models and vice versa. For example: `UserMapper`.
+* DAO - Data access object (JPA entity wrapper) For example: `UserDAO`
+
+Each project should have own package which contains the domain of the project. All projects in the `onecx` context start with a package `org.tkit.onecx` and package `<artefactId | simplified>`
+
+For example our Maven project:
+
+* groupId = `org.tkit.onecx`
+* artefactId = `onecx-quarkus-example`
+
+```shell
+src
+  main
+    java
+      org.tkit.onecx.quarkus.example
+```
+
+Microservice package structure:
+
+```java
+domain.models                       // JPA entities
+domain.criteria                     // JPA criteria
+domain.daos                         // DAO and search criteria for the entities
+domain.services                     // Common intermediate shared domain services
+rs                                  // common rs classes (CORSFilter, JaxRSActivator..)
+rs.internal.controllers             // REST controllers
+rs.internal.mappers                 // internal DTOs mappers
+rs.internal.services                // internal intermediate services
+rs.external.<version>.controllers            // REST controllers
+rs.external.<version>.logs                   // log mappers
+rs.external.<version>.mappers                // external DTOs mappers
+rs.external.<version>.services               // Intermediate services for the rest <version> interface
+```
+
+Our [org.tkit.onecx](#example$quarkus/base/example/src/main/java/org/tkit/onecx) package of our example application.
+
+```java
+org.tkit.onecx
+    quarkus
+        example
+            domain
+                models              // JPA entities
+                daos                // DAO for the entities
+                services            // DAO for the entities
+            rs                      //common rs classes (CORSFilter, JaxRSActivator..)
+                controllers         // REST controllers
+                internal
+                mappers             // internal DTOs mappers
+                external
+                    <version>
+                        controllers // REST controllers
+                        mappers     // external DTOs mappers
+```
+
+| |  For the rest-controllers we need to have two types of the rest endpoints: internal - which are us only for the internal domain, for example for UI <version \| external> - these REST controllers are external interfaces to rest of the world. For these we need to have version. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fdocker)Docker
+
+In the project we have defined two docker files, one for java base docker image and one for native build docker image. The source code for the base docker image can be found in the GitHub repositories [docker-quarkus-native](https://github.com/onecx/docker-quarkus-jvm) and [docker-quarkus-jvm](https://github.com/onecx/docker-quarkus-jvm).
+
+The two `Dockerfiles` look like this:
+
+Dockerfile.jvm definition
+
+```dockerfile
+FROM ghcr.io/onecx/docker-quarkus-jvm:0.15.0
+
+COPY --chown=185 target/quarkus-app/lib/ /deployments/lib/
+COPY --chown=185 target/quarkus-app/*.jar /deployments/
+COPY --chown=185 target/quarkus-app/app/ /deployments/app/
+COPY --chown=185 target/quarkus-app/quarkus/ /deployments/quarkus/
+USER 185
+```
+
+Dockerfile.native definition
+
+```dockerfile
+FROM ghcr.io/onecx/docker-quarkus-native:0.10.0
+
+COPY --chown=1001:root target/*-runner /work/application
+```
+
+| |  Docker build configuration is defined in the maven parent project. |
+| --------------------------------------------------------------------- |
+
+| |  For more information about Quarkus docker extension, please check the official documentation [quarkus-container-image-docker](https://quarkus.io/guides/container-image). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fhelm)Helm
+
+In the `src/main/helm` we muss define `Chart.yaml` in version `v2` and `values.yaml`. The alias for every onecx quarkus application is `app`. The GitHub pipeline will replace the chart `version` and `appVersion` during the build with current service version.
+
+Chart.yaml
+
+```yaml
+apiVersion: v2
+name: onecx-quarkus-example
+version: 0.0.0
+appVersion: 0.0.0
+description: Onecx quarkus example
+keywords:
+  - example
+sources:
+  - https://github.com/onecx/onecx-quarkus-example
+maintainers:
+  - name: Tkit Developer
+    email: tkit_dev@1000kit.org
+dependencies:
+  - name: helm-quarkus-app
+    alias: app
+    version: ^0
+    repository: oci://ghcr.io/onecx/charts
+```
+
+values.yaml
+
+```yaml
+app:
+ name: svc
+ db:
+   enabled: true
+ image:
+  repository: "onecx/onecx-quarkus-example"
+```
+
+In our example we did activate the `database` configuration `app.db.enabled: true`.
+
+| |  For product base delivery helm-of-helm we do need to specify the app.name, which is the name of the component in the product (for example svc, bff, operator). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+For more details of the helm template configuration check the repository of [helm-quarkus-app](https://github.com/onecx/helm-quarkus-app) and the [Helm documentation](https://helm.sh/docs/).
 
 K8s operator (operator)
 ====================
@@ -13326,6 +13326,90 @@ If a replacement fails, you may find a comment like this in your code:
 2. Follow the instructions in the comment to manually apply the required change.
 3. If unsure, consult the development team or refer to the feature documentation.
 
+Create a Feature Module
+====================
+What is a Feature Module?
+
+A Feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
+In Angular, feature modules are NgModules for the purpose of organizing code.
+
+| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#generate-a-feature-module)Generate a Feature Module
+
+The current working directory must be the root of an existing OneCX UI Application.
+
+| Directory | <root-of-ui-app> |
+| --------- | ---------------- |
+
+Create a feature module with the following command, preset resource/entity name
+
+```bash
+nx generate <namespace>/nx-plugin:feature <feature> --resource=<resource>
+```
+
+with:
+
+| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
+| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
+
+Next, **you will be asked** if you would like to adapt the names for the generation.  
+If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
+If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
+
+The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
+Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a search component](create-search.html).
+
+### [](#key-naming-conventions)Key Naming Conventions
+
+* `src/app/<feature>/`  
+Directory for the feature module and its related files
+* `<feature>Module`  
+Name for the feature module
+* `/<feature>/`  
+Default **route path** for the application feature, see `app-routing.module.ts`.
+
+### [](#routing-configuration)Routing Configuration
+
+The generator will automatically configure the routing for the generated feature module.  
+It will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the feature module when the specified route is accessed.  
+The route path will be derived from the feature name, e.g. `/book/` for a feature module named "book".  
+You can further customize the routing configuration as needed after the generation.
+
+## [](#example)Example
+
+Create a feature module **book** inside the application named **bookstore** to manage book data.  
+Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
+
+Create a Feature Module named "book"
+
+```bash
+nx generate @onecx/nx-plugin:feature book --resource=Book
+```
+
+This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
+
+![generated feature book](../_images/generated_feature_book.png) 
+
+Figure 1\. Excerpt of generated files and directories
+
+Routing Configuration in app-routing.module.ts
+
+```javascript
+export const routes: Routes = [
+  {
+    // Adjust the matcher to match the feature route.
+    // If you only have one feature, you can use '' for simplification.
+    matcher: startsWith('book'),
+    loadChildren: () =>
+      import('./book/book.module').then((mod) => mod.BookModule),
+  },
+];
+```
+
 Create a UI App
 ====================
 What is a UI App?
@@ -13410,90 +13494,6 @@ npm install
 ![generated workspace bookstore](../_images/generated_workspace_bookstore.png) 
 
 Figure 1\. Excerpt of generated files and directories for the NgRx **bookstore** UI App
-
-Create a Feature Module
-====================
-What is a Feature Module?
-
-A Feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
-In Angular, feature modules are NgModules for the purpose of organizing code.
-
-| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#generate-a-feature-module)Generate a Feature Module
-
-The current working directory must be the root of an existing OneCX UI Application.
-
-| Directory | <root-of-ui-app> |
-| --------- | ---------------- |
-
-Create a feature module with the following command, preset resource/entity name
-
-```bash
-nx generate <namespace>/nx-plugin:feature <feature> --resource=<resource>
-```
-
-with:
-
-| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
-| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
-
-Next, **you will be asked** if you would like to adapt the names for the generation.  
-If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
-If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
-
-The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
-Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a search component](create-search.html).
-
-### [](#key-naming-conventions)Key Naming Conventions
-
-* `src/app/<feature>/`  
-Directory for the feature module and its related files
-* `<feature>Module`  
-Name for the feature module
-* `/<feature>/`  
-Default **route path** for the application feature, see `app-routing.module.ts`.
-
-### [](#routing-configuration)Routing Configuration
-
-The generator will automatically configure the routing for the generated feature module.  
-It will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the feature module when the specified route is accessed.  
-The route path will be derived from the feature name, e.g. `/book/` for a feature module named "book".  
-You can further customize the routing configuration as needed after the generation.
-
-## [](#example)Example
-
-Create a feature module **book** inside the application named **bookstore** to manage book data.  
-Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
-
-Create a Feature Module named "book"
-
-```bash
-nx generate @onecx/nx-plugin:feature book --resource=Book
-```
-
-This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
-
-![generated feature book](../_images/generated_feature_book.png) 
-
-Figure 1\. Excerpt of generated files and directories
-
-Routing Configuration in app-routing.module.ts
-
-```javascript
-export const routes: Routes = [
-  {
-    // Adjust the matcher to match the feature route.
-    // If you only have one feature, you can use '' for simplification.
-    matcher: startsWith('book'),
-    loadChildren: () =>
-      import('./book/book.module').then((mod) => mod.BookModule),
-  },
-];
-```
 
 Create a Simple NgRx Page
 ====================
@@ -15266,6 +15266,57 @@ For instance, with Maven, add the following dependency to your POM file:
 
 undefined
 ====================
+## [](#%5Fonecx%5Fpermissions)onecx-permissions
+
+### [](#%5Finstallation)Installation
+
+If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-permission` extension first to your build file.
+
+For instance, with Maven, add the following dependency to your POM file:
+
+```xml
+<dependency>
+    <groupId>org.tkit.onecx.quarkus</groupId>
+    <artifactId>onecx-permission</artifactId>
+    <version>2.0.0</version>
+</dependency>
+```
+
+### [](#%5Fusage)Usage
+
+1. First you need to add the maven dependency shown at the top
+2. Then you can use @PermissionsAllowed annotation
+
+```java
+    @GET
+    @Path("write")
+    @PermissionsAllowed(value = "onecx:resource#action")
+    public Response adminWrite() {
+        return Response.ok("OK").build();
+    }
+```
+
+### [](#%5Fconfiguration)Configuration
+
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
+| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
+| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
+| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
+| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
+| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
+| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
+| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
+| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
+| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
+| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
+| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
+
+undefined
+====================
 ## [](#%5Fonecx%5Fparameters)onecx-parameters
 
 ## [](#%5Finstallation)Installation
@@ -15385,57 +15436,6 @@ in this respective order.
 | [onecx.parameters.history.update-schedule](#onecx-parameters%5Fonecx-parameters-history-update-schedule) Update history scheduler configuration in milliseconds. Environment variable: ONECX\_PARAMETERS\_HISTORY\_UPDATE\_SCHEDULE                                                                                | long               | 900000                          |
 | [onecx.parameters.items."parameters"](#onecx-parameters%5Fonecx-parameters-items-parameters) Parameters configuration Environment variable: ONECX\_PARAMETERS\_ITEMS\_\_PARAMETERS\_                                                                                                                               | Map<String,String> |                                 |
 | [onecx.parameters.tenant.enabled](#onecx-parameters%5Fonecx-parameters-tenant-enabled) Enable or disable multi-tenancy. Environment variable: ONECX\_PARAMETERS\_TENANT\_ENABLED                                                                                                                                   | boolean            | true                            |
-
-undefined
-====================
-## [](#%5Fonecx%5Fpermissions)onecx-permissions
-
-### [](#%5Finstallation)Installation
-
-If you want to use this extension, you need to add the `org.tkit.onecx.quarkus:onecx-permission` extension first to your build file.
-
-For instance, with Maven, add the following dependency to your POM file:
-
-```xml
-<dependency>
-    <groupId>org.tkit.onecx.quarkus</groupId>
-    <artifactId>onecx-permission</artifactId>
-    <version>2.0.0</version>
-</dependency>
-```
-
-### [](#%5Fusage)Usage
-
-1. First you need to add the maven dependency shown at the top
-2. Then you can use @PermissionsAllowed annotation
-
-```java
-    @GET
-    @Path("write")
-    @PermissionsAllowed(value = "onecx:resource#action")
-    public Response adminWrite() {
-        return Response.ok("OK").build();
-    }
-```
-
-### [](#%5Fconfiguration)Configuration
-
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
-| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
-| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
-| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
-| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
-| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
-| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
-| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
-| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
-| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
-| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
-| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
-| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
 
 undefined
 ====================
@@ -15659,6 +15659,153 @@ undefined
 | [onecx.validator.values.enabled](#onecx-validator%5Fonecx-validator-values-enabled) Whether parameter-svc is enabled in case the parameter extension is present. Environment variable: ONECX\_VALIDATOR\_VALUES\_ENABLED                                                                                                                                       | boolean            | true                                                |
 | [onecx.validator.values.mapping."mapping"](#onecx-validator%5Fonecx-validator-values-mapping-mapping) Key to parameter-name mapping Environment variable: ONECX\_VALIDATOR\_VALUES\_MAPPING\_\_MAPPING\_                                                                                                                                                       | Map<String,String> |                                                     |
 | [onecx.validator.size.template](#onecx-validator%5Fonecx-validator-size-template) Template for the constraint violations error message 6 parameters required: %1$s, %2$s, %3$s, %4$s, %5$d, %6$d %1$s = provider %2$s = key %3$s = parameter %4$s = message %5$d = min-size value %6$d = max-size value Environment variable: ONECX\_VALIDATOR\_SIZE\_TEMPLATE | string             | Parameter: %3$s Boundaries: %5$d Bytes - %6$d Bytes |
+
+Browser Logging (debug-js)
+====================
+OneCX UI libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
+
+This means:
+
+* Logging is **disabled by default**.
+* You enable logging in the browser by setting a value for `localStorage.debug` (or via a helper in DevTools).
+* Log output is written to the browser console when enabled.
+
+## [](#%5Fenable%5Flogging)Enable logging
+
+You can enable logging by setting `localStorage.debug` and reloading the page.
+
+```js
+// Enable all OneCX UI library logs
+localStorage.debug = '@onecx*'
+location.reload()
+```
+
+## [](#%5Fcommon%5Fpatterns)Common patterns
+
+`debug` uses namespace patterns. The following wildcards are commonly used:
+
+* `*` matches anything
+* comma-separated patterns are allowed
+* prefixing a pattern with `-` excludes it
+
+See the upstream documentation for the full syntax:
+
+* [debug-js: Browser support](https://github.com/debug-js/debug#browser-support)
+
+## [](#%5Fexamples)Examples
+
+### [](#%5Fenable%5Feverything%5Fexcept%5Ftopic%5Fand%5Fgatherer)Enable everything except Topic and Gatherer
+
+This is useful when you want general diagnostics but do not want event/data stream logs.
+
+```js
+// Enable all OneCX logs, but exclude Topic and Gatherer namespaces
+localStorage.debug = '@onecx*,-@onecx*:Topic:*,-@onecx*:Gatherer:*'
+location.reload()
+```
+
+### [](#%5Fenable%5Fonly%5Fa%5Fsingle%5Flibrary)Enable only a single library
+
+```js
+// Only angular-utils
+localStorage.debug = '@onecx/angular-utils*'
+location.reload()
+```
+
+### [](#%5Fenable%5Fa%5Flibrary%5Fa%5Fconcrete%5Flocation)Enable a library + a concrete location
+
+```js
+// Example: focus on a single component/service
+localStorage.debug = '@onecx/angular-auth:AuthProxyService'
+location.reload()
+```
+
+## [](#%5Fvalid%5Fonecx%5Fnamespaces)Valid OneCX namespaces
+
+Namespaces are composed as:
+
+```text
+@onecx/<libOrAppName>:<location>:<level>
+```
+
+Where `<libOrAppName>` is the value passed to `createLoggerFactory(…​)`.
+
+Where `<level>` is one of:
+
+* `debug`
+* `info`
+* `warn`
+* `error`
+
+## [](#%5Floglevels%5Fwhen%5Fto%5Fuse%5Fwhat)Loglevels (when to use what)
+
+The `debug` namespace includes the loglevel as the last segment. This allows you to filter by severity in the browser.
+
+* `debug`: High-volume diagnostics for local development and deep troubleshooting (state transitions, inputs/outputs, timing).
+* `info`: Important lifecycle milestones that are useful in normal troubleshooting (initialization, successful operations, configuration decisions).
+* `warn`: Unexpected situations that the app can recover from (fallback paths, invalid user input that is handled, missing optional dependencies).
+* `error`: Failures that prevent a feature from working or indicate a bug (exceptions, failed network calls that break functionality, invalid critical configuration).
+
+As a rule of thumb:
+
+* Prefer `debug` for details you don’t want enabled in normal troubleshooting.
+* Prefer `info` for "what happened" breadcrumbs.
+* Use `warn` when something is off but you can still proceed.
+* Use `error` when you cannot proceed or you need attention.
+
+## [](#%5Fexamples%5Fby%5Floglevel)Examples by loglevel
+
+```js
+// Everything (all libraries, all locations, all levels)
+localStorage.debug = '@onecx*'
+location.reload()
+
+// Only errors across all OneCX libraries
+localStorage.debug = '@onecx*:*:error'
+location.reload()
+
+// Only warnings + errors (by combining patterns)
+localStorage.debug = '@onecx*:*:warn,@onecx*:*:error'
+location.reload()
+
+// Only debug logs for a single location
+localStorage.debug = '@onecx/angular-auth:AuthProxyService:debug'
+location.reload()
+```
+
+### [](#%5Flibrary%5Fnamespaces)Library namespaces
+
+These namespaces exist in the current repo:
+
+* `@onecx/accelerator`
+* `@onecx/angular-accelerator`
+* `@onecx/angular-accelerator:testing`
+* `@onecx/angular-auth`
+* `@onecx/angular-integration-interface`
+* `@onecx/angular-integration-interface:mocks`
+* `@onecx/angular-remote-components`
+* `@onecx/angular-remote-components:mocks`
+* `@onecx/angular-remote-components:testing`
+* `@onecx/angular-standalone-shell`
+* `@onecx/angular-testing`
+* `@onecx/angular-utils`
+* `@onecx/angular-utils:guards`
+* `@onecx/angular-utils:mocks`
+* `@onecx/angular-utils:style`
+* `@onecx/angular-utils:theme/primeng`
+* `@onecx/angular-webcomponents`
+* `@onecx/integration-interface`
+* `@onecx/ngrx-accelerator`
+* `@onecx/ngrx-integration-interface`
+
+### [](#%5Fspecial%5Fruntime%5Fnamespaces)Special runtime namespaces
+
+Some logs are intentionally high-volume and are separated into dedicated namespaces:
+
+* `@onecx/accelerator:Topic:<name>` and `@onecx/accelerator:TopicPublisher:<name>`
+* `@onecx/accelerator:Gatherer:<name>`
+
+These are excluded in the example above.
 
 OneCX UI Libraries
 ====================
@@ -16066,164 +16213,6 @@ Example package.json
 }
 ```
 
-Browser Logging (debug-js)
-====================
-OneCX UI libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
-
-This means:
-
-* Logging is **disabled by default**.
-* You enable logging in the browser by setting a value for `localStorage.debug` (or via a helper in DevTools).
-* Log output is written to the browser console when enabled.
-
-## [](#%5Fenable%5Flogging)Enable logging
-
-You can enable logging by setting `localStorage.debug` and reloading the page.
-
-```js
-// Enable all OneCX UI library logs
-localStorage.debug = '@onecx*'
-location.reload()
-```
-
-## [](#%5Fcommon%5Fpatterns)Common patterns
-
-`debug` uses namespace patterns. The following wildcards are commonly used:
-
-* `*` matches anything
-* comma-separated patterns are allowed
-* prefixing a pattern with `-` excludes it
-
-See the upstream documentation for the full syntax:
-
-* [debug-js: Browser support](https://github.com/debug-js/debug#browser-support)
-
-## [](#%5Fexamples)Examples
-
-### [](#%5Fenable%5Feverything%5Fexcept%5Ftopic%5Fand%5Fgatherer)Enable everything except Topic and Gatherer
-
-This is useful when you want general diagnostics but do not want event/data stream logs.
-
-```js
-// Enable all OneCX logs, but exclude Topic and Gatherer namespaces
-localStorage.debug = '@onecx*,-@onecx*:Topic:*,-@onecx*:Gatherer:*'
-location.reload()
-```
-
-### [](#%5Fenable%5Fonly%5Fa%5Fsingle%5Flibrary)Enable only a single library
-
-```js
-// Only angular-utils
-localStorage.debug = '@onecx/angular-utils*'
-location.reload()
-```
-
-### [](#%5Fenable%5Fa%5Flibrary%5Fa%5Fconcrete%5Flocation)Enable a library + a concrete location
-
-```js
-// Example: focus on a single component/service
-localStorage.debug = '@onecx/angular-auth:AuthProxyService'
-location.reload()
-```
-
-## [](#%5Fvalid%5Fonecx%5Fnamespaces)Valid OneCX namespaces
-
-Namespaces are composed as:
-
-```text
-@onecx/<libOrAppName>:<location>:<level>
-```
-
-Where `<libOrAppName>` is the value passed to `createLoggerFactory(…​)`.
-
-Where `<level>` is one of:
-
-* `debug`
-* `info`
-* `warn`
-* `error`
-
-## [](#%5Floglevels%5Fwhen%5Fto%5Fuse%5Fwhat)Loglevels (when to use what)
-
-The `debug` namespace includes the loglevel as the last segment. This allows you to filter by severity in the browser.
-
-* `debug`: High-volume diagnostics for local development and deep troubleshooting (state transitions, inputs/outputs, timing).
-* `info`: Important lifecycle milestones that are useful in normal troubleshooting (initialization, successful operations, configuration decisions).
-* `warn`: Unexpected situations that the app can recover from (fallback paths, invalid user input that is handled, missing optional dependencies).
-* `error`: Failures that prevent a feature from working or indicate a bug (exceptions, failed network calls that break functionality, invalid critical configuration).
-
-As a rule of thumb:
-
-* Prefer `debug` for details you don’t want enabled in normal troubleshooting.
-* Prefer `info` for "what happened" breadcrumbs.
-* Use `warn` when something is off but you can still proceed.
-* Use `error` when you cannot proceed or you need attention.
-
-## [](#%5Fexamples%5Fby%5Floglevel)Examples by loglevel
-
-```js
-// Everything (all libraries, all locations, all levels)
-localStorage.debug = '@onecx*'
-location.reload()
-
-// Only errors across all OneCX libraries
-localStorage.debug = '@onecx*:*:error'
-location.reload()
-
-// Only warnings + errors (by combining patterns)
-localStorage.debug = '@onecx*:*:warn,@onecx*:*:error'
-location.reload()
-
-// Only debug logs for a single location
-localStorage.debug = '@onecx/angular-auth:AuthProxyService:debug'
-location.reload()
-```
-
-### [](#%5Flibrary%5Fnamespaces)Library namespaces
-
-These namespaces exist in the current repo:
-
-* `@onecx/accelerator`
-* `@onecx/angular-accelerator`
-* `@onecx/angular-accelerator:testing`
-* `@onecx/angular-auth`
-* `@onecx/angular-integration-interface`
-* `@onecx/angular-integration-interface:mocks`
-* `@onecx/angular-remote-components`
-* `@onecx/angular-remote-components:mocks`
-* `@onecx/angular-remote-components:testing`
-* `@onecx/angular-standalone-shell`
-* `@onecx/angular-testing`
-* `@onecx/angular-utils`
-* `@onecx/angular-utils:guards`
-* `@onecx/angular-utils:mocks`
-* `@onecx/angular-utils:style`
-* `@onecx/angular-utils:theme/primeng`
-* `@onecx/angular-webcomponents`
-* `@onecx/integration-interface`
-* `@onecx/ngrx-accelerator`
-* `@onecx/ngrx-integration-interface`
-
-### [](#%5Fspecial%5Fruntime%5Fnamespaces)Special runtime namespaces
-
-Some logs are intentionally high-volume and are separated into dedicated namespaces:
-
-* `@onecx/accelerator:Topic:<name>` and `@onecx/accelerator:TopicPublisher:<name>`
-* `@onecx/accelerator:Gatherer:<name>`
-
-These are excluded in the example above.
-
-undefined
-====================
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
-
 OneCX Consent
 ====================
 ## [](#overview)Overview
@@ -16319,12 +16308,8 @@ URL normalization aims to avoid accidental mismatches:
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
 
-OneCX DataListGrid
+undefined
 ====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
 ## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
 
 This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
@@ -16520,6 +16505,21 @@ __Table 4\. ObjectDetailItem interface__
 | \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
 | \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
 | \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
+
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX SearchHeader
 ====================
@@ -18181,58 +18181,40 @@ This document aims to showcase how to manage InteractiveDataView Component.
 
 * [DataTableColumn](data-table-column.html)
 
-Add Webpack Plugin for Angular Material
+Adjust Packages in Webpack Config
 ====================
-In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
+In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
 
-| |  This setup will be replaced by a OneCX-provided Webpack plugin in a future version. |
-| -------------------------------------------------------------------------------------- |
+## [](#%5Fupdate%5Fconfiguration)Update configuration
 
-## [](#%5Finstall%5Fand%5Fconfigure%5Fwebpack%5Fplugin)Install and Configure Webpack Plugin
+* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
 
-1. Install `modify-source-webpack-plugin`  
-```bash  
-npm install modify-source-webpack-plugin --save-dev  
-```
-2. Import `ModifySourcePlugin` and `ReplaceOperation` from `` modify-source-webpack-plugin`in `webpack.config.js ``
-3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
-   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
-   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
-         * scope: `all`  
-         * match pattern: `document\.createElement\(`  
-         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
-4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
+### [](#%5Fexample)Example
 
-Example webpack.config.js
+Before
 
 ```javascript
-const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { singleton: true, requiredVersion: "auto" },
+    "rxjs": { singleton: true, requiredVersion: "auto" }
+  })
+});
+```
 
-const modifyMaterialPlugin = new ModifySourcePlugin({
-  rules: [
-    {
-      test: (module) => {
-        return (
-          module.resource &&
-          (module.resource.includes('@angular/material') ||
-            module.resource.includes('@angular/cdk'))
-        )
-      },
-      operations: [
-        new ReplaceOperation(
-          'all',
-          'document\\.createElement\\(',
-          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
-        )
-      ]
-    }
-  ]
-})
+After
 
-module.exports = {
-  ...webpackConfig,
-  plugins: [...plugins, modifyMaterialPlugin]
-}
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { requiredVersion: "auto" },
+    "rxjs": { requiredVersion: "auto" }
+  })
+});
 ```
 
 Add Webpack Plugin for PrimeNG
@@ -18289,40 +18271,58 @@ module.exports = {
 }
 ```
 
-Adjust Packages in Webpack Config
+Add Webpack Plugin for Angular Material
 ====================
-In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
+In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
 
-## [](#%5Fupdate%5Fconfiguration)Update configuration
+| |  This setup will be replaced by a OneCX-provided Webpack plugin in a future version. |
+| -------------------------------------------------------------------------------------- |
 
-* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
+## [](#%5Finstall%5Fand%5Fconfigure%5Fwebpack%5Fplugin)Install and Configure Webpack Plugin
 
-### [](#%5Fexample)Example
-
-Before
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { singleton: true, requiredVersion: "auto" },
-    "rxjs": { singleton: true, requiredVersion: "auto" }
-  })
-});
+1. Install `modify-source-webpack-plugin`  
+```bash  
+npm install modify-source-webpack-plugin --save-dev  
 ```
+2. Import `ModifySourcePlugin` and `ReplaceOperation` from `` modify-source-webpack-plugin`in `webpack.config.js ``
+3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
+   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
+   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
+         * scope: `all`  
+         * match pattern: `document\.createElement\(`  
+         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
+4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
 
-After
+Example webpack.config.js
 
 ```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { requiredVersion: "auto" },
-    "rxjs": { requiredVersion: "auto" }
-  })
-});
+const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+
+const modifyMaterialPlugin = new ModifySourcePlugin({
+  rules: [
+    {
+      test: (module) => {
+        return (
+          module.resource &&
+          (module.resource.includes('@angular/material') ||
+            module.resource.includes('@angular/cdk'))
+        )
+      },
+      operations: [
+        new ReplaceOperation(
+          'all',
+          'document\\.createElement\\(',
+          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
+        )
+      ]
+    }
+  ]
+})
+
+module.exports = {
+  ...webpackConfig,
+  plugins: [...plugins, modifyMaterialPlugin]
+}
 ```
 
 Adjust Standalone Mode
@@ -19812,39 +19812,6 @@ const config = new PortalApiConfiguration(SomeConfigClass, '/api', configService
 const config = new PortalApiConfiguration(SomeConfigClass, '/api');
 ```
 
-Update Theme Service usage
-====================
-In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
-
-The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
-
-## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
-
-* Remove `baseUrlV1` property usages
-* Remove `getThemeRef()` function calls
-* Remove `loadAndApplyTheme()` function calls
-* Remove `apply()` function calls
-
-| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
-| ------------------------------------------------------------------------------------------------------------------------------- |
-
-In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
-
-Apply
-
-```typescript
-async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
-  await themeService.currentTheme$.publish(theme)
-  if (theme.properties) {
-    for (const group of Object.values(theme.properties)) {
-      for (const [key, value] of Object.entries(group)) {
-        document.documentElement.style.setProperty(`--${key}`, value)
-      }
-    }
-  }
-}
-```
-
 Update Translation Path Factories
 ====================
 ## [](#%5Fupdate%5Fimports)Update Imports
@@ -20070,6 +20037,39 @@ bootstrapRemoteComponent(
     })
   ]
 )
+```
+
+Update Theme Service usage
+====================
+In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
+
+The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
+
+## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
+
+* Remove `baseUrlV1` property usages
+* Remove `getThemeRef()` function calls
+* Remove `loadAndApplyTheme()` function calls
+* Remove `apply()` function calls
+
+| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
+| ------------------------------------------------------------------------------------------------------------------------------- |
+
+In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
+
+Apply
+
+```typescript
+async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
+  await themeService.currentTheme$.publish(theme)
+  if (theme.properties) {
+    for (const group of Object.values(theme.properties)) {
+      for (const [key, value] of Object.entries(group)) {
+        document.documentElement.style.setProperty(`--${key}`, value)
+      }
+    }
+  }
+}
 ```
 
 Upgrade NX Application to Angular 19
@@ -30655,6 +30655,20 @@ undefined
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ---------------------------------- |
 | [onecx.product-store.operator.leader-election.lease-name](#onecx-product-store-operator%5Fonecx-product-store-operator-leader-election-lease-name) Lease name Environment variable: ONECX\_PRODUCT\_STORE\_OPERATOR\_LEADER\_ELECTION\_LEASE\_NAME | string | onecx-product-store-operator-lease |
 
+Concept for Microfrontend Parameter
+====================
+1. The Shell requests the parameters from the ShellBFF by product names and application ids of all applications which are part of the current workspace configuration.
+2. The ShellBFF retrieves the parameters from the ParameterSVC for all applications which are part of the current workspace.
+3. The ParameterSVC returns the parameters to the ShellBFF.
+4. The ShellBFF sends the parameters, back to the Shell.
+5. The Shell caches the parameters only if the fetch status indicates success.
+
+Since the ShellBFF is always returning status code 200 when requested for parameters, the response structure implies if the fetching of parameters was successfull or not.
+
+If the response object matches the request object (i.e., all products and applications are included in the response), then the fetch was successful. If there is an issue with the ParameterSVC, the response object will be empty and will not contain any products or applications.
+
+![Diagram](_images/diag-b60f58445d79bdcd767042cfa0f966ccd8d1e081.svg) 
+
 OneCX Shell
 ====================
 ## [](#%5Flicence)Licence
@@ -30693,20 +30707,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 ## [](#%5Froadmap)Roadmap
 
 tbd
-
-Concept for Microfrontend Parameter
-====================
-1. The Shell requests the parameters from the ShellBFF by product names and application ids of all applications which are part of the current workspace configuration.
-2. The ShellBFF retrieves the parameters from the ParameterSVC for all applications which are part of the current workspace.
-3. The ParameterSVC returns the parameters to the ShellBFF.
-4. The ShellBFF sends the parameters, back to the Shell.
-5. The Shell caches the parameters only if the fetch status indicates success.
-
-Since the ShellBFF is always returning status code 200 when requested for parameters, the response structure implies if the fetching of parameters was successfull or not.
-
-If the response object matches the request object (i.e., all products and applications are included in the response), then the fetch was successful. If there is an issue with the ParameterSVC, the response object will be empty and will not contain any products or applications.
-
-![Diagram](_images/diag-b60f58445d79bdcd767042cfa0f966ccd8d1e081.svg) 
 
 OneCX Shell Backend For Frontend
 ====================
@@ -31033,6 +31033,15 @@ app:
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                         | Type    | Default |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
+| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
@@ -31056,15 +31065,6 @@ undefined
 | quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                         | Type    | Default |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
-| [onecx.shell.permissions.cache-enabled](#onecx-shell-bff%5Fonecx-shell-permissions-cache-enabled) Enable or disable caching Environment variable: ONECX\_SHELL\_PERMISSIONS\_CACHE\_ENABLED    | boolean | true    |
-| [onecx.shell.permissions.key-separator](#onecx-shell-bff%5Fonecx-shell-permissions-key-separator) select default key separator Environment variable: ONECX\_SHELL\_PERMISSIONS\_KEY\_SEPARATOR | string  | #       |
 
 undefined
 ====================
@@ -31764,6 +31764,34 @@ undefined
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
+| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.1  |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-tenant-svc/pkgs/container/onecx-tenant-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -31847,34 +31875,6 @@ app:
         description: OneCX Tenant Backend Service
         name: OneCX Tenant SVC
 ```
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
 
 undefined
 ====================
