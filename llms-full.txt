@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1692,290 +1976,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -16454,6 +16454,17 @@ Example package.json
 }
 ```
 
+undefined
+====================
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
+
 OneCX Consent
 ====================
 ## [](#overview)Overview
@@ -16548,17 +16559,6 @@ URL normalization aims to avoid accidental mismatches:
 * Removes a trailing slash
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
-
-undefined
-====================
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX DataListGrid
 ====================
@@ -18370,16 +18370,6 @@ this.workspaceService.doesUrlExistFor('orders', 'orders-ui', 'order').subscribe(
 
 This example checks if a valid URL for Orders UI (UI component) of the Orders application to an order details endpoint can be constructed. If true, then Orders application is registered in the workspace and it has UI component with id `orders-ui` with configured endpoint called `order`.
 
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
-
 DataTableColumn
 ====================
 ## [](#data-table-column-properties-overview)DataTableColumn properties overview
@@ -18421,6 +18411,16 @@ FilterType enum
 | ------ | ------------------------------------------------------------------------ |
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
+
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
 
 Add Webpack Plugin for Angular Material
 ====================
@@ -20231,6 +20231,38 @@ bootstrapRemoteComponent(
 )
 ```
 
+Adjust ngrx-accelerator library utilities
+====================
+Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
+
+* `OneCxActions` constant
+* `oneCxReducer` constant
+* `OneCxSelectors` type
+* `getOneCxSelectors` function
+* `createOneCxSelector` function
+* `LocationState` type
+* `OneCxState` interface
+* `NavigatedEventStoreConnectorService` class
+* `provideNavigatedEventStoreConnector` provider function
+* `PermissionsStoreConnectorService` class
+* `providePermissionsStoreConnector` provider function
+
+Update the imports for the utilities listed above to reference `ngrx‑integration‑interface` instead of `ngrx‑accelerator`.
+
+**Example**:
+
+Before
+
+```typescript
+import { OneCxActions } from 'ngrx-accelerator';
+```
+
+After
+
+```typescript
+import { OneCxActions } from 'ngrx-integration-interface';
+```
+
 Upgrade NX Application to Angular 19
 ====================
 This guide describes how to upgrade an NX-based OneCX application to Angular 19\. Complete the pre-migration steps from the main migration guide before you continue.
@@ -20286,38 +20318,6 @@ nx migrate --run-migrations
 ```
 
 After this step, proceed with the remaining post-migration steps.
-
-Adjust ngrx-accelerator library utilities
-====================
-Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
-
-* `OneCxActions` constant
-* `oneCxReducer` constant
-* `OneCxSelectors` type
-* `getOneCxSelectors` function
-* `createOneCxSelector` function
-* `LocationState` type
-* `OneCxState` interface
-* `NavigatedEventStoreConnectorService` class
-* `provideNavigatedEventStoreConnector` provider function
-* `PermissionsStoreConnectorService` class
-* `providePermissionsStoreConnector` provider function
-
-Update the imports for the utilities listed above to reference `ngrx‑integration‑interface` instead of `ngrx‑accelerator`.
-
-**Example**:
-
-Before
-
-```typescript
-import { OneCxActions } from 'ngrx-accelerator';
-```
-
-After
-
-```typescript
-import { OneCxActions } from 'ngrx-integration-interface';
-```
 
 undefined
 ====================
@@ -20672,61 +20672,6 @@ After completing all migration steps, remove migration-only dependencies that ar
 npm uninstall @onecx/nx-migration-utils @nx/devkit
 ```
 
-Update package imports for PrimeNG theming
-====================
-In version 7, the PrimeNG theming utilities have been moved to a separate subpackage:`@onecx/angular-utils/theme/primeng` within the `@onecx/angular-utils` library.
-
-## [](#%5Fupdate%5Fimport%5Fpath)Update import path
-
-Please update all imports related to PrimeNG theming utilities to use the new package.
-
-Before
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils'
-```
-
-After
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
-```
-
-## [](#%5Fprimeng%5Fsubpackage%5Fpublic%5Fapi%5Fcontents)PrimeNG subpackage public API contents
-
-### [](#%5Fclasses)Classes
-
-* `CustomUseStyle`
-* `ThemeConfigService`
-
-### [](#%5Ffunctions)Functions
-
-* `adjustColor`
-* `colorDelta`
-* `createPalette`
-* `normalizeKeys`
-* `provideThemeConfig`
-* `provideThemeConfigService`
-
-### [](#%5Fconstants)Constants
-
-* `CustomPreset`
-* `standardColorAdjustment`
-
-### [](#%5Finjection%5Ftokens)Injection Tokens
-
-* `IS_ADVANCED_THEMING`
-* `THEME_OVERRIDES`
-
-### [](#%5Finterfaces)Interfaces
-
-* `ColorAdjustment`
-* `ThemeConfigProviderOptions`
-
-### [](#%5Ftypes)Types
-
-* `ThemeOverrides`
-
 Update package imports for style utilities
 ====================
 In version 7, the style utilities have been moved to a separate subpackage:`@onecx/angular-utils/style` within the `@onecx/angular-utils` library.
@@ -20786,6 +20731,61 @@ import { updateStylesForMfeChange } from '@onecx/angular-utils/style'
 * `dataRcStylesStart`
 * `dataShellStylesAttribute`
 * `dataShellStylesKey`
+
+Update package imports for PrimeNG theming
+====================
+In version 7, the PrimeNG theming utilities have been moved to a separate subpackage:`@onecx/angular-utils/theme/primeng` within the `@onecx/angular-utils` library.
+
+## [](#%5Fupdate%5Fimport%5Fpath)Update import path
+
+Please update all imports related to PrimeNG theming utilities to use the new package.
+
+Before
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils'
+```
+
+After
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
+```
+
+## [](#%5Fprimeng%5Fsubpackage%5Fpublic%5Fapi%5Fcontents)PrimeNG subpackage public API contents
+
+### [](#%5Fclasses)Classes
+
+* `CustomUseStyle`
+* `ThemeConfigService`
+
+### [](#%5Ffunctions)Functions
+
+* `adjustColor`
+* `colorDelta`
+* `createPalette`
+* `normalizeKeys`
+* `provideThemeConfig`
+* `provideThemeConfigService`
+
+### [](#%5Fconstants)Constants
+
+* `CustomPreset`
+* `standardColorAdjustment`
+
+### [](#%5Finjection%5Ftokens)Injection Tokens
+
+* `IS_ADVANCED_THEMING`
+* `THEME_OVERRIDES`
+
+### [](#%5Finterfaces)Interfaces
+
+* `ColorAdjustment`
+* `ThemeConfigProviderOptions`
+
+### [](#%5Ftypes)Types
+
+* `ThemeOverrides`
 
 Required Package Updates
 ====================
@@ -23830,106 +23830,6 @@ With option **\-a** all images are updated, ignoring name filter. With option **
 ./update-images.sh  -a -c
 ```
 
-Migrate to v2
-====================
-| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-This guide highlights the key differences between OneCX Local Environment [v1](v1.html) and the current version, and explains how you can adapt your setup.
-
-## [](#general-changes)General Changes
-
-The v2 edition of OneCX Local Environment includes several improvements and new features compared to v1\. Some of the most significant changes include:
-
-* **Docker Compose project name**: The project name used in Docker Compose has been changed from `<current-directory>` to **onecx-local-env**. This affects the naming of networks, volumes and other Docker resources created by the compose file.
-* **Network rename**: The default network used by the services has been renamed from **example** to **onecx**.
-* **Service startup behavior**: In v1, some core services started automatically when running `docker compose up -d`, while additional services could be started using the two existing profiles: `all` and `parameters`. In v2, the system is fully profile-based, meaning that nothing starts by default when you run `docker compose up -d`. You must explicitly specify at least one profile to start the services. This allows for more fine-grained control over which services run.
-* **Script improvements**: All shell scripts have been improved to provide more functionality and better error handling. For example, the import script now includes options to specify which data to import, the edition of OneCX, secure authentication, tenant-specific imports, verbosity and skipping container checks. This allows for more flexibility and customization when importing data.
-* **Reorganized ENV files**: All environment variables are now located within the standard `./.env` file in the root of the version directory, instead of being scattered across different files.
-* **Security improvements**: Security can be optionally enabled on startup and during import. Security is now enabled by default for tenant-specific imports, and the import script automatically handles authentication and token retrieval for these imports. This means that once Docker services have been started with the security option enabled, all subsequent actions require an authenticated user. For example, an import operation must then be started with the `-s` option to succeed. This enhances the security of the environment and ensures that only authorized users can perform certain actions.
-
-## [](#network-rename)Network Rename
-
-v1
-
-The network that all services connected to was named **example**.
-
-v2
-
-In current version, the services use the **onecx** network within the compose file.  
-However, when the compose file is executed, Docker creates a network with the name format `<project_name>_default`. With **onecx** the complete network name is **onecx-local-env\_onecx**.  
-
-## [](#service-startup)Service Startup
-
-v1
-
-* Some core services started automatically when running: `docker compose up -d`
-* Additional services could be started using the two existing profiles: `all` and `parameters`.
-* This approach gave developers very little control over which apps were started, making it hard to, for example, run only a small subset of apps and one OneCX product.
-
-v2
-
-The system supports the compose profiles **all** and **base** (which includes all core services).  
-
-* **Nothing** starts by default when you run: `docker compose up -d`
-* You must explicitly specify at least one profile, for example:  
-Starting core services via compose profile `base`:  
-```bash  
-docker compose --profile base up -d  
-```
-
-| |  It is recommended to use the [Start Script](../scripts/start.html) for starting the environment, which handles profile selection and other options in a more user-friendly way.For details how to start OneCX in general see [Running Onecx](../run-onecx.html). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#data-import)Data Import
-
-v1
-
-The data import script had the sole purpose of sending data to services to trigger the import.  
-This caused issues if containers were not running, unhealthy, or still starting up.
-
-v2
-
-The import script now provides options to manage container states during the import process. By default, the script now:
-
-* Starts all required services.
-* Waits for them to become healthy and operational.
-* Imports the data.  
-If you want to manage container states manually, you can use the **\-x** option to skip checking running Docker services. This ensures the script does not start or stop any containers, allowing you to manage them manually.  
-Optionally you can also specify which data to import (**\-d**), enable secure authentication (**\-s**), specify tenant (**\-t**) for tenant-specific imports, and enable verbose output (**\-v**) for more details during the import process.  
-See [Import OneCX Data](../scripts/import.html) for more details on the available options and how to use the import script.
-
-## [](#env-files-and-variables)ENV Files and Variables
-
-v1
-
-Environment variables were located in multiple files in the root directory of the project, such as `.env`, `common.env`, `svc.env` and `bff.env`. This made it difficult to keep track of which variables were used for which version and services.
-
-v2
-
-All common project-related environment variables are now located in the standard compose environment file. This allows for better organization and scoped environment variables per edition.  
-Within the compose file of the edition, only the specific environment variables for each service are defined, either directly or via the **env\_file** directive.  
-At the beginning of the compose file (compose.yaml) are sections that define specific sets of variables for use in BFF or SVC services, with or without multi-tenancy:
-
-* **bff\_environment** ⇒ environment variables for BFF services
-* **svc\_single\_tenancy** ⇒ environment variables for SVC services **without** multi-tenancy
-* **svc\_multi\_tenancy** ⇒ environment variables for SVC services with **multi-tenancy**  
-This allows for better organization and easier management of environment variables, as well as clearer visibility of which variables are used for which services and editions. Use these variable when possible instead of defining new ones to ensure consistency across the compose file and services.
-
-Example of using environment variables in the compose file:
-
-```yaml
-services:
-  onecx-example-svc:
-    image: example-image:latest
-    container_name: onecx-example-svc
-    environment:
-      <<: *svc_multi_tenancy
-```
-
-| |  After reading all sections of this document you should be able to make all necessary adjustments to migrate from v1 to v2 of the OneCX Local Environment.Please make familiar with the current state of the OneCX Local Environment before proceeding. There are also functionality **to extend the environment** with custom services, see [Extend OneCX](../extend/extend.html) for more details. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
 Edition - v1
 ====================
 | |  Disclaimer This page was created for an older edition of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
@@ -24087,6 +23987,106 @@ OneCX Local Environment v1 mounts one global volume:
 * `postgres` — volume used by `postgresdb` to persist its data across container restarts.
 
 Additionally, some services (`traefik`, `postgresdb`, `pgadmin` and `keycloak-app`) mount local directories for initialization data.
+
+Migrate to v2
+====================
+| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+This guide highlights the key differences between OneCX Local Environment [v1](v1.html) and the current version, and explains how you can adapt your setup.
+
+## [](#general-changes)General Changes
+
+The v2 edition of OneCX Local Environment includes several improvements and new features compared to v1\. Some of the most significant changes include:
+
+* **Docker Compose project name**: The project name used in Docker Compose has been changed from `<current-directory>` to **onecx-local-env**. This affects the naming of networks, volumes and other Docker resources created by the compose file.
+* **Network rename**: The default network used by the services has been renamed from **example** to **onecx**.
+* **Service startup behavior**: In v1, some core services started automatically when running `docker compose up -d`, while additional services could be started using the two existing profiles: `all` and `parameters`. In v2, the system is fully profile-based, meaning that nothing starts by default when you run `docker compose up -d`. You must explicitly specify at least one profile to start the services. This allows for more fine-grained control over which services run.
+* **Script improvements**: All shell scripts have been improved to provide more functionality and better error handling. For example, the import script now includes options to specify which data to import, the edition of OneCX, secure authentication, tenant-specific imports, verbosity and skipping container checks. This allows for more flexibility and customization when importing data.
+* **Reorganized ENV files**: All environment variables are now located within the standard `./.env` file in the root of the version directory, instead of being scattered across different files.
+* **Security improvements**: Security can be optionally enabled on startup and during import. Security is now enabled by default for tenant-specific imports, and the import script automatically handles authentication and token retrieval for these imports. This means that once Docker services have been started with the security option enabled, all subsequent actions require an authenticated user. For example, an import operation must then be started with the `-s` option to succeed. This enhances the security of the environment and ensures that only authorized users can perform certain actions.
+
+## [](#network-rename)Network Rename
+
+v1
+
+The network that all services connected to was named **example**.
+
+v2
+
+In current version, the services use the **onecx** network within the compose file.  
+However, when the compose file is executed, Docker creates a network with the name format `<project_name>_default`. With **onecx** the complete network name is **onecx-local-env\_onecx**.  
+
+## [](#service-startup)Service Startup
+
+v1
+
+* Some core services started automatically when running: `docker compose up -d`
+* Additional services could be started using the two existing profiles: `all` and `parameters`.
+* This approach gave developers very little control over which apps were started, making it hard to, for example, run only a small subset of apps and one OneCX product.
+
+v2
+
+The system supports the compose profiles **all** and **base** (which includes all core services).  
+
+* **Nothing** starts by default when you run: `docker compose up -d`
+* You must explicitly specify at least one profile, for example:  
+Starting core services via compose profile `base`:  
+```bash  
+docker compose --profile base up -d  
+```
+
+| |  It is recommended to use the [Start Script](../scripts/start.html) for starting the environment, which handles profile selection and other options in a more user-friendly way.For details how to start OneCX in general see [Running Onecx](../run-onecx.html). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#data-import)Data Import
+
+v1
+
+The data import script had the sole purpose of sending data to services to trigger the import.  
+This caused issues if containers were not running, unhealthy, or still starting up.
+
+v2
+
+The import script now provides options to manage container states during the import process. By default, the script now:
+
+* Starts all required services.
+* Waits for them to become healthy and operational.
+* Imports the data.  
+If you want to manage container states manually, you can use the **\-x** option to skip checking running Docker services. This ensures the script does not start or stop any containers, allowing you to manage them manually.  
+Optionally you can also specify which data to import (**\-d**), enable secure authentication (**\-s**), specify tenant (**\-t**) for tenant-specific imports, and enable verbose output (**\-v**) for more details during the import process.  
+See [Import OneCX Data](../scripts/import.html) for more details on the available options and how to use the import script.
+
+## [](#env-files-and-variables)ENV Files and Variables
+
+v1
+
+Environment variables were located in multiple files in the root directory of the project, such as `.env`, `common.env`, `svc.env` and `bff.env`. This made it difficult to keep track of which variables were used for which version and services.
+
+v2
+
+All common project-related environment variables are now located in the standard compose environment file. This allows for better organization and scoped environment variables per edition.  
+Within the compose file of the edition, only the specific environment variables for each service are defined, either directly or via the **env\_file** directive.  
+At the beginning of the compose file (compose.yaml) are sections that define specific sets of variables for use in BFF or SVC services, with or without multi-tenancy:
+
+* **bff\_environment** ⇒ environment variables for BFF services
+* **svc\_single\_tenancy** ⇒ environment variables for SVC services **without** multi-tenancy
+* **svc\_multi\_tenancy** ⇒ environment variables for SVC services with **multi-tenancy**  
+This allows for better organization and easier management of environment variables, as well as clearer visibility of which variables are used for which services and editions. Use these variable when possible instead of defining new ones to ensure consistency across the compose file and services.
+
+Example of using environment variables in the compose file:
+
+```yaml
+services:
+  onecx-example-svc:
+    image: example-image:latest
+    container_name: onecx-example-svc
+    environment:
+      <<: *svc_multi_tenancy
+```
+
+| |  After reading all sections of this document you should be able to make all necessary adjustments to migrate from v1 to v2 of the OneCX Local Environment.Please make familiar with the current state of the OneCX Local Environment before proceeding. There are also functionality **to extend the environment** with custom services, see [Extend OneCX](../extend/extend.html) for more details. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 Add Webpack App UI Manually to OneCX
 ====================
@@ -29104,10 +29104,6 @@ undefined
 ====================
 
 
-undefined
-====================
-
-
 OneCX Permission Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-permission-bff/pkgs/container/onecx-permission-bff)
@@ -29242,6 +29238,10 @@ app:
         description: OneCX Permission Backend For Frontend
         name: OneCX Permission BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
