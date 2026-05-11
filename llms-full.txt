@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -7610,65 +7610,6 @@ For a further introduction, please checkout the [NgRX documentation](https://ngr
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
 
-NgRx
-====================
-## [](#what-is-ngrx)What Is NgRx?
-
-* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
-* Core building blocks:  
-   * Actions: Plain events that describe what happened.  
-   * Reducers: Pure functions that compute new state from the previous state and an action.  
-   * Selectors: Memoized queries to read and derive data from state.  
-   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
-   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
-
-## [](#overview)Overview
-
-Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
-
-Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
-
-## [](#core-packages)Core Packages
-
-* Store: `@ngrx/store` — application and feature state containers.
-* Effects: `@ngrx/effects` — side-effects and async flows.
-* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
-* Router Store: `@ngrx/router-store` — integrates Angular Router state.
-* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
-* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
-
-## [](#getting-started)Getting Started
-
-Install commonly used packages:
-
-```bash
-npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
-```
-
-High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
-
-## [](#onecx-guides-and-examples)OneCX Guides and Examples
-
-* [Lazy Loading Tabs with NgRx](lazy-loading.html)
-* Adding Search Criteria:  
-   * [Search Criteria](search-criteria/search-criteria.html)  
-   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
-   * [Calendar](search-criteria/calendar.html)  
-   * [Dropdown](search-criteria/dropdown.html)  
-   * [MultiSelect](search-criteria/multiselect.html)
-
-## [](#useful-links)Useful Links
-
-* Official website: [NgRx](https://ngrx.io/)
-* Documentation: [Docs](https://ngrx.io/docs)
-* Store: [Store](https://ngrx.io/guide/store)
-* Effects: [Effects](https://ngrx.io/guide/effects)
-* Entity: [Entity](https://ngrx.io/guide/entity)
-* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
-* Router Store: [Router Store](https://ngrx.io/guide/router-store)
-* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
-* Schematics: [Schematics](https://ngrx.io/guide/schematics)
-
 Lazy loading tabs
 ====================
 ## [](#goal)Goal: Load tabs dynamically
@@ -7855,6 +7796,65 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+NgRx
+====================
+## [](#what-is-ngrx)What Is NgRx?
+
+* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
+* Core building blocks:  
+   * Actions: Plain events that describe what happened.  
+   * Reducers: Pure functions that compute new state from the previous state and an action.  
+   * Selectors: Memoized queries to read and derive data from state.  
+   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
+   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+
+## [](#overview)Overview
+
+Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+
+Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+
+## [](#core-packages)Core Packages
+
+* Store: `@ngrx/store` — application and feature state containers.
+* Effects: `@ngrx/effects` — side-effects and async flows.
+* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
+* Router Store: `@ngrx/router-store` — integrates Angular Router state.
+* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
+* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+
+## [](#getting-started)Getting Started
+
+Install commonly used packages:
+
+```bash
+npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```
+
+High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+
+## [](#onecx-guides-and-examples)OneCX Guides and Examples
+
+* [Lazy Loading Tabs with NgRx](lazy-loading.html)
+* Adding Search Criteria:  
+   * [Search Criteria](search-criteria/search-criteria.html)  
+   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
+   * [Calendar](search-criteria/calendar.html)  
+   * [Dropdown](search-criteria/dropdown.html)  
+   * [MultiSelect](search-criteria/multiselect.html)
+
+## [](#useful-links)Useful Links
+
+* Official website: [NgRx](https://ngrx.io/)
+* Documentation: [Docs](https://ngrx.io/docs)
+* Store: [Store](https://ngrx.io/guide/store)
+* Effects: [Effects](https://ngrx.io/guide/effects)
+* Entity: [Entity](https://ngrx.io/guide/entity)
+* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
+* Router Store: [Router Store](https://ngrx.io/guide/router-store)
+* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
+* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Content Visibility Based on Permissions
 ====================
@@ -17793,22 +17793,6 @@ __Table 18\. UserProfileAccountSettingsLocaleAndTimeSettings structure__
 | |  For Angular-based applications, the [@onecx/angular-integration-interface offers an Injectable UserService service](angular-integration-interface.html#user-service) exposing functions useful when dealing with user related data. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-React Libraries
-====================
-## [](#overview)Overview
-
-The React libraries in `onecx-portal-ui-libs` provide building blocks for integrating React microfrontends with the OneCX platform. They complement the framework-agnostic [@onecx/integration-interface](integration-interface.html) by adding React-focused helpers, HOCs, and integration utilities.
-
-## [](#libraries)Libraries
-
-| Library                                | Description                                                                                                 |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **@onecx/react-auth**                  | React helpers for authentication and integration with OneCX security flows.                                 |
-| **@onecx/react-integration-interface** | React-friendly wrappers and types for working with OneCX integration topics and interfaces.                 |
-| **@onecx/react-utils**                 | Utilities and HOCs for styling isolation, scoping, and common integration patterns in React microfrontends. |
-| **@onecx/react-remote-components**     | React utilities for consuming and rendering remote components registered in the OneCX platform.             |
-| **@onecx/react-webcomponents**         | Helpers for using web components in React-based OneCX microfrontends.                                       |
-
 ngrx-linter-rules
 ====================
 `@onecx/ngrx-linter-rules` is an ESLint plugin that provides opinionated NgRx rules. It ships with a predefined config (`recommended`) which enables all rules with the severity `warn`.
@@ -17904,6 +17888,22 @@ module.exports = [
   },
 ]
 ```
+
+React Libraries
+====================
+## [](#overview)Overview
+
+The React libraries in `onecx-portal-ui-libs` provide building blocks for integrating React microfrontends with the OneCX platform. They complement the framework-agnostic [@onecx/integration-interface](integration-interface.html) by adding React-focused helpers, HOCs, and integration utilities.
+
+## [](#libraries)Libraries
+
+| Library                                | Description                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **@onecx/react-auth**                  | React helpers for authentication and integration with OneCX security flows.                                 |
+| **@onecx/react-integration-interface** | React-friendly wrappers and types for working with OneCX integration topics and interfaces.                 |
+| **@onecx/react-utils**                 | Utilities and HOCs for styling isolation, scoping, and common integration patterns in React microfrontends. |
+| **@onecx/react-remote-components**     | React utilities for consuming and rendering remote components registered in the OneCX platform.             |
+| **@onecx/react-webcomponents**         | Helpers for using web components in React-based OneCX microfrontends.                                       |
 
 OneCX IconService
 ====================
@@ -19557,27 +19557,6 @@ __Table 2\. Output Events__
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Replace BASE_URL injection token
 ====================
 In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
@@ -19635,6 +19614,27 @@ export class Example {
   )
 }
 ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update Component Imports
 ====================
@@ -32513,6 +32513,10 @@ quarkus.oidc.ui.auth-server-url=${quarkus.oidc.auth-server-url}
 quarkus.oidc.ui.client-id=${quarkus.oidc.client-id}
 quarkus.oidc.ui.credentials.secret=${quarkus.oidc.credentials.secret}
 quarkus.oidc.ui.application-type=web-app
+quarkus.scheduler.metrics.enabled=true
+quarkus.scheduler.tracing.enabled=true
+quarkus.scheduler.enabled=false
+onecx.test.scheduler.cron=0 0 0 * * ?
 ```
 
 ## [](#%5Fextensions)Extensions
@@ -32542,6 +32546,7 @@ Extensions List
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
 | quarkus-kubernetes-client              | 3.33.1                                                                                             |                                                                                                                                                  |            |
+| quarkus-scheduler                      | 3.27.1                                                                                             |                                                                                                                                                  |            |
 | quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
 
 ## [](#%5Fhelm)Helm
@@ -32568,7 +32573,7 @@ app:
         enabled: true
         spec:
           kcConfig:
-            defaultClientScopes: [ ocx-pm:read ]
+            defaultClientScopes: [ocx-pm:read]
 ```
 
 undefined
@@ -32594,6 +32599,10 @@ quarkus.oidc.ui.auth-server-url=${quarkus.oidc.auth-server-url}
 quarkus.oidc.ui.client-id=${quarkus.oidc.client-id}
 quarkus.oidc.ui.credentials.secret=${quarkus.oidc.credentials.secret}
 quarkus.oidc.ui.application-type=web-app
+quarkus.scheduler.metrics.enabled=true
+quarkus.scheduler.tracing.enabled=true
+quarkus.scheduler.enabled=false
+onecx.test.scheduler.cron=0 0 0 * * ?
 ```
 
 ## [](#%5Fextensions)Extensions
@@ -32623,6 +32632,7 @@ Extensions List
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
 | quarkus-kubernetes-client              | 3.33.1                                                                                             |                                                                                                                                                  |            |
+| quarkus-scheduler                      | 3.27.1                                                                                             |                                                                                                                                                  |            |
 | quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
 
 ## [](#%5Fhelm)Helm
@@ -32649,7 +32659,7 @@ app:
         enabled: true
         spec:
           kcConfig:
-            defaultClientScopes: [ ocx-pm:read ]
+            defaultClientScopes: [ocx-pm:read]
 ```
 
 undefined
@@ -32677,6 +32687,7 @@ undefined
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
 | quarkus-kubernetes-client              | 3.33.1                                                                                             |                                                                                                                                                  |            |
+| quarkus-scheduler                      | 3.27.1                                                                                             |                                                                                                                                                  |            |
 | quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
 
 OneCX Theme Management
@@ -32996,144 +33007,6 @@ undefined
 ====================
 
 
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
-
-undefined
-====================
-[Link to Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff)
-
-## [](#%5Fdefault%5Fproperties)Default properties
-
-src/main/resources/application.properties 
-
-```properties
-quarkus.http.auth.permission.health.paths=/q/*
-quarkus.http.auth.permission.health.policy=permit
-quarkus.http.auth.permission.default.paths=/*
-quarkus.http.auth.permission.default.policy=authenticated
-onecx.permissions.application-id=${quarkus.application.name}
-org.eclipse.microprofile.rest.client.propagateHeaders=apm-principal-token
-quarkus.http.filter.images.header."Cache-Control"=max-age=432000
-quarkus.http.filter.images.matches=/images/*
-%prod.quarkus.rest-client.onecx_theme_svc.url=http://onecx-theme-svc:8080
-%prod.quarkus.rest-client.onecx_image_internal.url=http://onecx-theme-svc:8080
-quarkus.openapi-generator.codegen.input-base-dir=target/tmp/openapi
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.base-package=gen.org.tkit.onecx.theme.client
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.base-package=gen.org.tkit.onecx.theme.exim.client
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.config-key=onecx_image_internal
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.type-mappings.File=byte[]
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.enable-security-generation=false
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.config-key=onecx_theme_svc
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.return-response=true
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.type-mappings.File=byte[]
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
-quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.enable-security-generation=false
-%prod.quarkus.oidc-client.client-id=${quarkus.application.name}
-%prod.quarkus.rest-client.onecx_theme_svc.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
-%prod.quarkus.rest-client.onecx_image_internal.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
-```
-
-## [](#%5Fextensions)Extensions
-
-Extensions List 
-
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
-
-## [](#%5Fhelm)Helm
-
-[Link to Helm registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/charts%2Fonecx-theme-bff)
-
-Default values in src/main/helm/values.yaml
-
-```yaml
-app:
- name: bff
- image:
-  repository: "onecx/onecx-theme-bff"
- operator:
-  # Permission
-  permission:
-   enabled: true
-   spec:
-    permissions:
-     themes:
-      read: permission on all GET requests and POST search
-      write: permission on PUT, POST, PATCH requests, where objects are saved or updated
-      delete: permission on all DELETE requests
-  keycloak:
-   client:
-    enabled: true
-    spec:
-     kcConfig:
-      defaultClientScopes: [ ocx-th:all, ocx-pm:read ]
-  microservice:
-   spec:
-    description: OneCX Theme Backend For Frontend
-    name: OneCX Theme BFF
-```
-
 OneCX Theme Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff)
@@ -33249,6 +33122,144 @@ app:
 undefined
 ====================
 
+
+undefined
+====================
+[Link to Docker registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/onecx-theme-bff)
+
+## [](#%5Fdefault%5Fproperties)Default properties
+
+src/main/resources/application.properties 
+
+```properties
+quarkus.http.auth.permission.health.paths=/q/*
+quarkus.http.auth.permission.health.policy=permit
+quarkus.http.auth.permission.default.paths=/*
+quarkus.http.auth.permission.default.policy=authenticated
+onecx.permissions.application-id=${quarkus.application.name}
+org.eclipse.microprofile.rest.client.propagateHeaders=apm-principal-token
+quarkus.http.filter.images.header."Cache-Control"=max-age=432000
+quarkus.http.filter.images.matches=/images/*
+%prod.quarkus.rest-client.onecx_theme_svc.url=http://onecx-theme-svc:8080
+%prod.quarkus.rest-client.onecx_image_internal.url=http://onecx-theme-svc:8080
+quarkus.openapi-generator.codegen.input-base-dir=target/tmp/openapi
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.base-package=gen.org.tkit.onecx.theme.client
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.base-package=gen.org.tkit.onecx.theme.exim.client
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_svc_exim_v1_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.config-key=onecx_image_internal
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.type-mappings.File=byte[]
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_image_internal_yaml.enable-security-generation=false
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.config-key=onecx_theme_svc
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.base-package=gen.org.tkit.onecx.theme.bff.clients
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.return-response=true
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-api-type-annotations=@org.eclipse.microprofile.rest.client.annotation.RegisterClientHeaders;
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.type-mappings.File=byte[]
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.additional-model-type-annotations=@io.quarkus.runtime.annotations.RegisterForReflection;
+quarkus.openapi-generator.codegen.spec.onecx_theme_icon_internal_yaml.enable-security-generation=false
+%prod.quarkus.oidc-client.client-id=${quarkus.application.name}
+%prod.quarkus.rest-client.onecx_theme_svc.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
+%prod.quarkus.rest-client.onecx_image_internal.providers=io.quarkus.oidc.client.reactive.filter.OidcClientRequestReactiveFilter
+```
+
+## [](#%5Fextensions)Extensions
+
+Extensions List 
+
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
+
+## [](#%5Fhelm)Helm
+
+[Link to Helm registry](https://github.com/onecx/onecx-theme-bff/pkgs/container/charts%2Fonecx-theme-bff)
+
+Default values in src/main/helm/values.yaml
+
+```yaml
+app:
+ name: bff
+ image:
+  repository: "onecx/onecx-theme-bff"
+ operator:
+  # Permission
+  permission:
+   enabled: true
+   spec:
+    permissions:
+     themes:
+      read: permission on all GET requests and POST search
+      write: permission on PUT, POST, PATCH requests, where objects are saved or updated
+      delete: permission on all DELETE requests
+  keycloak:
+   client:
+    enabled: true
+    spec:
+     kcConfig:
+      defaultClientScopes: [ ocx-th:all, ocx-pm:read ]
+  microservice:
+   spec:
+    description: OneCX Theme Backend For Frontend
+    name: OneCX Theme BFF
+```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
 
 undefined
 ====================
@@ -36478,10 +36489,6 @@ undefined
 | [onecx.redirect.bundled-redirect-template-name](#onecx-service-redirect%5Fonecx-redirect-bundled-redirect-template-name) Bundled redirect template name loaded from classpath templates. Example: redirectWaitTemplate.html. Environment variable: ONECX\_REDIRECT\_BUNDLED\_REDIRECT\_TEMPLATE\_NAME                                                              | string             |          |
 | [onecx.redirect.custom-fallback-template-path](#onecx-service-redirect%5Fonecx-redirect-custom-fallback-template-path) File path to custom fallback template Environment variable: ONECX\_REDIRECT\_CUSTOM\_FALLBACK\_TEMPLATE\_PATH                                                                                                                               | string             |          |
 
-undefined
-====================
-
-
 OneCX Service Custom Auth Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-service-auth-bff/pkgs/container/onecx-service-auth-bff)
@@ -36544,6 +36551,10 @@ app:
       client:
         enabled: true
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
