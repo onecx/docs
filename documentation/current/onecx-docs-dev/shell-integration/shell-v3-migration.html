@@ -1606,7 +1606,7 @@ import { getOneCXSharedRecommendations } from '@onecx/accelerator'
 const config: ModuleFederationConfig = {
   name: 'my-app',
   exposes: {
-    './RemoteEntry': 'src/main.ts'
+    './RemoteModule': 'src/main.ts'
   },
   shared: (libraryName, sharedConfig) =&gt; {
     return getOneCXSharedRecommendations(libraryName, sharedConfig)
@@ -1636,11 +1636,70 @@ export default async function (baseConfig: Configuration) {
 <div class="sect3">
 <h4 id="example-enhanced-mf"><a class="anchor" href="#example-enhanced-mf"></a>Example 2: using direct <a href="https://www.npmjs.com/package/@module-federation/enhanced"><code>@module-federation/enhanced</code></a></h4>
 <div class="paragraph">
-<p>Use enhanced runtime explicitly in shell-side loading code. This is the recommended approach for non-Nx applications:</p>
+<p>Use <code>@module-federation/enhanced</code> for runtime explicitly in shell-side loading code. This is the recommended approach for non-Nx applications:</p>
+</div>
+<div class="paragraph">
+<p>The configuration is split into two files:</p>
+</div>
+<div class="ulist">
+<ul>
+<li>
+<p><code>module-federation.config.ts</code> — declares the app name, what it exposes, and how dependencies are shared. Using <code>getOneCXSharedRecommendations</code> from <code>@onecx/accelerator</code> is recommended to automatically apply the correct sharing settings for OneCX packages. For Angular 21 remotes, <code>shareScope: 'angular_21'</code> is required here..</p>
+</li>
+<li>
+<p><code>webpack.config.ts</code> — extends the base webpack configuration by registering the ModuleFederationPlugin and sets the <code>shareScope</code>. Additional webpack customization (plugins, output, parser settings) can be added to the returned config object.</p>
+</li>
+</ul>
 </div>
 <div class="listingblock">
+<div class="title">module-federation.config.js</div>
 <div class="content">
-<pre class="highlightjs highlight"><code class="language-ts hljs" data-lang="ts">//TODO</code></pre>
+<pre class="highlightjs highlight"><code class="language-ts hljs" data-lang="ts">const { getOneCXSharedRecommendations } = require('@onecx/accelerator');
+const { dependencies } = require('./package.json');
+
+const sharedEntries = {};
+for (const libName of Object.keys(dependencies)) {
+  const result = getOneCXSharedRecommendations(libName, {
+    requiredVersion: dependencies[libName],
+    shareScope: 'angular_21',
+  });
+  if (result !== false) {
+    sharedEntries[libName] = result;
+  }
+}
+
+module.exports = {
+  name: 'my-app',
+  filename: 'remoteEntry.js',
+  library: { type: 'module' },
+  exposes: {
+    './RemoteModule': 'src/remote-main.ts',
+  },
+  shared: sharedEntries,
+  shareScope: 'angular_21',
+  manifest: false,
+};</code></pre>
+</div>
+</div>
+<div class="listingblock">
+<div class="title">webpack.config.js</div>
+<div class="content">
+<pre class="highlightjs highlight"><code class="language-ts hljs" data-lang="ts">const { ModuleFederationPlugin } = require('@module-federation/enhanced/webpack');
+const webpack = require('webpack');
+const isProduction = process.env.NODE_ENV === 'production';
+const mfConfig = require('./module-federation.config');
+
+module.exports = {
+  devServer: { allowedHosts: 'all' },
+  plugins: [
+    new ModuleFederationPlugin(mfConfig),
+    new webpack.DefinePlugin({ ngDevMode: JSON.stringify(!isProduction) }),
+  ],
+  output: { uniqueName: 'my-app', publicPath: 'auto' },
+  module: { parser: { javascript: { importMeta: false } } },
+  experiments: { topLevelAwait: true, outputModule: true },
+  optimization: { runtimeChunk: false, splitChunks: false },
+};</code></pre>
 </div>
 </div>
 </div>
