@@ -10933,14 +10933,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
-
 AutoComplete for suggestions with array of type string
 ====================
 ## [](#goal)Goal: Add AutoComplet String
@@ -11176,6 +11168,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -15077,6 +15077,205 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
+Mock API
+====================
+What is a Mock API?
+
+A Mock API is a simulated version of a real API that allows developers to test and develop their applications without needing access to a live backend. It provides predefined responses to API requests, enabling frontend teams to work independently of backend systems, enabling faster load times, predictable responses, and controlled performance testing.
+
+Using a Mock API provides a more realistic testing environment, as it simulates the actual API interactions that your app will have with a backend service. There are different ways to prepare Mock APIs.  
+Here we use [Node.js](https://nodejs.org/en).
+
+## [](#mock-server-with-node-js)Mock Server with Node.js
+
+Copy the following code snippet to your project to create a simple in-memory data service that provides simulated data for your UI app. This example assumes you have an entity called "**Book**" and you want to provide simulated data for it. Save the file e.g. as `bookstore-mock-server.js`.
+
+Simulated data example via node mock server 
+
+```javascript
+const bodyParser = require("body-parser");
+const express = require("express");
+const { v4 } = require("uuid");
+const app = express();
+app.use(express.json());
+const data = {
+  books: [],
+};
+const bookTypes = ["CRIME", "DRAMA", "FANTASY", "PROSE", "SCIENCE"];
+const apiNames = ["books"];
+
+const generateBooks = (count) => {
+  let results = [];
+  for (let i = 0; i < count; i++) {
+    results.push({
+      creationDate: "2024-04-12T06:08:27.806Z",
+      creationUser: "anonymous",
+      modificationDate: "2024-04-12T06:08:40.312Z",
+      modificationUser: "anonymous",
+      modificationCount: "0",
+      id: i,
+      bookTitle: "Big Bang and Black Holes - " + i,
+      bookType: bookTypes[i % bookTypes.length],
+      bookAuthor: "Stephan Hawking",
+      bookIsbn: "978-3-99-123456-" + i,
+      bookPrice: "12,80",
+      bookPublisher: 'World Scientific',
+      bookPublishedDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+    });
+  }
+  data.books = results;
+  return { number: 0, size: 100, totalElements: results.length, totalPages: 1, stream: results };
+};
+
+// Book Endpoints
+app.post("/books/search", (req, res) => {
+  const bookTitle = req.body.bookTitle;
+
+  res.send(
+    generateBooks(23)
+  );
+});
+
+
+app.get(`/books/:id`, (req, res) => {
+  res.send({
+    resource: {
+      creationDate: "2026-02-12T05:08:08.080Z",
+      creationUser: "anonymous",
+      modificationDate: "2026-02-12T05:18:18.888Z",
+      modificationUser: "anonymous",
+      modificationCount: "0",
+      id: req.params.id,
+      bookTitle: "Big Bang and Black Holes - " + req.params.id,
+      bookType: bookTypes[req.params.id % bookTypes.length],
+      bookAuthor: "Stephan Hawking",
+      bookIsbn: "978-3-99-123456-" + req.params.id,
+      bookPrice: "12,80",
+      bookPublisher: 'World Scientific',
+      bookPublishedDate: "1993-02-12T05:08:08.080Z",
+    },
+  });
+});
+
+// Generic Endpoints
+for (const apiname of apiNames) {
+  app.post(`/${apiname}/search`, (req, res) => {
+    res.send({
+      results: data[apiname],
+      totalNumberOfResults: data[apiname].length,
+    });
+  });
+
+  app.delete(`/${apiname}/:id`, (req, res) => {
+    data[apiname] = data[apiname].filter((i) => i.id != req.params.id);
+    res.status(204).send("Item deleted");
+  });
+
+  app.post(`/${apiname}/`, (req, res) => {
+    let item = {
+      id: v4(),
+      ...req.body.resource,
+    };
+    data[apiname] = [...data[apiname], item];
+    res.send({ resource: item });
+  });
+
+  app.put(`/${apiname}/:id`, (req, res) => {
+    console.log(`data[${apiname}] length: `, data[apiname].length);
+    console.log('req.params.id: ', req.params.id);
+
+    let item = data[apiname].find((i) => i.id == req.params.id);
+
+    if(!item) {
+      res.status(404).send("Item not found");
+      return;
+    }
+    console.log('current item: ', item);
+    console.log('request item: ', req.body.resource);
+
+    // update item
+    item = {
+      ...item,
+      ...req.body.resource,
+      ...{ modificationCount: (parseInt(item.modificationCount) + 1).toString() },
+    };
+
+    data[apiname] = data[apiname].map((_item) => {
+      if (_item.id == item.id) {
+        return item;
+      } else {
+        return _item;
+      }
+    });
+
+    res.send({ resource: item });
+  });
+
+  app.get(`/${apiname}/:id`, (req, res) => {
+    const result = {
+      resource: data[apiname].find((i) => i.id == req.params.id),
+    };
+    res.send(result);
+  });
+}
+
+app.listen(3000, () => console.log("Bookstore app is listening on port 3000."));
+```
+
+Start the server with the following command
+
+```bash
+node bookstore-mock-server.js
+```
+
+The server will start and listen for incoming requests on port 3000.
+
+![mock server running](../../_images/mock_server_running.png) 
+
+Figure 1\. Example output when the server is running and a request is made to the /book/search endpoint
+
+## [](#using-the-mock-api)Using the Mock API
+
+To use the Mock API for your generated UI app, you need to configure your app to point to the mock server’s URL (e.g. http://localhost:3000) instead of a real backend URL. Due to the generated UI app is a Webpack application, the generator has also created a `proxy.conf.js` file that configures the mapping of API paths to backend URLs. This file is located in the root directory of your Angular project.
+
+| Directory | <root-of-ui-app> |
+| --------- | ---------------- |
+| File      | proxy.conf       |
+
+Excerpt of the generated `proxy.conf` with the BFF URL
+
+```javascript
+...
+const PROXY_CONFIG = {
+  '/bff': {
+    target: 'http://bookstore-bff',
+    secure: false,
+    pathRewrite: { '^.*/bff': '' },
+    changeOrigin: true,
+    logLevel: 'debug',
+    onProxyRes: onProxyRes
+  }
+}
+```
+
+Replace the real BFF URL `http://bookstore-bff` with the Mock server URL `http://localhost:3000`.
+
+Use the mock server URL as target URL of the BFF
+
+```javascript
+...
+const PROXY_CONFIG = {
+  '/bff': {
+    target: 'http://localhost:3000',
+    secure: false,
+    pathRewrite: { '^.*/bff': '' },
+    changeOrigin: true,
+    logLevel: 'debug',
+    onProxyRes: onProxyRes
+  }
+}
+```
+
 Configure Search Add-Ons
 ====================
 Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
@@ -15488,205 +15687,6 @@ Example: Translations in `de.json`
     }
     ...
   }
-```
-
-Mock API
-====================
-What is a Mock API?
-
-A Mock API is a simulated version of a real API that allows developers to test and develop their applications without needing access to a live backend. It provides predefined responses to API requests, enabling frontend teams to work independently of backend systems, enabling faster load times, predictable responses, and controlled performance testing.
-
-Using a Mock API provides a more realistic testing environment, as it simulates the actual API interactions that your app will have with a backend service. There are different ways to prepare Mock APIs.  
-Here we use [Node.js](https://nodejs.org/en).
-
-## [](#mock-server-with-node-js)Mock Server with Node.js
-
-Copy the following code snippet to your project to create a simple in-memory data service that provides simulated data for your UI app. This example assumes you have an entity called "**Book**" and you want to provide simulated data for it. Save the file e.g. as `bookstore-mock-server.js`.
-
-Simulated data example via node mock server 
-
-```javascript
-const bodyParser = require("body-parser");
-const express = require("express");
-const { v4 } = require("uuid");
-const app = express();
-app.use(express.json());
-const data = {
-  books: [],
-};
-const bookTypes = ["CRIME", "DRAMA", "FANTASY", "PROSE", "SCIENCE"];
-const apiNames = ["books"];
-
-const generateBooks = (count) => {
-  let results = [];
-  for (let i = 0; i < count; i++) {
-    results.push({
-      creationDate: "2024-04-12T06:08:27.806Z",
-      creationUser: "anonymous",
-      modificationDate: "2024-04-12T06:08:40.312Z",
-      modificationUser: "anonymous",
-      modificationCount: "0",
-      id: i,
-      bookTitle: "Big Bang and Black Holes - " + i,
-      bookType: bookTypes[i % bookTypes.length],
-      bookAuthor: "Stephan Hawking",
-      bookIsbn: "978-3-99-123456-" + i,
-      bookPrice: "12,80",
-      bookPublisher: 'World Scientific',
-      bookPublishedDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
-    });
-  }
-  data.books = results;
-  return { number: 0, size: 100, totalElements: results.length, totalPages: 1, stream: results };
-};
-
-// Book Endpoints
-app.post("/books/search", (req, res) => {
-  const bookTitle = req.body.bookTitle;
-
-  res.send(
-    generateBooks(23)
-  );
-});
-
-
-app.get(`/books/:id`, (req, res) => {
-  res.send({
-    resource: {
-      creationDate: "2026-02-12T05:08:08.080Z",
-      creationUser: "anonymous",
-      modificationDate: "2026-02-12T05:18:18.888Z",
-      modificationUser: "anonymous",
-      modificationCount: "0",
-      id: req.params.id,
-      bookTitle: "Big Bang and Black Holes - " + req.params.id,
-      bookType: bookTypes[req.params.id % bookTypes.length],
-      bookAuthor: "Stephan Hawking",
-      bookIsbn: "978-3-99-123456-" + req.params.id,
-      bookPrice: "12,80",
-      bookPublisher: 'World Scientific',
-      bookPublishedDate: "1993-02-12T05:08:08.080Z",
-    },
-  });
-});
-
-// Generic Endpoints
-for (const apiname of apiNames) {
-  app.post(`/${apiname}/search`, (req, res) => {
-    res.send({
-      results: data[apiname],
-      totalNumberOfResults: data[apiname].length,
-    });
-  });
-
-  app.delete(`/${apiname}/:id`, (req, res) => {
-    data[apiname] = data[apiname].filter((i) => i.id != req.params.id);
-    res.status(204).send("Item deleted");
-  });
-
-  app.post(`/${apiname}/`, (req, res) => {
-    let item = {
-      id: v4(),
-      ...req.body.resource,
-    };
-    data[apiname] = [...data[apiname], item];
-    res.send({ resource: item });
-  });
-
-  app.put(`/${apiname}/:id`, (req, res) => {
-    console.log(`data[${apiname}] length: `, data[apiname].length);
-    console.log('req.params.id: ', req.params.id);
-
-    let item = data[apiname].find((i) => i.id == req.params.id);
-
-    if(!item) {
-      res.status(404).send("Item not found");
-      return;
-    }
-    console.log('current item: ', item);
-    console.log('request item: ', req.body.resource);
-
-    // update item
-    item = {
-      ...item,
-      ...req.body.resource,
-      ...{ modificationCount: (parseInt(item.modificationCount) + 1).toString() },
-    };
-
-    data[apiname] = data[apiname].map((_item) => {
-      if (_item.id == item.id) {
-        return item;
-      } else {
-        return _item;
-      }
-    });
-
-    res.send({ resource: item });
-  });
-
-  app.get(`/${apiname}/:id`, (req, res) => {
-    const result = {
-      resource: data[apiname].find((i) => i.id == req.params.id),
-    };
-    res.send(result);
-  });
-}
-
-app.listen(3000, () => console.log("Bookstore app is listening on port 3000."));
-```
-
-Start the server with the following command
-
-```bash
-node bookstore-mock-server.js
-```
-
-The server will start and listen for incoming requests on port 3000.
-
-![mock server running](../../_images/mock_server_running.png) 
-
-Figure 1\. Example output when the server is running and a request is made to the /book/search endpoint
-
-## [](#using-the-mock-api)Using the Mock API
-
-To use the Mock API for your generated UI app, you need to configure your app to point to the mock server’s URL (e.g. http://localhost:3000) instead of a real backend URL. Due to the generated UI app is a Webpack application, the generator has also created a `proxy.conf.js` file that configures the mapping of API paths to backend URLs. This file is located in the root directory of your Angular project.
-
-| Directory | <root-of-ui-app> |
-| --------- | ---------------- |
-| File      | proxy.conf       |
-
-Excerpt of the generated `proxy.conf` with the BFF URL
-
-```javascript
-...
-const PROXY_CONFIG = {
-  '/bff': {
-    target: 'http://bookstore-bff',
-    secure: false,
-    pathRewrite: { '^.*/bff': '' },
-    changeOrigin: true,
-    logLevel: 'debug',
-    onProxyRes: onProxyRes
-  }
-}
-```
-
-Replace the real BFF URL `http://bookstore-bff` with the Mock server URL `http://localhost:3000`.
-
-Use the mock server URL as target URL of the BFF
-
-```javascript
-...
-const PROXY_CONFIG = {
-  '/bff': {
-    target: 'http://localhost:3000',
-    secure: false,
-    pathRewrite: { '^.*/bff': '' },
-    changeOrigin: true,
-    logLevel: 'debug',
-    onProxyRes: onProxyRes
-  }
-}
 ```
 
 Configure Search Results
@@ -20547,27 +20547,6 @@ __Table 2\. Output Events__
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Replace BASE_URL injection token
 ====================
 In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
@@ -20625,6 +20604,27 @@ export class Example {
   )
 }
 ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update Component Imports
 ====================
@@ -22109,6 +22109,50 @@ npm uninstall keycloak-js
 2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
 3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
 
+Replace removed topic publisher classes
+====================
+In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
+
+If your app still uses these classes, TypeScript compilation will fail.
+
+## [](#%5Fremoved%5Fclasses)Removed classes
+
+* `CurrentLocationPublisher`
+* `EventsPublisher`
+* `ParametersPublisher`
+* `ResizedEventsPublisher`
+
+## [](#%5Frequired%5Fmigration)Required migration
+
+Replace publisher wrappers with their corresponding topic classes.
+
+| Removed in v8            | Use instead          |
+| ------------------------ | -------------------- |
+| CurrentLocationPublisher | CurrentLocationTopic |
+| EventsPublisher          | EventsTopic          |
+| ParametersPublisher      | ParametersTopic      |
+| ResizedEventsPublisher   | ResizedEventsTopic   |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { EventsPublisher } from '@onecx/integration-interface'
+
+const eventsPublisher$ = new EventsPublisher()
+eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
+```
+
+After
+
+```typescript
+import { EventsTopic } from '@onecx/integration-interface'
+
+const eventsTopic = new EventsTopic()
+eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
+```
+
 Upgrade NX Application to Angular 21
 ====================
 This guide describes how to upgrade an NX-based OneCX application to Angular 21\. Complete the pre-migration steps from the main migration guide before you continue.
@@ -22167,50 +22211,6 @@ After completing all migration steps, remove migration-only dependencies that ar
 
 ```bash
 npm uninstall @onecx/nx-migration-utils @nx/devkit
-```
-
-Replace removed topic publisher classes
-====================
-In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
-
-If your app still uses these classes, TypeScript compilation will fail.
-
-## [](#%5Fremoved%5Fclasses)Removed classes
-
-* `CurrentLocationPublisher`
-* `EventsPublisher`
-* `ParametersPublisher`
-* `ResizedEventsPublisher`
-
-## [](#%5Frequired%5Fmigration)Required migration
-
-Replace publisher wrappers with their corresponding topic classes.
-
-| Removed in v8            | Use instead          |
-| ------------------------ | -------------------- |
-| CurrentLocationPublisher | CurrentLocationTopic |
-| EventsPublisher          | EventsTopic          |
-| ParametersPublisher      | ParametersTopic      |
-| ResizedEventsPublisher   | ResizedEventsTopic   |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { EventsPublisher } from '@onecx/integration-interface'
-
-const eventsPublisher$ = new EventsPublisher()
-eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
-```
-
-After
-
-```typescript
-import { EventsTopic } from '@onecx/integration-interface'
-
-const eventsTopic = new EventsTopic()
-eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
 ```
 
 Update imports to supported public APIs
@@ -23173,6 +23173,30 @@ The **import-onecx.sh** script can also be used to import custom data into the O
 
 to be continued…​
 
+Extending the OneCX default Environment
+====================
+OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
+
+There are several ways to expand the OneCX local environment
+
+## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
+
+If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
+
+Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
+
+| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
+| ----------------------------------------------------------------------------------------- |
+
+## [](#integrate-microservice-images)Integrate Microservice Images
+
+To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
+
+Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
+
+| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Integrate Docker Images
 ====================
 If you need to extend this environment with your own containers or import additional data, please taken the following guidelines into account.
@@ -23384,30 +23408,6 @@ Verify that the services are running
 ```bash
 ./list-containers.sh
 ```
-
-Extending the OneCX default Environment
-====================
-OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
-
-There are several ways to expand the OneCX local environment
-
-## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
-
-If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
-
-Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
-
-| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
-| ----------------------------------------------------------------------------------------- |
-
-## [](#integrate-microservice-images)Integrate Microservice Images
-
-To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
-
-Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
-
-| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Integrate a local Microfrontend
 ====================
@@ -24012,6 +24012,34 @@ The import scripts are using **node.js** and **jq** for reading the data, split 
 
 Figure 1\. Organization of Initial Data
 
+Docker Compose Profiles in OneCX Local Environment
+====================
+[Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/) allow you to define different sets of services and configurations. This is particularly useful, where you might want to run only a subset of services for specific scenarios.
+
+However, this concept has its limitations. While it is well suited for starting subsets of services, it is not equally suitable for terminating these subsets.
+
+## [](#used-compose-profiles)Used Compose Profiles
+
+The OneCX local environment uses the following Docker Compose profiles, which are defined in the **compose.yml** file of version 2.
+
+base
+
+The **base** profile includes the essential services required to run the OneCX Local Environment.
+
+It is useful for scenarios where you want to run a minimal setup without additional features or services.
+
+all
+
+The **all** profile includes almost all available services in the OneCX Local Environment.  
+Excepted are services that may require additional resources or are not commonly used in standard development scenarios.
+
+This profile is ideal for comprehensive testing or development scenarios where you need access to all common features and services provided by OneCX.
+
+data-import
+
+The **data-import** profile is a specific one that includes services required for importing data into the OneCX Local Environment.  
+This profile is useful when you need to set up or refresh the environment with specific datasets without starting all services.
+
 Utilities used in OneCX Local Environment
 ====================
 ## [](#additional-started-services)Additional Started Services
@@ -24310,34 +24338,6 @@ The Docker which have **theme** in container name and **unhealthy** status are s
 ![script list containers.sh unhealthy nothing](../_images/scripts/script_list-containers.sh_unhealthy-nothing.png) 
 
 Figure 2\. No unhealthy Containers
-
-Docker Compose Profiles in OneCX Local Environment
-====================
-[Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/) allow you to define different sets of services and configurations. This is particularly useful, where you might want to run only a subset of services for specific scenarios.
-
-However, this concept has its limitations. While it is well suited for starting subsets of services, it is not equally suitable for terminating these subsets.
-
-## [](#used-compose-profiles)Used Compose Profiles
-
-The OneCX local environment uses the following Docker Compose profiles, which are defined in the **compose.yml** file of version 2.
-
-base
-
-The **base** profile includes the essential services required to run the OneCX Local Environment.
-
-It is useful for scenarios where you want to run a minimal setup without additional features or services.
-
-all
-
-The **all** profile includes almost all available services in the OneCX Local Environment.  
-Excepted are services that may require additional resources or are not commonly used in standard development scenarios.
-
-This profile is ideal for comprehensive testing or development scenarios where you need access to all common features and services provided by OneCX.
-
-data-import
-
-The **data-import** profile is a specific one that includes services required for importing data into the OneCX Local Environment.  
-This profile is useful when you need to set up or refresh the environment with specific datasets without starting all services.
 
 Setup Java Truststore with Custom Certificates
 ====================
@@ -31061,27 +31061,27 @@ Extensions List
 
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1.1   |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1.1   |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1.1                                                                                                                                         |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1.1   |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1.1   |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1.1   |
 | quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1.1                                                                                                                                         |            |
 | tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
 | tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
 | tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
 | tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
 | tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1.1   |
 | onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1.1   |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1.1   |
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1.1   |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1.1   |
 
 ## [](#%5Fhelm)Helm
 
@@ -31179,27 +31179,27 @@ Extensions List
 
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1.1   |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1.1   |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1.1                                                                                                                                         |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1.1   |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1.1   |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1.1   |
 | quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1.1                                                                                                                                         |            |
 | tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
 | tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
 | tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
 | tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
 | tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1.1   |
 | onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1.1   |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1.1   |
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1.1   |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1.1   |
 
 ## [](#%5Fhelm)Helm
 
@@ -31253,27 +31253,27 @@ undefined
 ====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1.1   |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1.1   |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1.1                                                                                                                                         |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1.1   |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1.1   |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1.1   |
 | quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1.1                                                                                                                                         |            |
 | tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
 | tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
 | tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
 | tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
 | tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1.1   |
 | onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1.1   |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1.1   |
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1.1   |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1.1   |
 
 undefined
 ====================
@@ -31756,6 +31756,67 @@ If the response object matches the request object (i.e., all products and applic
      Note over Shell: Cache
 ```
 
+Shell V3
+====================
+## [](#summary)Summary
+
+OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
+
+Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
+
+## [](#upgrade-notes)Important Upgrade Notes
+
+With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
+
+It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
+
+| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#highlights)Highlights
+
+* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
+* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
+* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
+* Adds new shell capabilities including an About page and source maps support
+
+## [](#release-notes)Release Notes
+
+### [](#angular-21-support)Angular 21 support with shareScope
+
+Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
+
+### [](#layout-improvements)Shell layout and extensibility improvements
+
+The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
+
+### [](#about-page)About page
+
+Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
+
+### [](#source-maps-support)Source maps support
+
+Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
+
+### [](#efficiency-improvements)Efficiency improvements
+
+Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
+
+## [](#migration-checklist)Migration Checklist
+
+To ensure a smooth migration to Shell v3, consider the following checklist:
+
+* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
+* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
+* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
+
+## [](#references)References
+
+* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
+* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
+* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
+* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
+
 Shell layout
 ====================
 Shell v3 introduces a more structured layout model for OneCX Shell UI. The layout is organized around named slot groups and dedicated layout regions so that applications can integrate in a more predictable and structured way.
@@ -31819,67 +31880,6 @@ It is not recommended to style anything in the application using the shell layou
 * [Release](v3-release.html)
 * [Enable shell source maps](../enable-shell-source-maps.html)
 * [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html)
-
-Shell V3
-====================
-## [](#summary)Summary
-
-OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
-
-Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
-
-## [](#upgrade-notes)Important Upgrade Notes
-
-With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
-
-It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
-
-| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#highlights)Highlights
-
-* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
-* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
-* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
-* Adds new shell capabilities including an About page and source maps support
-
-## [](#release-notes)Release Notes
-
-### [](#angular-21-support)Angular 21 support with shareScope
-
-Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
-
-### [](#layout-improvements)Shell layout and extensibility improvements
-
-The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
-
-### [](#about-page)About page
-
-Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
-
-### [](#source-maps-support)Source maps support
-
-Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
-
-### [](#efficiency-improvements)Efficiency improvements
-
-Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
-
-## [](#migration-checklist)Migration Checklist
-
-To ensure a smooth migration to Shell v3, consider the following checklist:
-
-* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
-* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
-* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
-
-## [](#references)References
-
-* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
-* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
-* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
-* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
 
 OneCX Shell Backend For Frontend
 ====================
