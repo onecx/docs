@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -5893,132 +5893,6 @@ For more information on how to configure tsconfig paths, refer to [Configure tsc
 
 **Solution**: Use the correct alias type. See [Types of tsconfig paths](ui-additional/configure-tsconfig-paths.html#tsconfig-paths-types).
 
-Angular Guidelines
-====================
-This chapter gives guidance which guidelines should be followed during the development.
-
-## [](#testing)Testing
-
-* Write Unit Tests and Component Tests.  
-   * Prefer Unit Tests over Component Tests.
-* Manually test with shell and in the standalone mode.
-* Tests should run in the build pipeline.
-
-## [](#asynchronous-behavior-observables)Asynchronous behavior / observables
-
-The following guideline are applying for asynchronous code and the work with Observables:
-
-| |  Do not assign the value of an Observable to members of a component or other class (function calls are OK). If storing of the value is needed, consider a [BehaviorSubject](https://www.learnrxjs.io/learn-rxjs/subjects/behaviorsubject). |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* Consider the use of the Async pipe when displaying asynchronous values.
-* Always think about [unsubscribing](https://github.com/ngneat/until-destroy). Unsubscribing is needed when the Observable is not created inside the component and emits an infinite number of values.  
-   * HTTP Call: no unsubscribing needed (created externally but emits only one value).  
-   * BehaviorSubject inside the component: no unsubscribing needed (emits an infinite number of values but created inside the component)  
-   * BehaviorSubject in a service: unsubscribing needed (created externally and emits an infinite number of values)
-
-## [](#translations)Translations
-
-The following guideline are applying for translations:
-
-* Consider the [translate pipe](https://github.com/ngx-translate/core#5-use-the-service-the-pipe-or-the-directive)
-* If needed, the translations should be done locally and not in `ngOnInit()`.
-* Do **not** use TranslateService.instant.
-* A translation key is only used in one place. Create new one with the same value if required.
-* Shared components in a library should have default translations in the translation files of the library. Only if needed, create an Input in the component to customize the displayed string.
-* Every page has its own subsection in the translation file that is called like the component.
-* The structure in the subsection follows the structure of the page.
-* Translations of shared components are stored in a subsection with the name of the component.
-* No wrapper “DEFAULTS” is needed in the translation files in a library.
-
-## [](#components)Components
-
-The following guidelines are applying for components:
-
-* The HTML should be leading not the TS.
-* Do not use inheritance. Consider a transclude instead.
-* Components should have only one clear responsibility.
-* Components are either technical or business driven, not both.  
-   * [Smart component, dumb component-principle](https://devonfw.com/docs/typescript/current/angular/components-layer.html#%5Fsmart%5Fand%5Fdumb%5Fcomponents)
-
-## [](#code-quality)Code quality
-
-Committed code must have a certain quality. The following guidelines must be considered:
-
-* Do not commit commented out code.  
-   * Comments should only be used to:  
-         * Document the **Why of the code** and **not** the **What**.  
-         * Create documentation for the autocompletion mechanism.
-* Do not commit debug outputs.  
-   * `console.log()` message should be used to inform about error or problem and to give some information of the application state e.g. "Configuration loaded with values xyz"
-* Remove unused imports
-* Format the code  
-   * Run `npm run format`  
-   * If you need to format a specific file, you can use:  
-         * `nx format:write –files **_filepath_**`
-
-## [](#project-structure)Project structure
-
-The following examples shows a potential folder structure, that might be extended based on the need.
-
-| |  Folders should only be created and used if they have content. |
-| ---------------------------------------------------------------- |
-
-├── src
-│   ├── app
-│   │   ├── featuremodule1 // one of feature modules, might have many of them
-│   │   │    ├── components // optional - components shared between pages of this feature module
-│   │   │    │    ├── featurecomponent1
-│   │   │    │    │    ├── featurecomponent1.component.html
-│   │   │    │    │    ├── featurecomponent1.component.scss
-│   │   │    │    │    ├── featurecomponent1.component.spec.ts
-│   │   │    │    │    ├── featurecomponent1.component.ts
-│   │   │    ├── pages
-│   │   │    │    ├── page1 // one of pages, might have many of them
-│   │   │    │    │     ├── page1subcomponent1 // one of subcomponent for page, optional + might have many of them
-│   │   │    │    │     │     ├── page1subcomponent1.component.html
-│   │   │    │    │     │     ├── page1subcomponent1.component.scss
-│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
-│   │   │    │    │     │     ├── page1subcomponent1.component.ts
-│   │   │    │    │     ├── page1.component.html
-│   │   │    │    │     ├── page1.component.scss
-│   │   │    │    │     ├── page1.component.spec.ts
-│   │   │    │    │     ├── page1.component.ts
-│   │   │    ├── utils // optional
-│   │   │    ├── featuremodule1.module.ts
-│   │   ├── shared // (technical) components and directives used in multiple feature modules
-│   │   │    ├── components
-│   │   │    │     ├── sharedcomponent1
-│   │   │    │     │     ├── sharedcomponent1.component.html
-│   │   │    │     │     ├── sharedcomponent1.component.scss
-│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
-│   │   │    │     │     ├── sharedcomponent1.component.ts
-│   │   │    ├── directives
-│   │   │    │     ├── directive1.ts
-│   │   │    │     ├── directive1.spec.ts
-│   │   │    ├── generated //generated from openApi
-│   │   │    │    ├── models
-│   │   │    │    ├── services
-│   │   │    ├── models
-│   │   │    │    ├── model1.ts
-│   │   │    ├── services
-│   │   │    │    ├── service1.ts
-│   │   │    ├── shared.module.ts
-│   │   ├── app-routing.module.ts
-│   │   ├── app.component.html
-│   │   ├── app.component.scss
-│   │   ├── app.component.ts
-│   │   ├── app.module.ts
-│   ├── assets
-│   │   │   ├── i18n
-│   │   │   ├── fonts
-│   │   │   ├── images
-│   │   │   ├── scss
-│   │   │   ├── yamls
-│   ├── environments
-│   │   │   ├── dev
-│   │   │   ├── prod
-
 Migrate vanilla Angular apps to OneCX
 ====================
 The goal of this guide is to provide step by step instructions on how to migrate a vanilla Angular app to a OneCX compatible microfrontend application.
@@ -6404,6 +6278,132 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 ### [](#troubleshooting-compilation-error)Compilation error `TypeError: The 'compilation' argument must be an instance of Compilation`
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
+
+Angular Guidelines
+====================
+This chapter gives guidance which guidelines should be followed during the development.
+
+## [](#testing)Testing
+
+* Write Unit Tests and Component Tests.  
+   * Prefer Unit Tests over Component Tests.
+* Manually test with shell and in the standalone mode.
+* Tests should run in the build pipeline.
+
+## [](#asynchronous-behavior-observables)Asynchronous behavior / observables
+
+The following guideline are applying for asynchronous code and the work with Observables:
+
+| |  Do not assign the value of an Observable to members of a component or other class (function calls are OK). If storing of the value is needed, consider a [BehaviorSubject](https://www.learnrxjs.io/learn-rxjs/subjects/behaviorsubject). |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* Consider the use of the Async pipe when displaying asynchronous values.
+* Always think about [unsubscribing](https://github.com/ngneat/until-destroy). Unsubscribing is needed when the Observable is not created inside the component and emits an infinite number of values.  
+   * HTTP Call: no unsubscribing needed (created externally but emits only one value).  
+   * BehaviorSubject inside the component: no unsubscribing needed (emits an infinite number of values but created inside the component)  
+   * BehaviorSubject in a service: unsubscribing needed (created externally and emits an infinite number of values)
+
+## [](#translations)Translations
+
+The following guideline are applying for translations:
+
+* Consider the [translate pipe](https://github.com/ngx-translate/core#5-use-the-service-the-pipe-or-the-directive)
+* If needed, the translations should be done locally and not in `ngOnInit()`.
+* Do **not** use TranslateService.instant.
+* A translation key is only used in one place. Create new one with the same value if required.
+* Shared components in a library should have default translations in the translation files of the library. Only if needed, create an Input in the component to customize the displayed string.
+* Every page has its own subsection in the translation file that is called like the component.
+* The structure in the subsection follows the structure of the page.
+* Translations of shared components are stored in a subsection with the name of the component.
+* No wrapper “DEFAULTS” is needed in the translation files in a library.
+
+## [](#components)Components
+
+The following guidelines are applying for components:
+
+* The HTML should be leading not the TS.
+* Do not use inheritance. Consider a transclude instead.
+* Components should have only one clear responsibility.
+* Components are either technical or business driven, not both.  
+   * [Smart component, dumb component-principle](https://devonfw.com/docs/typescript/current/angular/components-layer.html#%5Fsmart%5Fand%5Fdumb%5Fcomponents)
+
+## [](#code-quality)Code quality
+
+Committed code must have a certain quality. The following guidelines must be considered:
+
+* Do not commit commented out code.  
+   * Comments should only be used to:  
+         * Document the **Why of the code** and **not** the **What**.  
+         * Create documentation for the autocompletion mechanism.
+* Do not commit debug outputs.  
+   * `console.log()` message should be used to inform about error or problem and to give some information of the application state e.g. "Configuration loaded with values xyz"
+* Remove unused imports
+* Format the code  
+   * Run `npm run format`  
+   * If you need to format a specific file, you can use:  
+         * `nx format:write –files **_filepath_**`
+
+## [](#project-structure)Project structure
+
+The following examples shows a potential folder structure, that might be extended based on the need.
+
+| |  Folders should only be created and used if they have content. |
+| ---------------------------------------------------------------- |
+
+├── src
+│   ├── app
+│   │   ├── featuremodule1 // one of feature modules, might have many of them
+│   │   │    ├── components // optional - components shared between pages of this feature module
+│   │   │    │    ├── featurecomponent1
+│   │   │    │    │    ├── featurecomponent1.component.html
+│   │   │    │    │    ├── featurecomponent1.component.scss
+│   │   │    │    │    ├── featurecomponent1.component.spec.ts
+│   │   │    │    │    ├── featurecomponent1.component.ts
+│   │   │    ├── pages
+│   │   │    │    ├── page1 // one of pages, might have many of them
+│   │   │    │    │     ├── page1subcomponent1 // one of subcomponent for page, optional + might have many of them
+│   │   │    │    │     │     ├── page1subcomponent1.component.html
+│   │   │    │    │     │     ├── page1subcomponent1.component.scss
+│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
+│   │   │    │    │     │     ├── page1subcomponent1.component.ts
+│   │   │    │    │     ├── page1.component.html
+│   │   │    │    │     ├── page1.component.scss
+│   │   │    │    │     ├── page1.component.spec.ts
+│   │   │    │    │     ├── page1.component.ts
+│   │   │    ├── utils // optional
+│   │   │    ├── featuremodule1.module.ts
+│   │   ├── shared // (technical) components and directives used in multiple feature modules
+│   │   │    ├── components
+│   │   │    │     ├── sharedcomponent1
+│   │   │    │     │     ├── sharedcomponent1.component.html
+│   │   │    │     │     ├── sharedcomponent1.component.scss
+│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
+│   │   │    │     │     ├── sharedcomponent1.component.ts
+│   │   │    ├── directives
+│   │   │    │     ├── directive1.ts
+│   │   │    │     ├── directive1.spec.ts
+│   │   │    ├── generated //generated from openApi
+│   │   │    │    ├── models
+│   │   │    │    ├── services
+│   │   │    ├── models
+│   │   │    │    ├── model1.ts
+│   │   │    ├── services
+│   │   │    │    ├── service1.ts
+│   │   │    ├── shared.module.ts
+│   │   ├── app-routing.module.ts
+│   │   ├── app.component.html
+│   │   ├── app.component.scss
+│   │   ├── app.component.ts
+│   │   ├── app.module.ts
+│   ├── assets
+│   │   │   ├── i18n
+│   │   │   ├── fonts
+│   │   │   ├── images
+│   │   │   ├── scss
+│   │   │   ├── yamls
+│   ├── environments
+│   │   │   ├── dev
+│   │   │   ├── prod
 
 Angular
 ====================
@@ -7693,6 +7693,53 @@ export default function StyleRegistry({ children }) {
 
 This code listens for theme changes from the topic, generates a new preset, and applies it to PrimeReact, ensuring the UI updates dynamically according to the selected theme.
 
+undefined
+====================
+## [](#what-are-source-maps)What are source maps
+
+Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files, such as TypeScript, SCSS, or templates.
+
+They help developers debug applications more effectively because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to understand stack traces, inspect application behavior, and identify the root cause of issues.
+
+## [](#recommendation-for-source-map-usage)Recommendation for source map usage
+
+For consuming applications, source maps should usually be:
+
+* enabled in development
+* optionally enabled in test or staging environments
+* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
+
+## [](#how-to-enable-source-maps)How to enable source maps
+
+The exact configuration depends on how each application is built.
+
+For Angular applications, see the official Angular documentation:
+
+* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
+
+For Nx-based applications, see the official Nx documentation:
+
+* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
+
+## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
+
+It is recommended to also enable source maps in the shell during development, as this allows to debug both the shell and the integrated application together more effectively.
+
+Since packages are shared at runtime between the shell and applications, having source maps enabled in the shell can provide better insights into the shared dependencies and their interactions.
+
+That way its possible to avoid potential minification issues that can arise when the shell is built without source maps while the application is built with source maps.
+
+For more information on how to enable source maps in the shell, see [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html) guide.
+
+## [](#security-and-operations-note)Security and operations note
+
+| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
+| ----------------------------------------------------------------------------------------------------------------- |
+
+## [](#related-pages)Related pages
+
+* [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html)
+
 Configure TypeScript Path Aliases (tsconfig paths)
 ====================
 TypeScript path aliases ("tsconfig paths") are defined in the root `tsconfig.json` of a OneCX compatible UI App. Aliases shorten imports and improve readability.
@@ -7805,53 +7852,6 @@ Recommended practices:
 * Group related aliases and remove unused entries periodically.
 * Avoid aliases for shared libraries consumed across multiple microfrontends. Module federation and bundlers can resolve them differently.
 
-undefined
-====================
-## [](#what-are-source-maps)What are source maps
-
-Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files, such as TypeScript, SCSS, or templates.
-
-They help developers debug applications more effectively because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to understand stack traces, inspect application behavior, and identify the root cause of issues.
-
-## [](#recommendation-for-source-map-usage)Recommendation for source map usage
-
-For consuming applications, source maps should usually be:
-
-* enabled in development
-* optionally enabled in test or staging environments
-* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
-
-## [](#how-to-enable-source-maps)How to enable source maps
-
-The exact configuration depends on how each application is built.
-
-For Angular applications, see the official Angular documentation:
-
-* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
-
-For Nx-based applications, see the official Nx documentation:
-
-* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
-
-## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
-
-It is recommended to also enable source maps in the shell during development, as this allows to debug both the shell and the integrated application together more effectively.
-
-Since packages are shared at runtime between the shell and applications, having source maps enabled in the shell can provide better insights into the shared dependencies and their interactions.
-
-That way its possible to avoid potential minification issues that can arise when the shell is built without source maps while the application is built with source maps.
-
-For more information on how to enable source maps in the shell, see [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html) guide.
-
-## [](#security-and-operations-note)Security and operations note
-
-| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
-| ----------------------------------------------------------------------------------------------------------------- |
-
-## [](#related-pages)Related pages
-
-* [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html)
-
 UI Additional Topics
 ====================
 This section covers additional topics related to OneCX UI application development. These topics provide guidance and best practices for handling common challenges and advanced scenarios, ensuring that applications are maintainable, scalable, and consistent with OneCX standards.
@@ -7914,6 +7914,151 @@ The OneCX shell operates with the following share scopes:
 For Angular applications above Angular 21, the shell expects them to be loaded into the `angular_X` share scope corresponding to their Angular version. For applications integrated with older shell versions, the expected share scope is `default`. If no scope is specified for an application, it will be loaded into the `default` share scope by default.
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
+
+Content Visibility Based on Permissions
+====================
+The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
+
+They are intended for:
+
+* conditionally showing/hiding buttons, links, menu entries, and sections
+* providing an alternative UI via an `elseTemplate`
+* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
+
+| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#ifpermission)`*ocxIfPermission`
+
+Shows the host template only if the user has the required permission(s).
+
+Supported input shapes:
+
+* **Single permission** (string)
+* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
+
+example.html
+
+```html
+<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
+  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
+</button>
+
+<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
+  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
+</button>
+```
+
+## [](#ifnotpermission)`*ocxIfNotPermission`
+
+Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
+
+example.html
+
+```html
+<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
+  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
+</div>
+```
+
+## [](#options)Microsyntax Options
+
+Both directives support the same microsyntax options:
+
+| Option              | Type                | Meaning                                                                                                                              |
+| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
+| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
+| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
+
+## [](#else)`elseTemplate`
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
+>
+  {{ 'ORDER.EDIT' | translate }}
+</button>
+
+<ng-template #noEditPermission>
+  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
+</ng-template>
+```
+
+For `*ocxIfNotPermission`, the semantics are inverted:
+
+* `elseTemplate` is rendered when the user **does have** the permission(s)
+
+## [](#disable)`onMissingPermission:'disable'`
+
+This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
+>
+  {{ 'ORDER.DELETE' | translate }}
+</button>
+```
+
+| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Permissions in Angular
+====================
+The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
+In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
+
+This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
+
+## [](#permissions-basics)Permission Basics
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+### [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+### [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission in Angular
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
 
 NgRX
 ====================
@@ -8328,151 +8473,6 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 * Router Store: [Router Store](https://ngrx.io/guide/router-store)
 * DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
 * Schematics: [Schematics](https://ngrx.io/guide/schematics)
-
-Content Visibility Based on Permissions
-====================
-The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
-
-They are intended for:
-
-* conditionally showing/hiding buttons, links, menu entries, and sections
-* providing an alternative UI via an `elseTemplate`
-* keeping the UI visible but disabled when a permission is missing (`onMissingPermission: 'disable'`)
-
-| |  ifPermission directive requires [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) to work correctly. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#ifpermission)`*ocxIfPermission`
-
-Shows the host template only if the user has the required permission(s).
-
-Supported input shapes:
-
-* **Single permission** (string)
-* **Multiple permissions** (`string[]`) — all permissions are required (logical AND)
-
-example.html
-
-```html
-<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
-  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
-</button>
-
-<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
-  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
-</button>
-```
-
-## [](#ifnotpermission)`*ocxIfNotPermission`
-
-Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (e.g., a hint or upgrade message) to users without access.
-
-example.html
-
-```html
-<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
-  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
-</div>
-```
-
-## [](#options)Microsyntax Options
-
-Both directives support the same microsyntax options:
-
-| Option              | Type                | Meaning                                                                                                                              |
-| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
-| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
-| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
-
-## [](#else)`elseTemplate`
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
->
-  {{ 'ORDER.EDIT' | translate }}
-</button>
-
-<ng-template #noEditPermission>
-  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
-</ng-template>
-```
-
-For `*ocxIfNotPermission`, the semantics are inverted:
-
-* `elseTemplate` is rendered when the user **does have** the permission(s)
-
-## [](#disable)`onMissingPermission:'disable'`
-
-This is useful when you want the UI to remain visible for discoverability, but prevent interaction.
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
->
-  {{ 'ORDER.DELETE' | translate }}
-</button>
-```
-
-| |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Permissions in Angular
-====================
-The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
-In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
-
-This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
-
-## [](#permissions-basics)Permission Basics
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-### [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-### [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission in Angular
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
 
 PrimeNG
 ====================
@@ -13598,16 +13598,6 @@ Continue with [Camunda Platform 8 Best Practices](https://docs.camunda.io/docs/c
 
 Learn how to design complex processes for microservice architecture in [the book Practical process automation](https://camunda.com/blog/2021/03/publishing-practical-process-automation/).
 
-BPMN: Open Topics
-====================
-## [](#%5Fhandling%5Fissues)Handling Issues
-
-Business process model defines business reactions based on the business requirements. By using an error event, path for situations like invalid or missing data, special type of response can be defined.
-
-Technical issues that might occur on service task level (service temporarily unavailable, job worker fails …​), are handled by Camunda using retries and incidents.
-
-## [](#%5Fidempotent%5Fworkers)Idempotent Workers
-
 BPMN: Messages
 ====================
 Camunda 8 uses [message buffering](https://docs.camunda.io/docs/components/concepts/messages/#message-buffering), so the process instance doesn’t have to be ready to receive the message event at exactly the moment it occurs (use message attribute TTL - time to live instead of time events or retry workarounds). Buffered message is mapped to a process instance based on the correlation key. Here the best practices on creating of correlation key taken from ([book Practical process automation](https://camunda.com/blog/2021/03/publishing-practical-process-automation/)
@@ -13646,6 +13636,16 @@ When a process is deployed, it receives a version number. After making changes t
 ![One BPMN process ID with several versions](_images/msg_oneProcessManyVersions.svg) 
 
 A message is correlated only once to a process (once within one BPMN process ID), across all versions of this process. If multiple subscriptions for the same process are opened (by multiple process instances or within one instance), the message is correlated only to one of the subscriptions.
+
+BPMN: Open Topics
+====================
+## [](#%5Fhandling%5Fissues)Handling Issues
+
+Business process model defines business reactions based on the business requirements. By using an error event, path for situations like invalid or missing data, special type of response can be defined.
+
+Technical issues that might occur on service task level (service temporarily unavailable, job worker fails …​), are handled by Camunda using retries and incidents.
+
+## [](#%5Fidempotent%5Fworkers)Idempotent Workers
 
 BPMN: Request Callback
 ====================
@@ -15077,114 +15077,6 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
-Configure Search Add-Ons
-====================
-Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
-
-![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
-
-Figure 1\. Default search page header actions
-
-## [](#action-9)ACTION S9
-
-Configure the Search Page Result Diagram
-
-By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
-
-![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
-
-Figure 2\. Search Page Result Diagram for the Example App
-
-Select the column to be displayed
-
-The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
-
-### Template: Column Selection for Diagram
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S9 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'id';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Type Diagram
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S9 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'bookType';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-## [](#action-10)ACTION S10
-
-Configure Search Header Actions
-
-The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
-
-### Template: Search Header Actions
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S10 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Search Header Actions
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S10 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
-```
-
 Mock API
 ====================
 What is a Mock API?
@@ -15382,6 +15274,114 @@ const PROXY_CONFIG = {
     onProxyRes: onProxyRes
   }
 }
+```
+
+Configure Search Add-Ons
+====================
+Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
+
+![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
+
+Figure 1\. Default search page header actions
+
+## [](#action-9)ACTION S9
+
+Configure the Search Page Result Diagram
+
+By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
+
+![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
+
+Figure 2\. Search Page Result Diagram for the Example App
+
+Select the column to be displayed
+
+The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
+
+### Template: Column Selection for Diagram
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S9 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'id';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Type Diagram
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S9 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'bookType';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+## [](#action-10)ACTION S10
+
+Configure Search Header Actions
+
+The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
+
+### Template: Search Header Actions
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S10 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Search Header Actions
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S10 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
 ```
 
 Configure Search Criteria
@@ -19493,6 +19493,42 @@ module.exports = {
 }
 ```
 
+Adjust Packages in Webpack Config
+====================
+In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
+
+## [](#%5Fupdate%5Fconfiguration)Update configuration
+
+* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
+
+### [](#%5Fexample)Example
+
+Before
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { singleton: true, requiredVersion: "auto" },
+    "rxjs": { singleton: true, requiredVersion: "auto" }
+  })
+});
+```
+
+After
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { requiredVersion: "auto" },
+    "rxjs": { requiredVersion: "auto" }
+  })
+});
+```
+
 Add Webpack Plugin for PrimeNG
 ====================
 In OneCX version 6 uses PrimeNG 19 and requires applications to add a Webpack plugin. This change is required after upgrading to Angular 19.
@@ -19545,42 +19581,6 @@ module.exports = {
   ...webpackConfig,
   plugins: [...plugins, modifyPrimeNgPlugin]
 }
-```
-
-Adjust Packages in Webpack Config
-====================
-In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
-
-## [](#%5Fupdate%5Fconfiguration)Update configuration
-
-* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
-
-### [](#%5Fexample)Example
-
-Before
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { singleton: true, requiredVersion: "auto" },
-    "rxjs": { singleton: true, requiredVersion: "auto" }
-  })
-});
-```
-
-After
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { requiredVersion: "auto" },
-    "rxjs": { requiredVersion: "auto" }
-  })
-});
 ```
 
 Adjust Standalone Mode
@@ -21021,6 +21021,62 @@ async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
 }
 ```
 
+Upgrade NX Application to Angular 19
+====================
+This guide describes how to upgrade an NX-based OneCX application to Angular 19\. Complete the pre-migration steps from the main migration guide before you continue.
+
+## [](#%5Fupdate%5Fonecxnx%5Fplugin)Update @onecx/nx-plugin
+
+Update `@onecx/nx-plugin` to latest 6.x.y available.
+
+```bash
+npm install @onecx/nx-plugin@^6
+```
+
+## [](#%5Fupdate%5Fnx%5Fpackages)Update NX Packages
+
+Update the Angular and NX packages in your workspace by running:
+
+```bash
+nx migrate 20.4.0 --interactive
+```
+
+This command prompts you to apply updates for each major version of Angular and TypeScript. Apply all proposed updates up to Angular 19.1 and TypeScript 5.7.
+
+For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
+
+For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
+
+## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update Package Versions in package.json
+
+1. After running the migration command, update the remaining packages manually. Update all `@onecx/*` packages to latest available `6.x.y` version.  
+Example:  
+```json  
+npm install @onecx/<package-name>@^6  
+```
+2. Update the packages listed here to the specified versions: [Required Package Updates](update-packages.html).
+3. The following packages should be removed:  
+   * `@onecx/keycloak-auth` \- Follow the instructions in [Remove @onecx/keycloak-auth](remove-keycloak-auth.html) to update your application accordingly.  
+   * `@onecx/portal-layout-styles`  
+   * `@onecx/portal-integration-angular`
+4. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
+
+| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Frun%5Fnx%5Fmigration)Run NX Migration
+
+After updating the package versions, run the following command to apply the generated migrations:
+
+```bash
+nx migrate --run-migrations
+```
+
+After this step, proceed with the remaining post-migration steps.
+
 Update Translation Path Factories
 ====================
 ## [](#%5Fupdate%5Fimports)Update Imports
@@ -21247,62 +21303,6 @@ bootstrapRemoteComponent(
   ]
 )
 ```
-
-Upgrade NX Application to Angular 19
-====================
-This guide describes how to upgrade an NX-based OneCX application to Angular 19\. Complete the pre-migration steps from the main migration guide before you continue.
-
-## [](#%5Fupdate%5Fonecxnx%5Fplugin)Update @onecx/nx-plugin
-
-Update `@onecx/nx-plugin` to latest 6.x.y available.
-
-```bash
-npm install @onecx/nx-plugin@^6
-```
-
-## [](#%5Fupdate%5Fnx%5Fpackages)Update NX Packages
-
-Update the Angular and NX packages in your workspace by running:
-
-```bash
-nx migrate 20.4.0 --interactive
-```
-
-This command prompts you to apply updates for each major version of Angular and TypeScript. Apply all proposed updates up to Angular 19.1 and TypeScript 5.7.
-
-For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
-
-For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
-
-## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update Package Versions in package.json
-
-1. After running the migration command, update the remaining packages manually. Update all `@onecx/*` packages to latest available `6.x.y` version.  
-Example:  
-```json  
-npm install @onecx/<package-name>@^6  
-```
-2. Update the packages listed here to the specified versions: [Required Package Updates](update-packages.html).
-3. The following packages should be removed:  
-   * `@onecx/keycloak-auth` \- Follow the instructions in [Remove @onecx/keycloak-auth](remove-keycloak-auth.html) to update your application accordingly.  
-   * `@onecx/portal-layout-styles`  
-   * `@onecx/portal-integration-angular`
-4. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
-
-| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Frun%5Fnx%5Fmigration)Run NX Migration
-
-After updating the package versions, run the following command to apply the generated migrations:
-
-```bash
-nx migrate --run-migrations
-```
-
-After this step, proceed with the remaining post-migration steps.
 
 Adjust ngrx-accelerator library utilities
 ====================
@@ -22247,6 +22247,32 @@ After
 import { AuthServiceWrapper } from '@onecx/shell-auth'
 ```
 
+Optional debugging preference: debug-js namespaces
+====================
+In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
+
+This is not a breaking change for consumers.
+
+## [](#%5Fenable%5Flogging)Enable Logging
+
+Use this only as a debugging preference when troubleshooting.
+
+For troubleshooting, enable logs via browser local storage:
+
+```js
+localStorage.debug = '@onecx*'
+location.reload()
+```
+
+You can narrow logging to specific libraries, for example:
+
+```js
+localStorage.debug = '@onecx/angular-auth*'
+location.reload()
+```
+
+See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
+
 Required Package Updates
 ====================
 If the following packages are used in your project, update them to ensure compatibility with Angular 21 and OneCX UI libs v8:
@@ -22281,32 +22307,6 @@ npm install @ngrx/<package-name>@^21
 
 npm install @onecx/<package-name>@^8
 ```
-
-Optional debugging preference: debug-js namespaces
-====================
-In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
-
-This is not a breaking change for consumers.
-
-## [](#%5Fenable%5Flogging)Enable Logging
-
-Use this only as a debugging preference when troubleshooting.
-
-For troubleshooting, enable logs via browser local storage:
-
-```js
-localStorage.debug = '@onecx*'
-location.reload()
-```
-
-You can narrow logging to specific libraries, for example:
-
-```js
-localStorage.debug = '@onecx/angular-auth*'
-location.reload()
-```
-
-See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
 
 Use AI in OneCX Local Environment
 ====================
@@ -23189,30 +23189,6 @@ The **import-onecx.sh** script can also be used to import custom data into the O
 
 to be continued…​
 
-Extending the OneCX default Environment
-====================
-OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
-
-There are several ways to expand the OneCX local environment
-
-## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
-
-If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
-
-Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
-
-| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
-| ----------------------------------------------------------------------------------------- |
-
-## [](#integrate-microservice-images)Integrate Microservice Images
-
-To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
-
-Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
-
-| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 Integrate Docker Images
 ====================
 If you need to extend this environment with your own containers or import additional data, please taken the following guidelines into account.
@@ -23424,6 +23400,30 @@ Verify that the services are running
 ```bash
 ./list-containers.sh
 ```
+
+Extending the OneCX default Environment
+====================
+OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
+
+There are several ways to expand the OneCX local environment
+
+## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
+
+If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
+
+Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
+
+| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
+| ----------------------------------------------------------------------------------------- |
+
+## [](#integrate-microservice-images)Integrate Microservice Images
+
+To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
+
+Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
+
+| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Integrate a local Microfrontend
 ====================
@@ -30121,6 +30121,10 @@ undefined
 ====================
 
 
+undefined
+====================
+
+
 OneCX Permission Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-permission-bff/pkgs/container/onecx-permission-bff)
@@ -30255,10 +30259,6 @@ app:
         description: OneCX Permission Backend For Frontend
         name: OneCX Permission BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -31293,9 +31293,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
-
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -31373,7 +31371,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
+
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -33563,6 +33563,31 @@ undefined
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
+| quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-test-oidc/pkgs/container/onecx-test-oidc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -33630,31 +33655,6 @@ app:
       client:
         enabled: true
 ```
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1     |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1     |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.1                                                                                                                                           |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1     |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1     |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1     |
-| quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
 
 OneCX Test Operator
 ====================
@@ -36597,10 +36597,6 @@ undefined
 ====================
 
 
-undefined
-====================
-
-
 OneCX Workspace Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-bff/pkgs/container/onecx-workspace-bff)
@@ -36742,6 +36738,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-bff/pkgs/container/onecx-workspace-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -36907,9 +36907,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
-
-## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -36987,7 +36985,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -37499,6 +37499,10 @@ OneCX Service
 ====================
 This OneCX product/application is a collection of microservices with various functionalities.
 
+undefined
+====================
+
+
 OneCX Service Smart Redirect
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -37562,10 +37566,6 @@ app:
   image:
     repository: "onecx/onecx-service-redirect"
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
