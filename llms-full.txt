@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -14006,6 +14006,60 @@ After adaptations to the detail view and form controls, the detail component can
 
 Figure 5\. Detail UI with adapted detail view
 
+Create a Simple NgRx Page
+====================
+This guide describes how to create a simple NgRx page using the OneCX App Generator.
+
+A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
+This can be done if you have already set up an initial Application with an feature.
+
+| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#create-ngrx-page)Create NgRx Page
+
+Follow these steps:
+
+1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
+2. Run the following OneCX App Generator command.  
+The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
+Generate page/component  
+```bash  
+nx generate @onecx/nx-plugin:ngrx-page [feature module]  
+```
+3. Follow the prompts to provide details like the page component name and the page title.  
+That’s it.
+4. Navigate in your browser to the new component using the the component name as route.
+
+## [](#example)Example
+
+To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
+
+Generate page/component
+
+```bash
+nx generate @onecx/nx-plugin:ngrx-page hello-world
+```
+
+When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
+To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
+
+OneCX Local Environment with Hello Component
+
+```text
+http://onecx.localhost/onecx-shell/admin/hello-world/hello
+```
+
+![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
+
+Figure 1\. Hello Component in action
+
+Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
+
+![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
+
+Figure 2\. Generated files for the Hello Component
+
 Create a Feature Module
 ====================
 What is a Feature Module?
@@ -14109,60 +14163,6 @@ npm run test
 ![test result feature](../_images/test_result_feature.png) 
 
 Figure 2\. Test result of the generated feature module
-
-Create a Simple NgRx Page
-====================
-This guide describes how to create a simple NgRx page using the OneCX App Generator.
-
-A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
-This can be done if you have already set up an initial Application with an feature.
-
-| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
-| -------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#create-ngrx-page)Create NgRx Page
-
-Follow these steps:
-
-1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
-2. Run the following OneCX App Generator command.  
-The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
-Generate page/component  
-```bash  
-nx generate @onecx/nx-plugin:ngrx-page [feature module]  
-```
-3. Follow the prompts to provide details like the page component name and the page title.  
-That’s it.
-4. Navigate in your browser to the new component using the the component name as route.
-
-## [](#example)Example
-
-To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
-
-Generate page/component
-
-```bash
-nx generate @onecx/nx-plugin:ngrx-page hello-world
-```
-
-When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
-To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
-
-OneCX Local Environment with Hello Component
-
-```text
-http://onecx.localhost/onecx-shell/admin/hello-world/hello
-```
-
-![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
-
-Figure 1\. Hello Component in action
-
-Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
-
-![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
-
-Figure 2\. Generated files for the Hello Component
 
 Create an Entity Schema
 ====================
@@ -16808,25 +16808,6 @@ undefined
 ====================
  Configuration property fixed at build time - All other configuration properties are overridable at runtime
 
-| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
-| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
-| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
-| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
-| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
-| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
-| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
-| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
-| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
-| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
-| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
-| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
-| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
 | Configuration property                                                                                                                                                                                                                                                                                             | Type               | Default                         |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------ | ------------------------------- |
 | [onecx.parameters.build.metrics.enabled](#onecx-parameters%5Fonecx-parameters-build-metrics-enabled) Whether a metrics is enabled in case the micrometer or micro-profile metrics extension is present. Environment variable: ONECX\_PARAMETERS\_BUILD\_METRICS\_ENABLED                                           | boolean            | true                            |
@@ -16844,6 +16825,25 @@ undefined
 | [onecx.parameters.history.update-schedule](#onecx-parameters%5Fonecx-parameters-history-update-schedule) Update history scheduler configuration in milliseconds. Environment variable: ONECX\_PARAMETERS\_HISTORY\_UPDATE\_SCHEDULE                                                                                | long               | 900000                          |
 | [onecx.parameters.items."parameters"](#onecx-parameters%5Fonecx-parameters-items-parameters) Parameters configuration Environment variable: ONECX\_PARAMETERS\_ITEMS\_\_PARAMETERS\_                                                                                                                               | Map<String,String> |                                 |
 | [onecx.parameters.tenant.enabled](#onecx-parameters%5Fonecx-parameters-tenant-enabled) Enable or disable multi-tenancy. Environment variable: ONECX\_PARAMETERS\_TENANT\_ENABLED                                                                                                                                   | boolean            | true                            |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                                                              | Type                                 | Default                                                   |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------ | --------------------------------------------------------- |
+| [onecx.permissions.service.client.url](#onecx-permissions%5Fonecx-permissions-service-client-url) Tenant client URL configuration. This property is alias for rest-client generated configuration property quarkus.rest-client.onecx\_permission.url Environment variable: ONECX\_PERMISSIONS\_SERVICE\_CLIENT\_URL | string                               | http://onecx-permission-svc:8080                          |
+| [onecx.permissions.enabled](#onecx-permissions%5Fonecx-permissions-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_ENABLED                                                                                                                                                              | boolean                              | true                                                      |
+| [onecx.permissions.cache-enabled](#onecx-permissions%5Fonecx-permissions-cache-enabled) Enable interface mapping Environment variable: ONECX\_PERMISSIONS\_CACHE\_ENABLED                                                                                                                                           | boolean                              | true                                                      |
+| [onecx.permissions.allow-all](#onecx-permissions%5Fonecx-permissions-allow-all) Allow all permissions Environment variable: ONECX\_PERMISSIONS\_ALLOW\_ALL                                                                                                                                                          | boolean                              | false                                                     |
+| [onecx.permissions.product-name](#onecx-permissions%5Fonecx-permissions-product-name) Product name. Environment variable: ONECX\_PERMISSIONS\_PRODUCT\_NAME                                                                                                                                                         | string                               | required                                                  |
+| [onecx.permissions.application-id](#onecx-permissions%5Fonecx-permissions-application-id) Permissions application ID. Environment variable: ONECX\_PERMISSIONS\_APPLICATION\_ID                                                                                                                                     | string                               | ${quarkus.application.name}                               |
+| [onecx.permissions.name](#onecx-permissions%5Fonecx-permissions-name) Permissions prefix name. Environment variable: ONECX\_PERMISSIONS\_NAME                                                                                                                                                                       | string                               | onecx                                                     |
+| [onecx.permissions.request-token-from-header-param](#onecx-permissions%5Fonecx-permissions-request-token-from-header-param) Permissions access token header parameter. Environment variable: ONECX\_PERMISSIONS\_REQUEST\_TOKEN\_FROM\_HEADER\_PARAM                                                                | string                               | Authorization                                             |
+| [onecx.permissions.token-header-param](#onecx-permissions%5Fonecx-permissions-token-header-param) Permissions principal token header parameter. Environment variable: ONECX\_PERMISSIONS\_TOKEN\_HEADER\_PARAM                                                                                                      | string                               | ${tkit.rs.context.token.header-param:apm-principal-token} |
+| [onecx.permissions.key-separator](#onecx-permissions%5Fonecx-permissions-key-separator) Permissions resource action separator. Environment variable: ONECX\_PERMISSIONS\_KEY\_SEPARATOR                                                                                                                             | string                               | #                                                         |
+| [onecx.permissions.mock.enabled](#onecx-permissions%5Fonecx-permissions-mock-enabled) Enable or disable mock service Environment variable: ONECX\_PERMISSIONS\_MOCK\_ENABLED                                                                                                                                        | boolean                              | false                                                     |
+| [onecx.permissions.mock.roles."roles"](#onecx-permissions%5Fonecx-permissions-mock-roles-roles) Mock data for role Map format : \[role\].\[permission\]=\[actions\] Environment variable: ONECX\_PERMISSIONS\_MOCK\_ROLES\_\_ROLES\_                                                                                | Map<String,Map<String,List<String>>> |                                                           |
 
 undefined
 ====================
@@ -19547,42 +19547,6 @@ module.exports = {
 }
 ```
 
-Adjust Packages in Webpack Config
-====================
-In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
-
-## [](#%5Fupdate%5Fconfiguration)Update configuration
-
-* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
-
-### [](#%5Fexample)Example
-
-Before
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { singleton: true, requiredVersion: "auto" },
-    "rxjs": { singleton: true, requiredVersion: "auto" }
-  })
-});
-```
-
-After
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { requiredVersion: "auto" },
-    "rxjs": { requiredVersion: "auto" }
-  })
-});
-```
-
 Adjust Standalone Mode
 ====================
 In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
@@ -19622,6 +19586,42 @@ export class AppModule {}
 npm uninstall --save @onecx/standalone-shell  
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
+
+Adjust Packages in Webpack Config
+====================
+In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
+
+## [](#%5Fupdate%5Fconfiguration)Update configuration
+
+* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
+
+### [](#%5Fexample)Example
+
+Before
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { singleton: true, requiredVersion: "auto" },
+    "rxjs": { singleton: true, requiredVersion: "auto" }
+  })
+});
+```
+
+After
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { requiredVersion: "auto" },
+    "rxjs": { requiredVersion: "auto" }
+  })
+});
+```
 
 undefined
 ====================
@@ -20563,27 +20563,6 @@ __Table 2\. Output Events__
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Replace BASE_URL injection token
 ====================
 In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
@@ -20641,6 +20620,27 @@ export class Example {
   )
 }
 ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update Component Imports
 ====================
@@ -21442,6 +21442,21 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Be aware of the PortalDialogService signature changes](portal-dialog-service-signature-changes.html)
 * [Leverage Angular guards](updated-guards-usage.html)
 
+PortalDialogService Signature Changes
+====================
+In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
+
+## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
+
+* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
+
+## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
+
+* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
+
+| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Migrate to <code>OnecxTranslateLoader</code>
 ====================
 In v7, the translation loading mechanism in `@onecx/angular-utils` has been refactored.
@@ -21571,21 +21586,6 @@ export class AppComponent implements OnInit {
   ...
 }
 ```
-
-PortalDialogService Signature Changes
-====================
-In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
-
-## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
-
-* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
-
-## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
-
-* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
-
-| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Remove <code>keycloak-js</code> from your application
 ====================
@@ -25880,7 +25880,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
+
+## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -25960,9 +25962,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
-
-## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -33559,10 +33559,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-test-oidc/pkgs/container/onecx-test-oidc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -33630,6 +33626,10 @@ app:
       client:
         enabled: true
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
