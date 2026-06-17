@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -10618,250 +10618,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-AutoComplete for suggestions with array of type string
-====================
-## [](#goal)Goal: Add AutoComplet String
-
-Add an AutoComplete for suggestions with array of type string as a search criteria input field for your search page.
-
-## [](#parameters)1\. Parameters
-
-Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here
-
-| |  Please replace all occurences of **exampleStringArray** with the actual name in the following code snippets. |
-| --------------------------------------------------------------------------------------------------------------- |
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleStringArray: z
-        .union([z.string(), z.array(z.string())])
-        .transform((v: string | string[] | undefined): string[] | undefined =>
-        v instanceof Array || !v
-            ? (v as string[] | undefined)
-            : ([v] as string[]),
-        )
-        .transform((v: string[] | undefined) => v?.map((e) => e))
-        .optional(),
-```
-
-## [](#state-and-viewmodel)2\. State & viewmodel
-
-Add additional array member for the autocomplete suggestions in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
-
-```javascript
-...
-    exampleStringArrayOptions: string[]
-...
-```
-
-## [](#actions)3\. Actions
-
-Create following actions to handle the events regarding autocomplete:
-
-_Adapt in File:_ `<feature>-search.actions.ts`
-
-```javascript
-...
-    events: {
-        'exampleStringArray data text entered': props<{ exampleStringArrayInputValue: string }>(),
-        'exampleStringArray data received ': props<{ exampleStringArrayOptions: string[] }>(),
-        'exampleStringArray data loading failed': emptyProps(),
-        'exampleStringArray selected': props<{ selectedExampleStringArrayValue: string }>(),
-        'exampleStringArray unselected': props<{ unSelectedExampleStringArrayValue: string }>(),
-    },
-...
-```
-
-## [](#html)4\. HTML
-
-Add the following code to your formGroup in the html file:
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-autoComplete
-            id="exampleStringArray"
-            formControlName="exampleStringArray"
-            (completeMethod)="searchExampleStringArrayData($event)"
-            [suggestions]="vm?.exampleStringArrayOptions ?? []"
-            [forceSelection]="true"
-            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
-            [showEmptyMessage]="true"
-            [emptyMessage]="
-            vm?.exampleStringArrayOptions?.length === 0
-                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
-                : ''
-            "
-            (onSelect)="selectExampleStringArrayValue($event)"
-            (onUnselect)="unSelectExampleStringArrayValue($event)"
-        >
-        </p-autoComplete>
-        <label for="exampleStringArray">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)5\. Component
-
-Add the respective methods to handle the different events:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-...
-    searchExampleStringArrayData(event: AutoCompleteCompleteEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleStringArrayDataTextEntered({
-            exampleStringArrayInputValue: event.query,
-        }),
-      );
-    }
-
-    selectExampleStringArrayValue(event: AutoCompleteSelectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleStringArraySuggestionSelected({
-            selectedExampleStringArrayValue: event.value,
-        }),
-      );
-    }
-
-    unSelectExampleStringArrayValue(event: AutoCompleteUnselectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleStringArraySuggestionUnselected({
-            unSelectedExampleStringArrayValue: event.value,
-        }),
-      );
-    }
-...
-```
-
-## [](#reducers)6\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-  on(
-    <%= featureClassName %>SearchActions.exampleStringArrayDataReceived,
-    (state: <%= featureClassName %>SearchState, { exampleStringArrayOptions }): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleStringArrayOptions: exampleStringArrayOptions,
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleStringArrayDataLoadingFailed,
-    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleStringArrayOptions: [],
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleStringArraySuggestionSelected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { selectedExampleStringArrayValue },
-    ): <%= featureClassName %>SearchState => {
-      const isValuePresent =
-        state.exampleStringArraySelectedValues.includes(selectedExampleStringArrayValue);
-      return {
-        ...state,
-        exampleStringArraySelectedValues: isValuePresent
-          ? state.exampleStringArraySelectedValues
-          : [...state.exampleStringArraySelectedValues, selectedExampleStringArrayValue],
-        exampleStringArrayOptions: [],
-      };
-    },
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleStringArraySuggestionUnselected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { unSelectedExampleStringArrayValue },
-    ): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleStringArraySelectedValues: state.exampleStringArraySelectedValues.filter(
-        (exampleStringArray) => exampleStringArray !== unSelectedExampleStringArrayValue,
-      ),
-      exampleStringArrayOptions: [],
-    }),
-  ),
-...
-```
-
-## [](#selectors)7\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-search.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>SearchViewModel = createSelector(
-      ...
-      <feature>SearchSelectors.
-      selectExampleStringArrayOptions,
-      ...
-      (
-        ...
-        exampleStringArrayOptions,
-        ...
-      ): <%= featureClassName %>SearchViewModel => ({
-        ...
-        exampleStringArrayOptions,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)8\. Effects
-
-Create the effect for getting the suggestions
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-...
-    searchExampleStringArray$ = createEffect(() =>
-      this.actions$.pipe(
-        ofType(<%= featureClassName %>SearchActions.exampleStringArrayDataTextEntered),
-        mergeMap((action) => {
-          return this.<feature>Service
-            .searchExampleStringArray(action.exampleStringArrayInputText)
-            .pipe(
-              map((response) =>
-                <%= featureClassName %>SearchActions.exampleStringArrayDataReceived({
-                  exampleStringArrayOptions: response.exampleStringArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
-                }),
-              ),
-              catchError(() =>
-                of<%= featureClassName %>SearchActions.exampleStringArrayDataLoadingFailed()),
-              ),
-            );
-        }),
-      ),
-    );
-...
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
-
 AutoComplete for suggestions with array of type object
 ====================
 ## [](#goal)Goal: Add Autocmplete Object
@@ -11176,6 +10932,250 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+AutoComplete for suggestions with array of type string
+====================
+## [](#goal)Goal: Add AutoComplet String
+
+Add an AutoComplete for suggestions with array of type string as a search criteria input field for your search page.
+
+## [](#parameters)1\. Parameters
+
+Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here
+
+| |  Please replace all occurences of **exampleStringArray** with the actual name in the following code snippets. |
+| --------------------------------------------------------------------------------------------------------------- |
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleStringArray: z
+        .union([z.string(), z.array(z.string())])
+        .transform((v: string | string[] | undefined): string[] | undefined =>
+        v instanceof Array || !v
+            ? (v as string[] | undefined)
+            : ([v] as string[]),
+        )
+        .transform((v: string[] | undefined) => v?.map((e) => e))
+        .optional(),
+```
+
+## [](#state-and-viewmodel)2\. State & viewmodel
+
+Add additional array member for the autocomplete suggestions in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
+
+```javascript
+...
+    exampleStringArrayOptions: string[]
+...
+```
+
+## [](#actions)3\. Actions
+
+Create following actions to handle the events regarding autocomplete:
+
+_Adapt in File:_ `<feature>-search.actions.ts`
+
+```javascript
+...
+    events: {
+        'exampleStringArray data text entered': props<{ exampleStringArrayInputValue: string }>(),
+        'exampleStringArray data received ': props<{ exampleStringArrayOptions: string[] }>(),
+        'exampleStringArray data loading failed': emptyProps(),
+        'exampleStringArray selected': props<{ selectedExampleStringArrayValue: string }>(),
+        'exampleStringArray unselected': props<{ unSelectedExampleStringArrayValue: string }>(),
+    },
+...
+```
+
+## [](#html)4\. HTML
+
+Add the following code to your formGroup in the html file:
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-autoComplete
+            id="exampleStringArray"
+            formControlName="exampleStringArray"
+            (completeMethod)="searchExampleStringArrayData($event)"
+            [suggestions]="vm?.exampleStringArrayOptions ?? []"
+            [forceSelection]="true"
+            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
+            [showEmptyMessage]="true"
+            [emptyMessage]="
+            vm?.exampleStringArrayOptions?.length === 0
+                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
+                : ''
+            "
+            (onSelect)="selectExampleStringArrayValue($event)"
+            (onUnselect)="unSelectExampleStringArrayValue($event)"
+        >
+        </p-autoComplete>
+        <label for="exampleStringArray">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)5\. Component
+
+Add the respective methods to handle the different events:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+...
+    searchExampleStringArrayData(event: AutoCompleteCompleteEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleStringArrayDataTextEntered({
+            exampleStringArrayInputValue: event.query,
+        }),
+      );
+    }
+
+    selectExampleStringArrayValue(event: AutoCompleteSelectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleStringArraySuggestionSelected({
+            selectedExampleStringArrayValue: event.value,
+        }),
+      );
+    }
+
+    unSelectExampleStringArrayValue(event: AutoCompleteUnselectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleStringArraySuggestionUnselected({
+            unSelectedExampleStringArrayValue: event.value,
+        }),
+      );
+    }
+...
+```
+
+## [](#reducers)6\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+  on(
+    <%= featureClassName %>SearchActions.exampleStringArrayDataReceived,
+    (state: <%= featureClassName %>SearchState, { exampleStringArrayOptions }): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleStringArrayOptions: exampleStringArrayOptions,
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleStringArrayDataLoadingFailed,
+    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleStringArrayOptions: [],
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleStringArraySuggestionSelected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { selectedExampleStringArrayValue },
+    ): <%= featureClassName %>SearchState => {
+      const isValuePresent =
+        state.exampleStringArraySelectedValues.includes(selectedExampleStringArrayValue);
+      return {
+        ...state,
+        exampleStringArraySelectedValues: isValuePresent
+          ? state.exampleStringArraySelectedValues
+          : [...state.exampleStringArraySelectedValues, selectedExampleStringArrayValue],
+        exampleStringArrayOptions: [],
+      };
+    },
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleStringArraySuggestionUnselected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { unSelectedExampleStringArrayValue },
+    ): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleStringArraySelectedValues: state.exampleStringArraySelectedValues.filter(
+        (exampleStringArray) => exampleStringArray !== unSelectedExampleStringArrayValue,
+      ),
+      exampleStringArrayOptions: [],
+    }),
+  ),
+...
+```
+
+## [](#selectors)7\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-search.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>SearchViewModel = createSelector(
+      ...
+      <feature>SearchSelectors.
+      selectExampleStringArrayOptions,
+      ...
+      (
+        ...
+        exampleStringArrayOptions,
+        ...
+      ): <%= featureClassName %>SearchViewModel => ({
+        ...
+        exampleStringArrayOptions,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)8\. Effects
+
+Create the effect for getting the suggestions
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+...
+    searchExampleStringArray$ = createEffect(() =>
+      this.actions$.pipe(
+        ofType(<%= featureClassName %>SearchActions.exampleStringArrayDataTextEntered),
+        mergeMap((action) => {
+          return this.<feature>Service
+            .searchExampleStringArray(action.exampleStringArrayInputText)
+            .pipe(
+              map((response) =>
+                <%= featureClassName %>SearchActions.exampleStringArrayDataReceived({
+                  exampleStringArrayOptions: response.exampleStringArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
+                }),
+              ),
+              catchError(() =>
+                of<%= featureClassName %>SearchActions.exampleStringArrayDataLoadingFailed()),
+              ),
+            );
+        }),
+      ),
+    );
+...
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -14585,6 +14585,13 @@ The required configuration files for the enabled validation checks will be gener
 
 undefined
 ====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
 ## [](#customize-form-fields)Customize form fields
 
 The form fields of the dialog need to be adapted
@@ -14676,13 +14683,6 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -19429,6 +19429,16 @@ FilterType enum
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
 
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
+
 Add Webpack Plugin for Angular Material
 ====================
 In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
@@ -19482,16 +19492,6 @@ module.exports = {
   plugins: [...plugins, modifyMaterialPlugin]
 }
 ```
-
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
 
 Add Webpack Plugin for PrimeNG
 ====================
@@ -19583,6 +19583,34 @@ const config = withModuleFederationPlugin({
 });
 ```
 
+undefined
+====================
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-19
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
+
 Adjust Standalone Mode
 ====================
 In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
@@ -19622,34 +19650,6 @@ export class AppModule {}
 npm uninstall --save @onecx/standalone-shell  
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
-
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-19
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Migrate OneCX App from Angular 18 to Angular 19
 ====================
@@ -19738,6 +19738,7 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Add Webpack Plugin for PrimeNG](add-required-plugin-to-primeng.html)
 * [Add Webpack Plugin for Angular Material](add-angular-material-plugin.html)
 * [Provide ThemeConfig](provide-theme-config.html)
+* [Update Webpack Config to Use Dynamic Shared Entries](update-webpack-config.html)
 
 Provide ThemeConfig
 ====================
@@ -20043,6 +20044,15 @@ If you are using `@onecx/angular-accelerator` components, add the following impo
 @import 'node_modules/@onecx/angular-accelerator/assets/styles.scss';
 ```
 
+Replace Removed Components
+====================
+Below is the guide for migrating from deprecated components to their new components.
+
+* [Replace DataViewControlsComponent with InteractiveDataViewComponent](switch-to-interactive-data-view.html)
+* [Replace PageContentComponent with OcxContentComponent or OcxContentContainerComponent](switch-to-ocx-content-or-container.html)
+* [Replace SearchCriteriaComponent with SearchHeaderComponent](switch-to-search-header.html)
+* [Replace ButtonDialogComponent with OcxDialogInlineComponent](switch-to-ocx-dialog-inline.html)
+
 Replace DataViewControlsComponent
 ====================
 In OneCX v6, the InteractiveDataViewComponent replaces the following use cases:
@@ -20279,15 +20289,6 @@ After:
   </tr>
 </ng-template>
 ```
-
-Replace Removed Components
-====================
-Below is the guide for migrating from deprecated components to their new components.
-
-* [Replace DataViewControlsComponent with InteractiveDataViewComponent](switch-to-interactive-data-view.html)
-* [Replace PageContentComponent with OcxContentComponent or OcxContentContainerComponent](switch-to-ocx-content-or-container.html)
-* [Replace SearchCriteriaComponent with SearchHeaderComponent](switch-to-search-header.html)
-* [Replace ButtonDialogComponent with OcxDialogInlineComponent](switch-to-ocx-dialog-inline.html)
 
 Replace PageContentComponent
 ====================
@@ -20621,6 +20622,27 @@ export class Example {
 }
 ```
 
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
+
 Update Component Imports
 ====================
 The following section covers component, service, and directive changes in OneCX v6\. Components have been deleted, reorganized across libraries or converted to remote components. The following updates can be applied before v6 migration.
@@ -20795,27 +20817,6 @@ To include the remote components in the application, deployment configuration an
    }  
    ```
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Update ConfigurationService Usage
 ====================
 In OneCX v6, three methods of `ConfigurationService` have been updated to be asynchronous, returning `Promise` results instead of synchronous values.
@@ -20857,6 +20858,43 @@ const config = await this.configService.getConfig();
 
 await this.configService.setProperty(CONFIG_KEY.APP_VERSION, '6.0.0');
 ```
+
+Required Package Updates
+====================
+If the following packages are used in your project, update them to ensure compatibility with Angular 19:
+
+| Package                    | Required Version | Notes                                               |
+| -------------------------- | ---------------- | --------------------------------------------------- |
+| @onecx/\*                  | ^6.x.y           | Update to the latest 6.x.y version available.       |
+| @ngrx/\*                   | ^19.x.y          | Update to the latest Angular 19 compatible version. |
+| primeng                    | ^19.0.0          | Updated for Angular 19 compatibility                |
+| primeicons                 | ^7.0.0           | Updated for Angular 19 compatibility                |
+| primeflex                  | ^4.0.0           | Updated for Angular 19 compatibility                |
+| @ngx-translate/core        | ^16.0.0          | Updated for Angular 19 compatibility                |
+| @ngx-translate/http-loader | ^8.0.0           | Compatible with @ngx-translate/core v16             |
+| ngrx-store-localstorage    | ^19.0.0          | Updated for Angular 19 compatibility                |
+| ngx-build-plus             | ^19.0.0          | Angular 19 compatible version                       |
+
+## [](#installation-commands)Installation Commands
+
+Run this command to update the supporting packages:
+
+```bash
+npm install @ngx-translate/core@^16.0.0 \
+  @ngx-translate/http-loader@^8.0.0 \
+  primeng@^19.0.0 \
+  primeicons@^7.0.0 \
+  primeflex@^4.0.0 \
+  ngrx-store-localstorage@^19.0.0 \
+  ngx-build-plus@^19.0.0 \
+
+npm install @ngrx/<package-name>@^19
+
+npm install @onecx/<package-name>@^6
+```
+
+| |  Do not add keycloak-js to your package.json dependencies. |
+| ------------------------------------------------------------ |
 
 Update FilterType Value
 ====================
@@ -20910,43 +20948,6 @@ columns: [
   },
 ]
 ```
-
-Required Package Updates
-====================
-If the following packages are used in your project, update them to ensure compatibility with Angular 19:
-
-| Package                    | Required Version | Notes                                               |
-| -------------------------- | ---------------- | --------------------------------------------------- |
-| @onecx/\*                  | ^6.x.y           | Update to the latest 6.x.y version available.       |
-| @ngrx/\*                   | ^19.x.y          | Update to the latest Angular 19 compatible version. |
-| primeng                    | ^19.0.0          | Updated for Angular 19 compatibility                |
-| primeicons                 | ^7.0.0           | Updated for Angular 19 compatibility                |
-| primeflex                  | ^4.0.0           | Updated for Angular 19 compatibility                |
-| @ngx-translate/core        | ^16.0.0          | Updated for Angular 19 compatibility                |
-| @ngx-translate/http-loader | ^8.0.0           | Compatible with @ngx-translate/core v16             |
-| ngrx-store-localstorage    | ^19.0.0          | Updated for Angular 19 compatibility                |
-| ngx-build-plus             | ^19.0.0          | Angular 19 compatible version                       |
-
-## [](#installation-commands)Installation Commands
-
-Run this command to update the supporting packages:
-
-```bash
-npm install @ngx-translate/core@^16.0.0 \
-  @ngx-translate/http-loader@^8.0.0 \
-  primeng@^19.0.0 \
-  primeicons@^7.0.0 \
-  primeflex@^4.0.0 \
-  ngrx-store-localstorage@^19.0.0 \
-  ngx-build-plus@^19.0.0 \
-
-npm install @ngrx/<package-name>@^19
-
-npm install @onecx/<package-name>@^6
-```
-
-| |  Do not add keycloak-js to your package.json dependencies. |
-| ------------------------------------------------------------ |
 
 undefined
 ====================
@@ -21248,6 +21249,57 @@ bootstrapRemoteComponent(
 )
 ```
 
+Update Webpack Config to Use Dynamic Shared Entries
+====================
+In OneCX v6, the `shared` entries in `webpack.config.js` should no longer be hardcoded. Shared configuration can instead be generated dynamically using `getOneCXSharedRecommendations` from `@onecx/accelerator`, based on the dependencies declared in `package.json`.
+
+## [](#%5Fupdate%5Fwebpack%5Fconfig%5Fjs)Update webpack.config.js
+
+* `getOneCXSharedRecommendations` from `@onecx/accelerator` and `dependencies` from `./package.json` should be imported.
+* The hardcoded `share({…​})` entries should be replaced with a loop over `Object.keys(dependencies)`. For each dependency, `getOneCXSharedRecommendations(libName, { requiredVersion: 'auto', includeSecondaries: true })` should be called. If the result is not `false`, the entry should be added to the `sharedEntries` object.
+* `sharedEntries` should be passed to `share(sharedEntries)` instead of the hardcoded object.
+
+### [](#%5Fexample)Example
+
+Before
+
+```javascript
+const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack');
+
+const config = withModuleFederationPlugin({
+  // ...
+  shared: share({
+    '@angular/core': { requiredVersion: 'auto', includeSecondaries: true },
+    '@onecx/angular-accelerator': { requiredVersion: 'auto', includeSecondaries: true },
+    'primeng': { requiredVersion: 'auto', includeSecondaries: true },
+    // ... more hardcoded entries for every dependency
+  }),
+  sharedMappings: ['@onecx/portal-integration-angular'],
+});
+```
+
+After
+
+```javascript
+const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack');
+const { getOneCXSharedRecommendations } = require('@onecx/accelerator')
+const { dependencies } = require('./package.json')
+
+const sharedEntries = {}
+for (const libName of Object.keys(dependencies)) {
+  const result = getOneCXSharedRecommendations(libName, { requiredVersion: 'auto', includeSecondaries: true })
+  if (result !== false) {
+    sharedEntries[libName] = result
+  }
+}
+
+const config = withModuleFederationPlugin({
+  // ...
+  shared: share(sharedEntries),
+  sharedMappings: ['@onecx/portal-integration-angular'],
+});
+```
+
 Upgrade NX Application to Angular 19
 ====================
 This guide describes how to upgrade an NX-based OneCX application to Angular 19\. Complete the pre-migration steps from the main migration guide before you continue.
@@ -21442,6 +21494,21 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Be aware of the PortalDialogService signature changes](portal-dialog-service-signature-changes.html)
 * [Leverage Angular guards](updated-guards-usage.html)
 
+PortalDialogService Signature Changes
+====================
+In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
+
+## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
+
+* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
+
+## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
+
+* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
+
+| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Migrate to <code>OnecxTranslateLoader</code>
 ====================
 In v7, the translation loading mechanism in `@onecx/angular-utils` has been refactored.
@@ -21572,20 +21639,22 @@ export class AppComponent implements OnInit {
 }
 ```
 
-PortalDialogService Signature Changes
+Remove @onecx/shell-core
 ====================
-In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
+In version 7 of the libraries, the `@onecx/shell-core` package has been removed. Shell layout components and `WorkspaceConfigBffService` have been moved to the `shell-ui` application. All `@onecx/shell-core` imports and any related usage must be removed from your application.
 
-## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
+**Actions**
 
-* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
+* Uninstall the deprecated package:
 
-## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
+```bash
+npm uninstall --save @onecx/shell-core
+```
 
-* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
+* Remove all imports and usage from the project
 
-| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| |  The moved components and services are now provided directly by the shell‑ui application and should be consumed from there. |
+| ----------------------------------------------------------------------------------------------------------------------------- |
 
 Remove <code>keycloak-js</code> from your application
 ====================
@@ -21611,23 +21680,6 @@ Keycloak initialization failed! Could not load keycloak-js library which is requ
 ```
 
 If you see this error, your application **still needs `keycloak-js`**, and you must reinstall it.
-
-Remove @onecx/shell-core
-====================
-In version 7 of the libraries, the `@onecx/shell-core` package has been removed. Shell layout components and `WorkspaceConfigBffService` have been moved to the `shell-ui` application. All `@onecx/shell-core` imports and any related usage must be removed from your application.
-
-**Actions**
-
-* Uninstall the deprecated package:
-
-```bash
-npm uninstall --save @onecx/shell-core
-```
-
-* Remove all imports and usage from the project
-
-| |  The moved components and services are now provided directly by the shell‑ui application and should be consumed from there. |
-| ----------------------------------------------------------------------------------------------------------------------------- |
 
 Upgrade NX Application to Angular 20
 ====================
@@ -21689,6 +21741,61 @@ After completing all migration steps, remove migration-only dependencies that ar
 npm uninstall @onecx/nx-migration-utils @nx/devkit
 ```
 
+Update package imports for PrimeNG theming
+====================
+In version 7, the PrimeNG theming utilities have been moved to a separate subpackage:`@onecx/angular-utils/theme/primeng` within the `@onecx/angular-utils` library.
+
+## [](#%5Fupdate%5Fimport%5Fpath)Update import path
+
+Please update all imports related to PrimeNG theming utilities to use the new package.
+
+Before
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils'
+```
+
+After
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
+```
+
+## [](#%5Fprimeng%5Fsubpackage%5Fpublic%5Fapi%5Fcontents)PrimeNG subpackage public API contents
+
+### [](#%5Fclasses)Classes
+
+* `CustomUseStyle`
+* `ThemeConfigService`
+
+### [](#%5Ffunctions)Functions
+
+* `adjustColor`
+* `colorDelta`
+* `createPalette`
+* `normalizeKeys`
+* `provideThemeConfig`
+* `provideThemeConfigService`
+
+### [](#%5Fconstants)Constants
+
+* `CustomPreset`
+* `standardColorAdjustment`
+
+### [](#%5Finjection%5Ftokens)Injection Tokens
+
+* `IS_ADVANCED_THEMING`
+* `THEME_OVERRIDES`
+
+### [](#%5Finterfaces)Interfaces
+
+* `ColorAdjustment`
+* `ThemeConfigProviderOptions`
+
+### [](#%5Ftypes)Types
+
+* `ThemeOverrides`
+
 Update package imports for style utilities
 ====================
 In version 7, the style utilities have been moved to a separate subpackage:`@onecx/angular-utils/style` within the `@onecx/angular-utils` library.
@@ -21748,61 +21855,6 @@ import { updateStylesForMfeChange } from '@onecx/angular-utils/style'
 * `dataRcStylesStart`
 * `dataShellStylesAttribute`
 * `dataShellStylesKey`
-
-Update package imports for PrimeNG theming
-====================
-In version 7, the PrimeNG theming utilities have been moved to a separate subpackage:`@onecx/angular-utils/theme/primeng` within the `@onecx/angular-utils` library.
-
-## [](#%5Fupdate%5Fimport%5Fpath)Update import path
-
-Please update all imports related to PrimeNG theming utilities to use the new package.
-
-Before
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils'
-```
-
-After
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
-```
-
-## [](#%5Fprimeng%5Fsubpackage%5Fpublic%5Fapi%5Fcontents)PrimeNG subpackage public API contents
-
-### [](#%5Fclasses)Classes
-
-* `CustomUseStyle`
-* `ThemeConfigService`
-
-### [](#%5Ffunctions)Functions
-
-* `adjustColor`
-* `colorDelta`
-* `createPalette`
-* `normalizeKeys`
-* `provideThemeConfig`
-* `provideThemeConfigService`
-
-### [](#%5Fconstants)Constants
-
-* `CustomPreset`
-* `standardColorAdjustment`
-
-### [](#%5Finjection%5Ftokens)Injection Tokens
-
-* `IS_ADVANCED_THEMING`
-* `THEME_OVERRIDES`
-
-### [](#%5Finterfaces)Interfaces
-
-* `ColorAdjustment`
-* `ThemeConfigProviderOptions`
-
-### [](#%5Ftypes)Types
-
-* `ThemeOverrides`
 
 Required Package Updates
 ====================
@@ -22089,6 +22141,7 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Move auth implementation imports from @onecx/angular-auth to @onecx/shell-auth](move-auth-to-shell-auth.html)
 * [Update imports to supported public APIs](update-public-api-imports.html)
 * [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
+* [Update Webpack Config](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
 
 Split shell and apps authentication
 ====================
@@ -22124,6 +22177,50 @@ npm uninstall keycloak-js
 1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
 2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
 3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
+
+Replace removed topic publisher classes
+====================
+In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
+
+If your app still uses these classes, TypeScript compilation will fail.
+
+## [](#%5Fremoved%5Fclasses)Removed classes
+
+* `CurrentLocationPublisher`
+* `EventsPublisher`
+* `ParametersPublisher`
+* `ResizedEventsPublisher`
+
+## [](#%5Frequired%5Fmigration)Required migration
+
+Replace publisher wrappers with their corresponding topic classes.
+
+| Removed in v8            | Use instead          |
+| ------------------------ | -------------------- |
+| CurrentLocationPublisher | CurrentLocationTopic |
+| EventsPublisher          | EventsTopic          |
+| ParametersPublisher      | ParametersTopic      |
+| ResizedEventsPublisher   | ResizedEventsTopic   |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { EventsPublisher } from '@onecx/integration-interface'
+
+const eventsPublisher$ = new EventsPublisher()
+eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
+```
+
+After
+
+```typescript
+import { EventsTopic } from '@onecx/integration-interface'
+
+const eventsTopic = new EventsTopic()
+eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
+```
 
 Upgrade NX Application to Angular 21
 ====================
@@ -22183,50 +22280,6 @@ After completing all migration steps, remove migration-only dependencies that ar
 
 ```bash
 npm uninstall @onecx/nx-migration-utils @nx/devkit
-```
-
-Replace removed topic publisher classes
-====================
-In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
-
-If your app still uses these classes, TypeScript compilation will fail.
-
-## [](#%5Fremoved%5Fclasses)Removed classes
-
-* `CurrentLocationPublisher`
-* `EventsPublisher`
-* `ParametersPublisher`
-* `ResizedEventsPublisher`
-
-## [](#%5Frequired%5Fmigration)Required migration
-
-Replace publisher wrappers with their corresponding topic classes.
-
-| Removed in v8            | Use instead          |
-| ------------------------ | -------------------- |
-| CurrentLocationPublisher | CurrentLocationTopic |
-| EventsPublisher          | EventsTopic          |
-| ParametersPublisher      | ParametersTopic      |
-| ResizedEventsPublisher   | ResizedEventsTopic   |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { EventsPublisher } from '@onecx/integration-interface'
-
-const eventsPublisher$ = new EventsPublisher()
-eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
-```
-
-After
-
-```typescript
-import { EventsTopic } from '@onecx/integration-interface'
-
-const eventsTopic = new EventsTopic()
-eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
 ```
 
 Update imports to supported public APIs
@@ -28397,10 +28450,6 @@ undefined
 ====================
 
 
-undefined
-====================
-
-
 OneCX Identity Access Management Backend For Frontend
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -28502,6 +28551,10 @@ app:
           kcConfig:
             defaultClientScopes: [ ocx-ia:all, ocx-pm:read ]
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -30557,10 +30610,6 @@ cd onecx-permission
 docker compose up -d traefik postgresdb pgadmin keycloak-app
 ```
 
-undefined
-====================
-
-
 OneCX Permission Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -30651,6 +30700,10 @@ app:
         description: OneCX Permission Operator
         name: OneCX Permission Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -31449,10 +31502,6 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 * `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
 * `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
 
-undefined
-====================
-
-
 OneCX Product Store Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -31555,6 +31604,10 @@ app:
         description: OneCX Product Store Operator
         name: OneCX Product Store Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -31772,6 +31825,67 @@ If the response object matches the request object (i.e., all products and applic
      Note over Shell: Cache
 ```
 
+Shell V3
+====================
+## [](#summary)Summary
+
+OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
+
+Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
+
+## [](#upgrade-notes)Important Upgrade Notes
+
+With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
+
+It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
+
+| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#highlights)Highlights
+
+* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
+* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
+* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
+* Adds new shell capabilities including an About page and source maps support
+
+## [](#release-notes)Release Notes
+
+### [](#angular-21-support)Angular 21 support with shareScope
+
+Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
+
+### [](#layout-improvements)Shell layout and extensibility improvements
+
+The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
+
+### [](#about-page)About page
+
+Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
+
+### [](#source-maps-support)Source maps support
+
+Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
+
+### [](#efficiency-improvements)Efficiency improvements
+
+Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
+
+## [](#migration-checklist)Migration Checklist
+
+To ensure a smooth migration to Shell v3, consider the following checklist:
+
+* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
+* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
+* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
+
+## [](#references)References
+
+* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
+* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
+* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
+* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
+
 Shell layout
 ====================
 Shell v3 introduces a more structured layout model for OneCX Shell UI. The layout is organized around named slot groups and dedicated layout regions so that applications can integrate in a more predictable and structured way.
@@ -31835,67 +31949,6 @@ It is not recommended to style anything in the application using the shell layou
 * [Release](v3-release.html)
 * [Enable shell source maps](../enable-shell-source-maps.html)
 * [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html)
-
-Shell V3
-====================
-## [](#summary)Summary
-
-OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
-
-Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
-
-## [](#upgrade-notes)Important Upgrade Notes
-
-With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
-
-It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
-
-| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#highlights)Highlights
-
-* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
-* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
-* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
-* Adds new shell capabilities including an About page and source maps support
-
-## [](#release-notes)Release Notes
-
-### [](#angular-21-support)Angular 21 support with shareScope
-
-Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
-
-### [](#layout-improvements)Shell layout and extensibility improvements
-
-The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
-
-### [](#about-page)About page
-
-Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
-
-### [](#source-maps-support)Source maps support
-
-Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
-
-### [](#efficiency-improvements)Efficiency improvements
-
-Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
-
-## [](#migration-checklist)Migration Checklist
-
-To ensure a smooth migration to Shell v3, consider the following checklist:
-
-* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
-* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
-* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
-
-## [](#references)References
-
-* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
-* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
-* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
-* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
 
 OneCX Shell Backend For Frontend
 ====================
@@ -36907,9 +36960,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
-
-## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -36987,7 +37038,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -37956,32 +38009,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                  | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 4.6.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                    | 3.27.1                                                                                                                                           |         |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                            | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.27.1  |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                   | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.27.1  |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                   | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
-| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                           | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.27.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)           | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)       | 2.3.0                                                                                                                                            |         |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
-| quarkus-scheduler                      | 3.27.1                                                                                         |                                                                                                                                                  |         |
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-svc/pkgs/container/onecx-document-management-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -38058,6 +38085,32 @@ app:
     enabled: true
   product: false
 ```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                  | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0   |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0   |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 4.6.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0   |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                    | 3.27.1                                                                                                                                           |         |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                            | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1  |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.27.1  |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                   | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.27.1  |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                   | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1  |
+| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                           | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.27.1  |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1  |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)           | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)       | 2.3.0                                                                                                                                            |         |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1  |
+| quarkus-scheduler                      | 3.27.1                                                                                         |                                                                                                                                                  |         |
 
 OneCX Document Management UI
 ====================
