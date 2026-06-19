@@ -7034,6 +7034,14 @@ The following documents describe how to configure and use Module Federation in O
 
 undefined
 ====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
+
+undefined
+====================
 ## [](#mf-authentication-service-wrapper)Custom Authentication service
 
 Custom authentication service can be configured and provided. It can be achieved by setting AUTH\_SERVICE and AUTH\_SERVICE\_CUSTOM\_URL in enviroment configuration.
@@ -7169,14 +7177,6 @@ Example flow:
 * When the **App1** slot is displayed, it will dynamically load the **App2** component using module federation and render it in the slot location using the appropriate technology defined in the remote component configuration
 
 Detailed information about microfrontend loading can be found [here](types-of-microfrontends.html).
-
-undefined
-====================
-**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
-
-In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
-
-This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
 
 undefined
 ====================
@@ -7915,193 +7915,6 @@ For Angular applications above Angular 21, the shell expects them to be loaded i
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
 
-Lazy loading tabs
-====================
-## [](#goal)Goal: Load tabs dynamically
-
-Only load data for a tab when it is selected.
-
-| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------------- |
-
-## [](#state-and-viewmodel)1\. State & viewmodel
-
-Add additional member for the tabs in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-details.state.ts`
-
-```javascript
-...
-    activeTab: 'ExampleDetailsTab' | ... | 'Other';
-...
-```
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts`
-
-```javascript
-...
-    exampleDetailsTab: exampleDetailsTabViewModel;
-...
-```
-
-## [](#actions)2\. Actions
-
-Create following actions to handle the events regarding autocomplete:
-
-_Adapt in File:_ `<feature>-details.actions.ts`
-
-```javascript
-...
-    events: {
-        'other tab selected': emptyProps(),
-        'example details tab selected': emptyProps(),
-        'example details received': props<{
-        exampleDetails: ExampleResponse;
-        }>(),
-        'example details loading failed': props<{ error: string | null }>(),
-    },
-...
-```
-
-## [](#html)3\. HTML
-
-_Adapt in File:_ `<feature>-details.component.html`
-
-```html
-    <ocx-portal-page *ngrxLet="viewModel$; let vm">
-        <p-tabView
-            [(activeIndex)]="activeTabIndex"
-            (onChange)="handleTabChange($event)"
-        >
-            <p-tabPanel
-                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
-            >
-                <div *ngIf="vm" >
-                    <app-example-details-tab
-                        [vm]="vm?.exampleDetails"
-                    ></app-example-details-tab>
-                </div>
-            </p-tabPanel>
-        </p-tabView>
-    </ocx-portal-page>
-```
-
-## [](#component)4\. Component
-
-_Adapt in File:_ `<feature>-details.component.ts`
-
-```javascript
-    handleTabChange(event: { originalEvent: Event; index: number }) {
-        switch (event.index) {
-            case 0:
-                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
-                break;
-            ...
-            default:
-                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
-        }
-    }
-```
-
-## [](#reducers)5\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            activeTab: 'ExampleDetailsTab',
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
-        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: exampleDetails,
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: undefined,
-        })
-    ),
-...
-```
-
-## [](#selectors)6\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-details.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>DetailsViewModel = createSelector(
-        ...
-        selectExampleDetailsTabViewModel,
-        ...
-      (
-        ...
-        exampleDetailsTab,
-        ...
-      ): <%= featureClassName %>DetailsViewModel => ({
-        ...
-        exampleDetailsTab,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)7\. Effects
-
-_Adapt in File:_ `<feature>-details.effects.ts`
-
-```javascript
-    exampleDetailsTab$ = createEffect(() => {
-        return this.actions$.pipe(
-            ofType(
-                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-            ),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
-            ),
-            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
-            ),
-            switchMap(([, id]) => {
-                return this.<%= featureClassName %>DetailsService
-                    .getExampleDetailsTabDataById(id)
-                    .pipe(
-                        map(({ exampleDetailsTabData }) => {
-                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
-                            exampleDetails: exampleDetailsTabData,
-                        });
-                    }),
-                    catchError((error) =>
-                        of(
-                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
-                                error,
-                            }),
-                        ),
-                    ),
-                );
-            }),
-        );
-    });
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 NgRX
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -8329,6 +8142,241 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 * DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
 * Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
+Lazy loading tabs
+====================
+## [](#goal)Goal: Load tabs dynamically
+
+Only load data for a tab when it is selected.
+
+| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------------- |
+
+## [](#state-and-viewmodel)1\. State & viewmodel
+
+Add additional member for the tabs in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-details.state.ts`
+
+```javascript
+...
+    activeTab: 'ExampleDetailsTab' | ... | 'Other';
+...
+```
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts`
+
+```javascript
+...
+    exampleDetailsTab: exampleDetailsTabViewModel;
+...
+```
+
+## [](#actions)2\. Actions
+
+Create following actions to handle the events regarding autocomplete:
+
+_Adapt in File:_ `<feature>-details.actions.ts`
+
+```javascript
+...
+    events: {
+        'other tab selected': emptyProps(),
+        'example details tab selected': emptyProps(),
+        'example details received': props<{
+        exampleDetails: ExampleResponse;
+        }>(),
+        'example details loading failed': props<{ error: string | null }>(),
+    },
+...
+```
+
+## [](#html)3\. HTML
+
+_Adapt in File:_ `<feature>-details.component.html`
+
+```html
+    <ocx-portal-page *ngrxLet="viewModel$; let vm">
+        <p-tabView
+            [(activeIndex)]="activeTabIndex"
+            (onChange)="handleTabChange($event)"
+        >
+            <p-tabPanel
+                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
+            >
+                <div *ngIf="vm" >
+                    <app-example-details-tab
+                        [vm]="vm?.exampleDetails"
+                    ></app-example-details-tab>
+                </div>
+            </p-tabPanel>
+        </p-tabView>
+    </ocx-portal-page>
+```
+
+## [](#component)4\. Component
+
+_Adapt in File:_ `<feature>-details.component.ts`
+
+```javascript
+    handleTabChange(event: { originalEvent: Event; index: number }) {
+        switch (event.index) {
+            case 0:
+                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
+                break;
+            ...
+            default:
+                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
+        }
+    }
+```
+
+## [](#reducers)5\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            activeTab: 'ExampleDetailsTab',
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
+        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: exampleDetails,
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: undefined,
+        })
+    ),
+...
+```
+
+## [](#selectors)6\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-details.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>DetailsViewModel = createSelector(
+        ...
+        selectExampleDetailsTabViewModel,
+        ...
+      (
+        ...
+        exampleDetailsTab,
+        ...
+      ): <%= featureClassName %>DetailsViewModel => ({
+        ...
+        exampleDetailsTab,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)7\. Effects
+
+_Adapt in File:_ `<feature>-details.effects.ts`
+
+```javascript
+    exampleDetailsTab$ = createEffect(() => {
+        return this.actions$.pipe(
+            ofType(
+                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+            ),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
+            ),
+            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
+            ),
+            switchMap(([, id]) => {
+                return this.<%= featureClassName %>DetailsService
+                    .getExampleDetailsTabDataById(id)
+                    .pipe(
+                        map(({ exampleDetailsTabData }) => {
+                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
+                            exampleDetails: exampleDetailsTabData,
+                        });
+                    }),
+                    catchError((error) =>
+                        of(
+                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
+                                error,
+                            }),
+                        ),
+                    ),
+                );
+            }),
+        );
+    });
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
+Permissions in Angular
+====================
+The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
+In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
+
+This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
+
+## [](#permissions-basics)Permission Basics
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+### [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+### [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission in Angular
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
+
 Content Visibility Based on Permissions
 ====================
 The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
@@ -8425,54 +8473,6 @@ example.html
 
 | |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Permissions in Angular
-====================
-The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
-In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
-
-This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
-
-## [](#permissions-basics)Permission Basics
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-### [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-### [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission in Angular
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
 
 PrimeNG
 ====================
@@ -9990,6 +9990,196 @@ The library also provides routing integration helpers:
 * `SyncedLocationContext` exposes the current location state.
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
+
+AppConfigService and environment variables (runtime configuration)
+====================
+## [](#app-config-service-configure-env-json)Configure `env.json`
+
+`AppConfigService` loads runtime configuration from `{baseUrl}/assets/env.json`.`env.json` must be served exactly from that path relative to the MFE `baseUrl`, or runtime configuration cannot be loaded.
+
+`src/assets/env.json` is created in the application. The file must contain a JSON object with string key/value pairs.
+
+Example `src/assets/env.json`
+
+```json
+{
+  "API_URL": "${API_URL}",
+  "FEATURE_ENABLED": "${FEATURE_ENABLED}"
+}
+```
+
+Placeholders may be replaced during deployment.
+
+## [](#app-config-service-access-variables)Access variables
+
+Values are available after `AppConfigService.init(baseUrl)` completes.
+
+```ts
+import { APP_INITIALIZER, NgModule } from '@angular/core';
+import { AppConfigService } from '@onecx/angular-integration-interface';
+
+export function initializeAppConfig(appConfig: AppConfigService) {
+  return () => appConfig.init('/my-app');
+}
+
+@NgModule({
+  providers: [
+    AppConfigService,
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeAppConfig,
+      multi: true,
+      deps: [AppConfigService],
+    },
+  ],
+})
+export class AppModule {}
+```
+
+After initialization, components can read config values directly.
+
+```ts
+import { Component } from '@angular/core';
+import { AppConfigService } from '@onecx/angular-integration-interface';
+
+@Component({
+  selector: 'my-remote',
+  template: `...`,
+})
+export class MyRemoteComponent {
+  constructor(private readonly appConfig: AppConfigService) {}
+
+  ngOnInit() {
+    const apiUrl = this.appConfig.getProperty('API_URL');
+    const allValues = this.appConfig.getConfig();
+  }
+}
+```
+
+Common access patterns:
+
+* `appConfigService.getProperty('SOME_KEY')`
+* `appConfigService.getConfig()`
+
+ConfigurationService and environment variables (runtime configuration)
+====================
+## [](#configuration-service-configure-env-json)Configure `env.json`
+
+The Shell has its own `assets/env.json` file.`ConfigurationService` loads its runtime configuration from that file.
+
+Configure these values only by setting regular environment variables for the Shell deployment. The Shell UI container injects those values into `assets/env.json`.
+
+Example Shell environment variables
+
+```dockerfile
+ENV BFF_URL http://onecx-shell-bff:8080/
+ENV APP_BASE_HREF /newShell/
+ENV AUTH_SERVICE keycloak
+ENV ONECX_PORTAL_SEARCH_BUTTONS_REVERSED 'false'
+ENV POLYFILL_SCOPE_MODE 'PERFORMANCE'
+```
+
+During deployment, these environment variable values are written to `assets/env.json`.
+
+## [](#configuration-service-access-variables)Access variables
+
+Values are available after `ConfigurationService.init()` completes.
+
+```ts
+import { Component, inject } from '@angular/core';
+import { CONFIG_KEY, ConfigurationService } from '@onecx/angular-integration-interface';
+
+@Component({
+  selector: 'my-shell-component',
+  template: `...`,
+})
+export class MyShellComponent {
+  private readonly configurationService = inject(ConfigurationService);
+
+  async ngOnInit() {
+    const keycloakUrl = await this.configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL);
+    const allValues = await this.configurationService.getConfig();
+  }
+}
+```
+
+Common access patterns:
+
+* `await configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL)`
+* `await configurationService.getConfig()`
+
+OneCX environment variables (runtime configuration)
+====================
+In OneCX UI applications, "environment variables" are **runtime configuration values**. They are loaded at startup. They have to be provided through a public `env.json` file, not through OS process environment variables.
+
+They are intended for values that may change after build, such as endpoints, auth settings, or feature flags.
+
+| |  The env.json file is downloaded by the browser and is therefore **public**. Secrets (passwords, private keys, client secrets, tokens) must not be stored in env.json. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#environment-variables-what-is-env-json)What is `env.json`?
+
+`env.json` is a JSON object containing key/value pairs.
+
+* Requirements:  
+   * The payload must be a JSON **object**.  
+   * Keys are strings.  
+   * Values are expected to be **strings** (see `Config` in `@onecx/integration-interface`).  
+   * The file must be reachable via HTTP from the running application.
+* How to create:  
+   * `src/assets/env.json` is created in the application (MFE).  
+   * The build serves the file as `assets/env.json`.
+
+| |  src/assets/env.json can be treated as a **deployment-time template**. It may contain placeholders like ${KEYCLOAK\_URL} that get replaced when the app is deployed (for example by a container entrypoint). |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#environment-variables-config-scopes)Config scopes
+
+OneCX UI applications use two runtime config scopes:
+
+* **MFE scope** (per microfrontend): [AppConfigService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#app-config-service)
+* **Shell scope** (shared across multiple microfrontends): [ConfigurationService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#configuration-service)
+
+Global values are shared across apps. Per-app values belong to one app only.
+
+## [](#environment-variables-how-to-influence-values)How to influence values
+
+### [](#environment-variables-app-values)App values (`AppConfigService`)
+
+`AppConfigService` loads app-specific values from `{baseUrl}/assets/env.json`.
+
+These values can be influenced by changing the app’s `src/assets/env.json`.
+
+Further details are available in [AppConfigService](appConfigService.html).
+
+### [](#environment-variables-shell-values)Shell values (`ConfigurationService`)
+
+`ConfigurationService` exposes values loaded by the Shell. These values are shared with other apps and are configured through the Shell deployment. Use Shell environment variables exposed by the Shell UI container.
+
+Further details are available in [ConfigurationService](configurationService.html).
+
+## [](#environment-variables-files-configured)Files configured (Angular)
+
+Shell application:
+
+* Shell UI container configuration via Dockerfile or deployment manifests (define Shell environment variables)
+
+Microfrontend (MFE):
+
+* `src/assets/env.json` (runtime config for that MFE)
+* `src/environments/environment.ts` (build-time defaults)
+* `src/app/app.module.ts` (commonly provides `APP_CONFIG`; `AppConfigService` is initialized only where a `baseUrl` is known)
+
+## [](#environment-variables-troubleshooting)Troubleshooting
+
+### [](#environment-variables-troubleshooting-env-json-404)`GET …​/assets/env.json` returns 404
+
+* `src/assets/env.json` must exist and be included in the build output.
+* The deployment must place the file alongside the Shell (Shell) or alongside the MFE base URL (MFE).
+
+### [](#environment-variables-troubleshooting-config-not-applied)Config is not applied
+
+* `AppConfigService.init(baseUrl)` (MFE) must run during bootstrap.
 
 Calendar
 ====================
@@ -14006,6 +14196,60 @@ After adaptations to the detail view and form controls, the detail component can
 
 Figure 5\. Detail UI with adapted detail view
 
+Create a Simple NgRx Page
+====================
+This guide describes how to create a simple NgRx page using the OneCX App Generator.
+
+A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
+This can be done if you have already set up an initial Application with an feature.
+
+| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#create-ngrx-page)Create NgRx Page
+
+Follow these steps:
+
+1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
+2. Run the following OneCX App Generator command.  
+The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
+Generate page/component  
+```bash  
+nx generate @onecx/nx-plugin:ngrx-page [feature module]  
+```
+3. Follow the prompts to provide details like the page component name and the page title.  
+That’s it.
+4. Navigate in your browser to the new component using the the component name as route.
+
+## [](#example)Example
+
+To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
+
+Generate page/component
+
+```bash
+nx generate @onecx/nx-plugin:ngrx-page hello-world
+```
+
+When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
+To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
+
+OneCX Local Environment with Hello Component
+
+```text
+http://onecx.localhost/onecx-shell/admin/hello-world/hello
+```
+
+![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
+
+Figure 1\. Hello Component in action
+
+Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
+
+![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
+
+Figure 2\. Generated files for the Hello Component
+
 Create a Feature Module
 ====================
 What is a Feature Module?
@@ -14109,60 +14353,6 @@ npm run test
 ![test result feature](../_images/test_result_feature.png) 
 
 Figure 2\. Test result of the generated feature module
-
-Create a Simple NgRx Page
-====================
-This guide describes how to create a simple NgRx page using the OneCX App Generator.
-
-A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
-This can be done if you have already set up an initial Application with an feature.
-
-| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
-| -------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#create-ngrx-page)Create NgRx Page
-
-Follow these steps:
-
-1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
-2. Run the following OneCX App Generator command.  
-The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
-Generate page/component  
-```bash  
-nx generate @onecx/nx-plugin:ngrx-page [feature module]  
-```
-3. Follow the prompts to provide details like the page component name and the page title.  
-That’s it.
-4. Navigate in your browser to the new component using the the component name as route.
-
-## [](#example)Example
-
-To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
-
-Generate page/component
-
-```bash
-nx generate @onecx/nx-plugin:ngrx-page hello-world
-```
-
-When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
-To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
-
-OneCX Local Environment with Hello Component
-
-```text
-http://onecx.localhost/onecx-shell/admin/hello-world/hello
-```
-
-![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
-
-Figure 1\. Hello Component in action
-
-Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
-
-![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
-
-Figure 2\. Generated files for the Hello Component
 
 Create an Entity Schema
 ====================
@@ -14684,6 +14874,13 @@ this.formGroup = new FormGroup({
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
+undefined
+====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  After the Application is started, make sure: items in the data view have an delete icon that opens the delete dialog. |
+| ------------------------------------------------------------------------------------------------------------------------ |
+
 Configure Detail View
 ====================
 After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
@@ -15003,13 +15200,6 @@ Example: Translations in `de.json`
     }
   },
 ```
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  After the Application is started, make sure: items in the data view have an delete icon that opens the delete dialog. |
-| ------------------------------------------------------------------------------------------------------------------------ |
 
 Configure Detail Tests
 ====================
@@ -25933,9 +26123,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
-
-## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -26015,7 +26203,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
+
+## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -30790,6 +30980,14 @@ app:
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                | Type   | Default                         |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------- |
+| [onecx.permission.operator.leader-election.lease-name](#onecx-permission-operator%5Fonecx-permission-operator-leader-election-lease-name) Lease name Environment variable: ONECX\_PERMISSION\_OPERATOR\_LEADER\_ELECTION\_LEASE\_NAME | string | onecx-permission-operator-lease |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
 | tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
@@ -30811,14 +31009,6 @@ undefined
 | onecx-operator                         | 3.0.0                                                                                              |                                                                                                                                                  |            |
 | quarkus-openapi-generator-oidc         | 2.16.0-lts                                                                                         |                                                                                                                                                  |            |
 | quarkus-oidc-client                    | 3.33.1                                                                                             |                                                                                                                                                  |            |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                | Type   | Default                         |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ | ------------------------------- |
-| [onecx.permission.operator.leader-election.lease-name](#onecx-permission-operator%5Fonecx-permission-operator-leader-election-lease-name) Lease name Environment variable: ONECX\_PERMISSION\_OPERATOR\_LEADER\_ELECTION\_LEASE\_NAME | string | onecx-permission-operator-lease |
 
 OneCX Application Store
 ====================
