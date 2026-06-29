@@ -9046,6 +9046,184 @@ await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
 const response = await apiClient.get('/profile');
 ```
 
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
+
+## [](#data-sources)Data Sources
+
+The library listens to portal topics for remote components and permissions:
+
+* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
+* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `SlotComponent`
+* `SlotProvider`, `useSlot`
+* `PermissionProvider`, `usePermission`
+* `withSlot`
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+## [](#contexts-hooks)Contexts and Hooks
+
+When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
+
+```tsx
+<PermissionProvider>
+  <SlotProvider>
+    <YourApp />
+  </SlotProvider>
+</PermissionProvider>
+```
+
+`useSlot` and `usePermission` throw an error when used outside their respective providers.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
+
+Additional props:
+
+* `inputs`: object passed to the remote component as inputs/properties
+* `outputs`: callbacks bound to the remote component as outputs
+* `skeleton`: placeholder rendered while components are loading
+
+```tsx
+<SlotComponent
+  name="vite-example"
+  inputs={{ title: 'Remote title' }}
+  outputs={{ onSelect: (value) => console.log(value) }}
+  skeleton={<div>Loading...</div>}
+/>
+```
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
 @onecx/react-integration-interface
 ====================
 ## [](#overview)Overview
@@ -9520,184 +9698,6 @@ __Table 13\. Workspace Hook methods__
 | -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
-
-@onecx/react-remote-components
-====================
-## [](#overview)Overview
-
-`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
-
-## [](#data-sources)Data Sources
-
-The library listens to portal topics for remote components and permissions:
-
-* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
-* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
-
-## [](#exports)Public Exports
-
-The package exports:
-
-* `SlotComponent`
-* `SlotProvider`, `useSlot`
-* `PermissionProvider`, `usePermission`
-* `withSlot`
-
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
-
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
-
-### [](#init)Initialization
-
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
-
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
-```
-
-### [](#register)Register Remote
-
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
-
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
-```
-
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
-
-### [](#fetching)Fetch Remote
-
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
-```
-
-It is asynchronous function so we need to wait for it to be done.
-
-## [](#usage)Usage
-
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-## [](#contexts-hooks)Contexts and Hooks
-
-When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
-
-```tsx
-<PermissionProvider>
-  <SlotProvider>
-    <YourApp />
-  </SlotProvider>
-</PermissionProvider>
-```
-
-`useSlot` and `usePermission` throw an error when used outside their respective providers.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
-
-Additional props:
-
-* `inputs`: object passed to the remote component as inputs/properties
-* `outputs`: callbacks bound to the remote component as outputs
-* `skeleton`: placeholder rendered while components are loading
-
-```tsx
-<SlotComponent
-  name="vite-example"
-  inputs={{ title: 'Remote title' }}
-  outputs={{ onSelect: (value) => console.log(value) }}
-  skeleton={<div>Loading...</div>}
-/>
-```
-
-For example
-
-```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
-```
-
-It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
-
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
-```
-
-## [](#vite)Vite
-
-This library works smoothly with vite applications.
-
-## [](#nextjs)Next.js
-
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 @onecx/react-utils
 ====================
@@ -10181,130 +10181,6 @@ Microfrontend (MFE):
 
 * `AppConfigService.init(baseUrl)` (MFE) must run during bootstrap.
 
-Calendar
-====================
-## [](#goal)Goal: Add Calendar Input
-
-Add a Calendar as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleDate: z
-        .string()
-        .transform((v) => (v ? new Date(v) : undefined))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt:
-
-* by replacing all occurences of `exampleDate` with the actual name which is defined
-* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-calendar
-            id="exampleDate"
-            formControlName="exampleDate"
-            name="exampleDate"
-            ngDefaultControl
-            pInputDate
-            type="text"
-            appendTo="body"
-            [showClear]="true"
-            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
-            >
-        </p-calendar>
-        <label for="exampleDate">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#selectors)3\. Selectors
-
-Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { Calendar } from 'primeng/calendar';
-    ...
-
-    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
-    ...
-
-    search(formValue: FormGroup) {
-      const searchCriteria = buildSearchCriteria(
-        formValue.getRawValue(),
-        this.calendars, <-- ADD THIS LINE
-        {
-            removeNullValues: true,
-        },
-      );
-      this.store.dispatch(
-      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
-      );
-    }
-```
-
-## [](#effects)4\. Effects (Optional)
-
-If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-  syncParamsToUrl$ = createEffect(
-    () => {
-      return this.actions$.pipe(
-        ofType(
-          <%= featureClassName %>SearchActions.searchButtonClicked,
-          <%= featureClassName %>SearchActions.resetButtonClicked,
-        ),
-        concatLatestFrom(() => [
-          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
-          this.route.queryParams,
-        ]),
-        tap(([, criteria, queryParams]) => {
-          const results =
-            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
-          if (!results.success || !equal(criteria, results.data)) {
-            const params = {
-              ...criteria,
-              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
-            };
-            this.router.navigate([], {
-              relativeTo: this.route,
-              queryParams: params,
-              replaceUrl: true,
-              onSameUrlNavigation: 'ignore',
-            });
-          }
-        }),
-      );
-    },
-    { dispatch: false },
-  );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 Dropdown
 ====================
 ## [](#goal)Goal: Add Dropdown Input
@@ -10566,6 +10442,130 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+Calendar
+====================
+## [](#goal)Goal: Add Calendar Input
+
+Add a Calendar as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleDate: z
+        .string()
+        .transform((v) => (v ? new Date(v) : undefined))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt:
+
+* by replacing all occurences of `exampleDate` with the actual name which is defined
+* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-calendar
+            id="exampleDate"
+            formControlName="exampleDate"
+            name="exampleDate"
+            ngDefaultControl
+            pInputDate
+            type="text"
+            appendTo="body"
+            [showClear]="true"
+            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
+            >
+        </p-calendar>
+        <label for="exampleDate">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#selectors)3\. Selectors
+
+Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { Calendar } from 'primeng/calendar';
+    ...
+
+    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
+    ...
+
+    search(formValue: FormGroup) {
+      const searchCriteria = buildSearchCriteria(
+        formValue.getRawValue(),
+        this.calendars, <-- ADD THIS LINE
+        {
+            removeNullValues: true,
+        },
+      );
+      this.store.dispatch(
+      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
+      );
+    }
+```
+
+## [](#effects)4\. Effects (Optional)
+
+If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+  syncParamsToUrl$ = createEffect(
+    () => {
+      return this.actions$.pipe(
+        ofType(
+          <%= featureClassName %>SearchActions.searchButtonClicked,
+          <%= featureClassName %>SearchActions.resetButtonClicked,
+        ),
+        concatLatestFrom(() => [
+          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
+          this.route.queryParams,
+        ]),
+        tap(([, criteria, queryParams]) => {
+          const results =
+            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
+          if (!results.success || !equal(criteria, results.data)) {
+            const params = {
+              ...criteria,
+              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
+            };
+            this.router.navigate([], {
+              relativeTo: this.route,
+              queryParams: params,
+              replaceUrl: true,
+              onSameUrlNavigation: 'ignore',
+            });
+          }
+        }),
+      );
+    },
+    { dispatch: false },
+  );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -14354,124 +14354,6 @@ Here is an overview of the files generated by the OneCX App Generator for the "H
 
 Figure 2\. Generated files for the Hello Component
 
-Create an Entity Schema
-====================
-What is an Entity Schema?
-
-An entity schema defines the structure of an **entity/resource**, including its properties and their types. It is used to ensure that the data for the entity is consistent and follows a defined format. The schema definition follows the OpenAPI specification. This is the basis for processing feature data, e.g., for searching, displaying, and modifying it.  
-At OneCX, we explicitly follow an **API-first approach**. In practice, this means that the [OpenAPI Specification](https://spec.openapis.org/oas/) file is created first, in which entities and the paths for requests/responses are described. The **OpenAPI** file serves as the basis for the implementation of the backend services and the frontend components.
-
-Let’s begin by describing the entity that can be managed in the generated components. Starting this way makes the subsequent steps easier to understand.
-
-## [](#action-e)ACTION E
-
-Add Entity Schema
-
-After creating the feature module and components, the next step is to define the entity schema in the **OpenAPI** file. This involves adding the base properties of the entity, which will be used to generate the API code for the frontend application.
-
-### Template: Generated Entity Schema
-
-| Directory | <root-of-ui-app>/src/assets/api |
-| --------- | ------------------------------- |
-| File      | openapi-bff.yaml                |
-
-ACTION E in `openapi-bff.yaml` (excerpt) 
-
-```yml
-components:
-  schemas:
-    ...
-    <resource/entity name>:
-      type: object
-      required:
-        - 'id'
-      properties:
-        creationDate:
-          $ref: '#/components/schemas/OffsetDateTime'
-        creationUser:
-          type: string
-        modificationDate:
-          $ref: '#/components/schemas/OffsetDateTime'
-        modificationUser:
-          type: string
-        modificationCount:
-          format: int32
-          type: integer
-        id:
-          type: integer
-        changeMe:
-          type: string
-        # "ACTION E: Add entity properties"
-```
-
-Where below **properties** the properties of the entity are listed.
-
----
-
-### Example: Book Entity Schema
-
-| Directory | bookstore/src/assets/api |
-| --------- | ------------------------ |
-| File      | openapi-bff.yaml         |
-
-Example: Schema of Books in `openapi-bff.yaml` 
-
-```yml
-components:
-  schemas:
-    ...
-    Book:
-      type: object
-      required:
-        - 'id'
-      properties:
-        creationDate:
-          $ref: '#/components/schemas/OffsetDateTime'
-        creationUser:
-          type: string
-        modificationDate:
-          $ref: '#/components/schemas/OffsetDateTime'
-        modificationUser:
-          type: string
-        modificationCount:
-          format: int32
-          type: integer
-        id:
-          type: string
-        bookType:
-          $ref: '#/components/schemas/BookType'
-        bookTitle:
-          type: string
-        bookAuthor:
-          type: string
-        bookIsbn:
-          type: string
-        bookPrice:
-          type: number
-          format: float
-        bookPublisher:
-          type: string
-        bookPublishedDate:
-          $ref: '#/components/schemas/OffsetDateTime'
-    BookType:
-      type: string
-      enum: [ CRIME, DRAMA, FANTASY, PROSE, SCIENCE ]
-```
-
-Where properties with prefix **book** are added to the entity `Book` (replaced **changedMe**).
-
-| |  Each time the **OpenAPI** file is changed, the API code needs to be updated to reflect these changes.To do this, run the the following command in the terminal with the root of the UI application as current working directory. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Create API code after changing the OpenAPI file
-
-```bash
-npm run apigen
-```
-
-The result can be found in the generated API folder:  
-`<root-of-ui-app>/src/app/shared/generated`.
-
 Create a Search Component
 ====================
 What is a Component?
@@ -14608,6 +14490,124 @@ After adjusting the search criteria and search results for the bookstore example
 ![generated book search component books](../_images/generated_book_search_component_books.png) 
 
 Figure 4\. Search UI with adapted search and example data
+
+Create an Entity Schema
+====================
+What is an Entity Schema?
+
+An entity schema defines the structure of an **entity/resource**, including its properties and their types. It is used to ensure that the data for the entity is consistent and follows a defined format. The schema definition follows the OpenAPI specification. This is the basis for processing feature data, e.g., for searching, displaying, and modifying it.  
+At OneCX, we explicitly follow an **API-first approach**. In practice, this means that the [OpenAPI Specification](https://spec.openapis.org/oas/) file is created first, in which entities and the paths for requests/responses are described. The **OpenAPI** file serves as the basis for the implementation of the backend services and the frontend components.
+
+Let’s begin by describing the entity that can be managed in the generated components. Starting this way makes the subsequent steps easier to understand.
+
+## [](#action-e)ACTION E
+
+Add Entity Schema
+
+After creating the feature module and components, the next step is to define the entity schema in the **OpenAPI** file. This involves adding the base properties of the entity, which will be used to generate the API code for the frontend application.
+
+### Template: Generated Entity Schema
+
+| Directory | <root-of-ui-app>/src/assets/api |
+| --------- | ------------------------------- |
+| File      | openapi-bff.yaml                |
+
+ACTION E in `openapi-bff.yaml` (excerpt) 
+
+```yml
+components:
+  schemas:
+    ...
+    <resource/entity name>:
+      type: object
+      required:
+        - 'id'
+      properties:
+        creationDate:
+          $ref: '#/components/schemas/OffsetDateTime'
+        creationUser:
+          type: string
+        modificationDate:
+          $ref: '#/components/schemas/OffsetDateTime'
+        modificationUser:
+          type: string
+        modificationCount:
+          format: int32
+          type: integer
+        id:
+          type: integer
+        changeMe:
+          type: string
+        # "ACTION E: Add entity properties"
+```
+
+Where below **properties** the properties of the entity are listed.
+
+---
+
+### Example: Book Entity Schema
+
+| Directory | bookstore/src/assets/api |
+| --------- | ------------------------ |
+| File      | openapi-bff.yaml         |
+
+Example: Schema of Books in `openapi-bff.yaml` 
+
+```yml
+components:
+  schemas:
+    ...
+    Book:
+      type: object
+      required:
+        - 'id'
+      properties:
+        creationDate:
+          $ref: '#/components/schemas/OffsetDateTime'
+        creationUser:
+          type: string
+        modificationDate:
+          $ref: '#/components/schemas/OffsetDateTime'
+        modificationUser:
+          type: string
+        modificationCount:
+          format: int32
+          type: integer
+        id:
+          type: string
+        bookType:
+          $ref: '#/components/schemas/BookType'
+        bookTitle:
+          type: string
+        bookAuthor:
+          type: string
+        bookIsbn:
+          type: string
+        bookPrice:
+          type: number
+          format: float
+        bookPublisher:
+          type: string
+        bookPublishedDate:
+          $ref: '#/components/schemas/OffsetDateTime'
+    BookType:
+      type: string
+      enum: [ CRIME, DRAMA, FANTASY, PROSE, SCIENCE ]
+```
+
+Where properties with prefix **book** are added to the entity `Book` (replaced **changedMe**).
+
+| |  Each time the **OpenAPI** file is changed, the API code needs to be updated to reflect these changes.To do this, run the the following command in the terminal with the root of the UI application as current working directory. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Create API code after changing the OpenAPI file
+
+```bash
+npm run apigen
+```
+
+The result can be found in the generated API folder:  
+`<root-of-ui-app>/src/app/shared/generated`.
 
 undefined
 ====================
@@ -21182,39 +21182,6 @@ const config = new PortalApiConfiguration(SomeConfigClass, '/api', configService
 const config = new PortalApiConfiguration(SomeConfigClass, '/api');
 ```
 
-Update Theme Service usage
-====================
-In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
-
-The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
-
-## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
-
-* Remove `baseUrlV1` property usages
-* Remove `getThemeRef()` function calls
-* Remove `loadAndApplyTheme()` function calls
-* Remove `apply()` function calls
-
-| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
-| ------------------------------------------------------------------------------------------------------------------------------- |
-
-In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
-
-Apply
-
-```typescript
-async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
-  await themeService.currentTheme$.publish(theme)
-  if (theme.properties) {
-    for (const group of Object.values(theme.properties)) {
-      for (const [key, value] of Object.entries(group)) {
-        document.documentElement.style.setProperty(`--${key}`, value)
-      }
-    }
-  }
-}
-```
-
 Update Translation Path Factories
 ====================
 ## [](#%5Fupdate%5Fimports)Update Imports
@@ -21440,6 +21407,39 @@ bootstrapRemoteComponent(
     })
   ]
 )
+```
+
+Update Theme Service usage
+====================
+In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
+
+The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
+
+## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
+
+* Remove `baseUrlV1` property usages
+* Remove `getThemeRef()` function calls
+* Remove `loadAndApplyTheme()` function calls
+* Remove `apply()` function calls
+
+| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
+| ------------------------------------------------------------------------------------------------------------------------------- |
+
+In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
+
+Apply
+
+```typescript
+async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
+  await themeService.currentTheme$.publish(theme)
+  if (theme.properties) {
+    for (const group of Object.values(theme.properties)) {
+      for (const [key, value] of Object.entries(group)) {
+        document.documentElement.style.setProperty(`--${key}`, value)
+      }
+    }
+  }
+}
 ```
 
 Update Webpack Config to Use Dynamic Shared Entries
@@ -35255,10 +35255,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Theme Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-theme-svc/pkgs/container/onecx-theme-svc)
@@ -35353,6 +35349,10 @@ app:
         description: OneCX Theme Backend Service
         name: OneCX Theme SVC
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
