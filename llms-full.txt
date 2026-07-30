@@ -1693,6 +1693,290 @@ sudo update-ca-certificates
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 OneCX Shell Integration
 ====================
 This section covers topics related to shell integration, including migration guides for different shell versions and best practices for integrating with the OneCX Shell.
@@ -2354,290 +2638,6 @@ The Workspace avoids tight coupling with individual apps. Instead, it relies on 
 * OneCX Portal UI Libs: shared components and styles used by the Workspace UI.
 * OneCX Theme: branding and theming across apps and workspaces.
 * OneCX IAM and Tenant: authentication, authorization, and tenant scoping for users.
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Microfrontend Bootstrapping
 ====================
@@ -7708,6 +7708,193 @@ For Angular applications above Angular 21, the shell expects them to be loaded i
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
 
+Lazy loading tabs
+====================
+## [](#goal)Goal: Load tabs dynamically
+
+Only load data for a tab when it is selected.
+
+| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------------- |
+
+## [](#state-and-viewmodel)1\. State & viewmodel
+
+Add additional member for the tabs in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-details.state.ts`
+
+```javascript
+...
+    activeTab: 'ExampleDetailsTab' | ... | 'Other';
+...
+```
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts`
+
+```javascript
+...
+    exampleDetailsTab: exampleDetailsTabViewModel;
+...
+```
+
+## [](#actions)2\. Actions
+
+Create following actions to handle the events regarding autocomplete:
+
+_Adapt in File:_ `<feature>-details.actions.ts`
+
+```javascript
+...
+    events: {
+        'other tab selected': emptyProps(),
+        'example details tab selected': emptyProps(),
+        'example details received': props<{
+        exampleDetails: ExampleResponse;
+        }>(),
+        'example details loading failed': props<{ error: string | null }>(),
+    },
+...
+```
+
+## [](#html)3\. HTML
+
+_Adapt in File:_ `<feature>-details.component.html`
+
+```html
+    <ocx-portal-page *ngrxLet="viewModel$; let vm">
+        <p-tabView
+            [(activeIndex)]="activeTabIndex"
+            (onChange)="handleTabChange($event)"
+        >
+            <p-tabPanel
+                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
+            >
+                <div *ngIf="vm" >
+                    <app-example-details-tab
+                        [vm]="vm?.exampleDetails"
+                    ></app-example-details-tab>
+                </div>
+            </p-tabPanel>
+        </p-tabView>
+    </ocx-portal-page>
+```
+
+## [](#component)4\. Component
+
+_Adapt in File:_ `<feature>-details.component.ts`
+
+```javascript
+    handleTabChange(event: { originalEvent: Event; index: number }) {
+        switch (event.index) {
+            case 0:
+                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
+                break;
+            ...
+            default:
+                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
+        }
+    }
+```
+
+## [](#reducers)5\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            activeTab: 'ExampleDetailsTab',
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
+        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: exampleDetails,
+        })
+    ),
+    on(
+        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
+        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
+            ...state,
+            exampleDetails: undefined,
+        })
+    ),
+...
+```
+
+## [](#selectors)6\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-details.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>DetailsViewModel = createSelector(
+        ...
+        selectExampleDetailsTabViewModel,
+        ...
+      (
+        ...
+        exampleDetailsTab,
+        ...
+      ): <%= featureClassName %>DetailsViewModel => ({
+        ...
+        exampleDetailsTab,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)7\. Effects
+
+_Adapt in File:_ `<feature>-details.effects.ts`
+
+```javascript
+    exampleDetailsTab$ = createEffect(() => {
+        return this.actions$.pipe(
+            ofType(
+                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
+            ),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
+            ),
+            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
+            concatLatestFrom(() =>
+                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
+            ),
+            switchMap(([, id]) => {
+                return this.<%= featureClassName %>DetailsService
+                    .getExampleDetailsTabDataById(id)
+                    .pipe(
+                        map(({ exampleDetailsTabData }) => {
+                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
+                            exampleDetails: exampleDetailsTabData,
+                        });
+                    }),
+                    catchError((error) =>
+                        of(
+                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
+                                error,
+                            }),
+                        ),
+                    ),
+                );
+            }),
+        );
+    });
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 NgRX
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -7934,193 +8121,6 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 * Router Store: [Router Store](https://ngrx.io/guide/router-store)
 * DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
 * Schematics: [Schematics](https://ngrx.io/guide/schematics)
-
-Lazy loading tabs
-====================
-## [](#goal)Goal: Load tabs dynamically
-
-Only load data for a tab when it is selected.
-
-| |  Please replace all occurences of **exampleDetailsTab** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------------- |
-
-## [](#state-and-viewmodel)1\. State & viewmodel
-
-Add additional member for the tabs in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-details.state.ts`
-
-```javascript
-...
-    activeTab: 'ExampleDetailsTab' | ... | 'Other';
-...
-```
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts`
-
-```javascript
-...
-    exampleDetailsTab: exampleDetailsTabViewModel;
-...
-```
-
-## [](#actions)2\. Actions
-
-Create following actions to handle the events regarding autocomplete:
-
-_Adapt in File:_ `<feature>-details.actions.ts`
-
-```javascript
-...
-    events: {
-        'other tab selected': emptyProps(),
-        'example details tab selected': emptyProps(),
-        'example details received': props<{
-        exampleDetails: ExampleResponse;
-        }>(),
-        'example details loading failed': props<{ error: string | null }>(),
-    },
-...
-```
-
-## [](#html)3\. HTML
-
-_Adapt in File:_ `<feature>-details.component.html`
-
-```html
-    <ocx-portal-page *ngrxLet="viewModel$; let vm">
-        <p-tabView
-            [(activeIndex)]="activeTabIndex"
-            (onChange)="handleTabChange($event)"
-        >
-            <p-tabPanel
-                [header]="'FEATURE_DETAILS.TABS.EXAMPLE_DETAILS' | translate"
-            >
-                <div *ngIf="vm" >
-                    <app-example-details-tab
-                        [vm]="vm?.exampleDetails"
-                    ></app-example-details-tab>
-                </div>
-            </p-tabPanel>
-        </p-tabView>
-    </ocx-portal-page>
-```
-
-## [](#component)4\. Component
-
-_Adapt in File:_ `<feature>-details.component.ts`
-
-```javascript
-    handleTabChange(event: { originalEvent: Event; index: number }) {
-        switch (event.index) {
-            case 0:
-                this.store.dispatch(FeatureDetailsActions.exampleDetailsTabSelected());
-                break;
-            ...
-            default:
-                this.store.dispatch(FeatureDetailsActions.otherTabSelected());
-        }
-    }
-```
-
-## [](#reducers)5\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            activeTab: 'ExampleDetailsTab',
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsReceived,
-        (state: <%= featureClassName %>DetailsState, { exampleDetails }): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: exampleDetails,
-        })
-    ),
-    on(
-        <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed,
-        (state: <%= featureClassName %>DetailsState): <%= featureClassName %>DetailsState => ({
-            ...state,
-            exampleDetails: undefined,
-        })
-    ),
-...
-```
-
-## [](#selectors)6\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-details.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>DetailsViewModel = createSelector(
-        ...
-        selectExampleDetailsTabViewModel,
-        ...
-      (
-        ...
-        exampleDetailsTab,
-        ...
-      ): <%= featureClassName %>DetailsViewModel => ({
-        ...
-        exampleDetailsTab,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)7\. Effects
-
-_Adapt in File:_ `<feature>-details.effects.ts`
-
-```javascript
-    exampleDetailsTab$ = createEffect(() => {
-        return this.actions$.pipe(
-            ofType(
-                <%= featureClassName %>DetailsActions.exampleDetailsTabSelected,
-            ),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectActiveTab),
-            ),
-            filter(([, activeTab]) => activeTab === 'ExampleDetailsTab'),
-            concatLatestFrom(() =>
-                this.store.select(<%= featureClassName %>DetailsSelectors.selectSomePropertyContainingId),
-            ),
-            switchMap(([, id]) => {
-                return this.<%= featureClassName %>DetailsService
-                    .getExampleDetailsTabDataById(id)
-                    .pipe(
-                        map(({ exampleDetailsTabData }) => {
-                        return <%= featureClassName %>DetailsActions.exampleDetailsReceived({
-                            exampleDetails: exampleDetailsTabData,
-                        });
-                    }),
-                    catchError((error) =>
-                        of(
-                            <%= featureClassName %>DetailsActions.exampleDetailsLoadingFailed({
-                                error,
-                            }),
-                        ),
-                    ),
-                );
-            }),
-        );
-    });
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 Content Visibility Based on Permissions
 ====================
@@ -8475,6 +8475,71 @@ The [WorkspaceService](../../../onecx-portal-ui-libs/libraries/angular-integrati
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
+OneCX Multi-language Translations Usage
+====================
+## [](#overview)Overview
+
+This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
+
+## [](#prerequisites)Prerequisites
+
+Before proceeding, ensure that the multi-language setup is complete.
+
+## [](#usage)Usage
+
+It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
+
+### [](#templates-usage)Templates Usage
+
+Use translations via **translate** pipe.
+
+component.html
+
+```html
+<p>{{ 'HELLO' | translate }}</p>
+```
+
+### [](#translate-service-usage)TranslateService Usage
+
+Use translations via **TranslateService**.
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+
+this.translate.get('WELCOME').subscribe((translated: string) => {
+    console.log('Translated message:', translated);
+});
+```
+
+### [](#with-parameters)With Parameters
+
+Use translations with parameters. Example:
+
+en.json
+
+```json
+{
+  "GREETING": "Hello, {{name}}! Welcome back."
+}
+```
+
+component.html
+
+```html
+<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
+```
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+this.translate.get('GREETING', params).subscribe((translated: string) => {
+    console.log('Translated with params:', translated);
+});
+```
+
 OneCX Multi-language Translations
 ====================
 ## [](#overview)Overview
@@ -8656,71 +8721,6 @@ To verify that the setup is complete, ensure the following:
 ## [](#next-steps)Next Steps
 
 After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
-
-OneCX Multi-language Translations Usage
-====================
-## [](#overview)Overview
-
-This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
-
-## [](#prerequisites)Prerequisites
-
-Before proceeding, ensure that the multi-language setup is complete.
-
-## [](#usage)Usage
-
-It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
-
-### [](#templates-usage)Templates Usage
-
-Use translations via **translate** pipe.
-
-component.html
-
-```html
-<p>{{ 'HELLO' | translate }}</p>
-```
-
-### [](#translate-service-usage)TranslateService Usage
-
-Use translations via **TranslateService**.
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-
-this.translate.get('WELCOME').subscribe((translated: string) => {
-    console.log('Translated message:', translated);
-});
-```
-
-### [](#with-parameters)With Parameters
-
-Use translations with parameters. Example:
-
-en.json
-
-```json
-{
-  "GREETING": "Hello, {{name}}! Welcome back."
-}
-```
-
-component.html
-
-```html
-<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
-```
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-this.translate.get('GREETING', params).subscribe((translated: string) => {
-    console.log('Translated with params:', translated);
-});
-```
 
 OneCX Multi-language Translations
 ====================
@@ -9784,6 +9784,53 @@ The library also provides routing integration helpers:
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
+ConfigurationService and environment variables (runtime configuration)
+====================
+## [](#configuration-service-configure-env-json)Configure `env.json`
+
+The Shell has its own `assets/env.json` file.`ConfigurationService` loads its runtime configuration from that file.
+
+Configure these values only by setting regular environment variables for the Shell deployment. The Shell UI container injects those values into `assets/env.json`.
+
+Example Shell environment variables
+
+```dockerfile
+ENV BFF_URL http://onecx-shell-bff:8080/
+ENV APP_BASE_HREF /newShell/
+ENV AUTH_SERVICE keycloak
+ENV ONECX_PORTAL_SEARCH_BUTTONS_REVERSED 'false'
+ENV POLYFILL_SCOPE_MODE 'PERFORMANCE'
+```
+
+During deployment, these environment variable values are written to `assets/env.json`.
+
+## [](#configuration-service-access-variables)Access variables
+
+Values are available after `ConfigurationService.init()` completes.
+
+```ts
+import { Component, inject } from '@angular/core';
+import { CONFIG_KEY, ConfigurationService } from '@onecx/angular-integration-interface';
+
+@Component({
+  selector: 'my-shell-component',
+  template: `...`,
+})
+export class MyShellComponent {
+  private readonly configurationService = inject(ConfigurationService);
+
+  async ngOnInit() {
+    const keycloakUrl = await this.configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL);
+    const allValues = await this.configurationService.getConfig();
+  }
+}
+```
+
+Common access patterns:
+
+* `await configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL)`
+* `await configurationService.getConfig()`
+
 AppConfigService and environment variables (runtime configuration)
 ====================
 ## [](#app-config-service-configure-env-json)Configure `env.json`
@@ -9853,53 +9900,6 @@ Common access patterns:
 
 * `appConfigService.getProperty('SOME_KEY')`
 * `appConfigService.getConfig()`
-
-ConfigurationService and environment variables (runtime configuration)
-====================
-## [](#configuration-service-configure-env-json)Configure `env.json`
-
-The Shell has its own `assets/env.json` file.`ConfigurationService` loads its runtime configuration from that file.
-
-Configure these values only by setting regular environment variables for the Shell deployment. The Shell UI container injects those values into `assets/env.json`.
-
-Example Shell environment variables
-
-```dockerfile
-ENV BFF_URL http://onecx-shell-bff:8080/
-ENV APP_BASE_HREF /newShell/
-ENV AUTH_SERVICE keycloak
-ENV ONECX_PORTAL_SEARCH_BUTTONS_REVERSED 'false'
-ENV POLYFILL_SCOPE_MODE 'PERFORMANCE'
-```
-
-During deployment, these environment variable values are written to `assets/env.json`.
-
-## [](#configuration-service-access-variables)Access variables
-
-Values are available after `ConfigurationService.init()` completes.
-
-```ts
-import { Component, inject } from '@angular/core';
-import { CONFIG_KEY, ConfigurationService } from '@onecx/angular-integration-interface';
-
-@Component({
-  selector: 'my-shell-component',
-  template: `...`,
-})
-export class MyShellComponent {
-  private readonly configurationService = inject(ConfigurationService);
-
-  async ngOnInit() {
-    const keycloakUrl = await this.configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL);
-    const allValues = await this.configurationService.getConfig();
-  }
-}
-```
-
-Common access patterns:
-
-* `await configurationService.getProperty(CONFIG_KEY.KEYCLOAK_URL)`
-* `await configurationService.getConfig()`
 
 OneCX environment variables (runtime configuration)
 ====================
@@ -9973,81 +9973,6 @@ Microfrontend (MFE):
 ### [](#environment-variables-troubleshooting-config-not-applied)Config is not applied
 
 * `AppConfigService.init(baseUrl)` (MFE) must run during bootstrap.
-
-Dropdown
-====================
-## [](#goal)Goal: Add Dropdown Input
-
-Add a Dropdown as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleEnum: z
-        .string()
-        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-dropdown
-              id="exampleEnum"
-              formControlName="exampleEnum"
-              appendTo="body"
-              [options]="(exampleEnum$ | async) ?? []"
-              optionLabel="label"
-              optionValue="value"
-              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
-              display="chip"
-              [showClear]="true"
-        ></p-dropdown>
-        <label for="exampleEnum$">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)3\. Component
-
-Furthermore, the following needs to be done to have the correct translations displayed:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { TranslateService } from '@ngx-translate/core';
-    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
-    ...
-
-    constructor(
-        ...
-        private translateService: TranslateService,
-        ...
-    ) {}
-    ...
-
-    exampleEnum$ = enumToDropdownOptions(
-        this.translateService,
-        <%= featurePropertyName %>SearchRequestExampleEnum,
-        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
-    );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 Calendar
 ====================
@@ -10168,6 +10093,81 @@ _Adapt in File:_ `<feature>-search.effects.ts`
     },
     { dispatch: false },
   );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
+Dropdown
+====================
+## [](#goal)Goal: Add Dropdown Input
+
+Add a Dropdown as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleEnum** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First, add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleEnum: z
+        .string()
+        .transform((v) => v as <%= featurePropertyName %>SearchRequestExampleEnum)
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt by replacing all occurences of `exampleEnum` with the actual name which is defined.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-dropdown
+              id="exampleEnum"
+              formControlName="exampleEnum"
+              appendTo="body"
+              [options]="(exampleEnum$ | async) ?? []"
+              optionLabel="label"
+              optionValue="value"
+              placeholder="{{ 'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.PLACEHOLDER' | translate }}"
+              display="chip"
+              [showClear]="true"
+        ></p-dropdown>
+        <label for="exampleEnum$">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.TITLE' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)3\. Component
+
+Furthermore, the following needs to be done to have the correct translations displayed:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { TranslateService } from '@ngx-translate/core';
+    import { enumToDropdownOptions } from '@onecx/angular-accelerator';
+    ...
+
+    constructor(
+        ...
+        private translateService: TranslateService,
+        ...
+    ) {}
+    ...
+
+    exampleEnum$ = enumToDropdownOptions(
+        this.translateService,
+        <%= featurePropertyName %>SearchRequestExampleEnum,
+        'YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ENUM.OPTIONS.',
+    );
 ```
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
@@ -14005,60 +14005,6 @@ After adaptations to the detail view and form controls, the detail component can
 
 Figure 5\. Detail UI with adapted detail view
 
-Create a Simple NgRx Page
-====================
-This guide describes how to create a simple NgRx page using the OneCX App Generator.
-
-A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
-This can be done if you have already set up an initial Application with an feature.
-
-| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
-| -------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#create-ngrx-page)Create NgRx Page
-
-Follow these steps:
-
-1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
-2. Run the following OneCX App Generator command.  
-The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
-Generate page/component  
-```bash  
-nx generate @onecx/angular-generator:ngrx-page [feature module]  
-```
-3. Follow the prompts to provide details like the page component name and the page title.  
-That’s it.
-4. Navigate in your browser to the new component using the the component name as route.
-
-## [](#example)Example
-
-To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
-
-Generate page/component
-
-```bash
-nx generate @onecx/angular-generator:ngrx-page hello-world
-```
-
-When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
-To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
-
-OneCX Local Environment with Hello Component
-
-```text
-http://onecx.localhost/onecx-shell/admin/hello-world/hello
-```
-
-![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
-
-Figure 1\. Hello Component in action
-
-Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
-
-![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
-
-Figure 2\. Generated files for the Hello Component
-
 Create a Feature Module
 ====================
 What is a Feature Module?
@@ -14162,6 +14108,60 @@ npm run test
 ![test result feature](../_images/test_result_feature.png) 
 
 Figure 2\. Test result of the generated feature module
+
+Create a Simple NgRx Page
+====================
+This guide describes how to create a simple NgRx page using the OneCX App Generator.
+
+A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
+This can be done if you have already set up an initial Application with an feature.
+
+| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#create-ngrx-page)Create NgRx Page
+
+Follow these steps:
+
+1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
+2. Run the following OneCX App Generator command.  
+The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
+Generate page/component  
+```bash  
+nx generate @onecx/angular-generator:ngrx-page [feature module]  
+```
+3. Follow the prompts to provide details like the page component name and the page title.  
+That’s it.
+4. Navigate in your browser to the new component using the the component name as route.
+
+## [](#example)Example
+
+To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
+
+Generate page/component
+
+```bash
+nx generate @onecx/angular-generator:ngrx-page hello-world
+```
+
+When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
+To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
+
+OneCX Local Environment with Hello Component
+
+```text
+http://onecx.localhost/onecx-shell/admin/hello-world/hello
+```
+
+![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
+
+Figure 1\. Hello Component in action
+
+Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
+
+![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
+
+Figure 2\. Generated files for the Hello Component
 
 Create an Entity Schema
 ====================
@@ -14448,6 +14448,24 @@ nx generate <namespaceOfTheGenerator>/angular-generator:delete <feature>
 | |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
+Development: Get the Generator
+====================
+The following is only required if you want to contribute to the development of the generator or want to use the generator locally without installing it globally from npm. If you just want to use the generator, you can install it globally from npm and skip the following steps.
+
+1. Clone the **onecx-nx-plugins** repository into a folder on the local machine/inside WSL2  
+```bash  
+git clone https://github.com/onecx/onecx-nx-plugins.git  
+```
+2. Navigate into the cloned repository and install the dependencies  
+```bash  
+cd onecx-nx-plugins  
+npm install  
+```
+3. Build the OneCX App Generator  
+```bash  
+npm run build  
+```
+
 Glossary
 ====================
 A collection of essential terms and concepts in the context of the **OneCX UI App Generator**.
@@ -14545,23 +14563,24 @@ After adding the permissions into the local environment, you can use them within
 
 Figure 1\. Bookstore permissions within the Permission UI
 
-Development: Get the Generator
+undefined
 ====================
-The following is only required if you want to contribute to the development of the generator or want to use the generator locally without installing it globally from npm. If you just want to use the generator, you can install it globally from npm and skip the following steps.
+### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
 
-1. Clone the **onecx-nx-plugins** repository into a folder on the local machine/inside WSL2  
-```bash  
-git clone https://github.com/onecx/onecx-nx-plugins.git  
-```
-2. Navigate into the cloned repository and install the dependencies  
-```bash  
-cd onecx-nx-plugins  
-npm install  
-```
-3. Build the OneCX App Generator  
-```bash  
-npm run build  
-```
+The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/angular-generator:pre-commit-validation
+
+| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
+
+The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
+
+The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
 
 Create a Detail Page (React)
 ====================
@@ -14765,25 +14784,6 @@ Use the following command to run the tests:
 ```bash
 npm run test
 ```
-
-undefined
-====================
-### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
-
-The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/angular-generator:pre-commit-validation
-
-| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
-
-The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
-
-The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
 
 Create a React Page
 ====================
@@ -15074,6 +15074,13 @@ A minimal, ready-to-use page with header and content area.
 
 undefined
 ====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
 ## [](#customize-form-fields)Customize form fields
 
 The form fields of the dialog need to be adapted
@@ -15165,13 +15172,6 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -17237,6 +17237,141 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
+Configure Search Add-ons
+====================
+Besides the search criteria and results, the generated React search page contains several add-ons that you may want to adapt: the breadcrumb, the header actions (chart toggle and export), the permission gating and the translations.
+
+## [](#action-s12)ACTION S12 - Breadcrumb
+
+The header section component wires a default breadcrumb. Adjust the home target and items to match your portal base route (the `href` MFE base).
+
+| Directory | src/components/<feature>                       |
+| --------- | ---------------------------------------------- |
+| File      | <resource>-search-header-section.component.tsx |
+
+ACTION S12 in `<resource>-search-header-section.component.tsx` 
+
+```tsx
+    // ACTION S12: wire the breadcrumb home/items to your portal base route (the `href` MFE base) if needed
+    breadcrumbHome={{ icon: 'pi pi-home', url: '/' }}
+    breadcrumbItems={[{ label: t(`${SEARCH_PREFIX}.BREADCRUMB`) }]}
+```
+
+Point `breadcrumbHome.url` to your application base route and adjust the items as needed.
+
+## [](#action-s13)ACTION S13 - Permission gating
+
+The search page is wrapped in a `PortalPage` that is gated on the `<RESOURCE>#SEARCH` permission. Users without that permission do not see the page content.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S13 in `<resource>-search.page.tsx` 
+
+```tsx
+    // ACTION S13: the page is gated on the SEARCH permission; the `standalone` flag skips gating for standalone apps
+    <PortalPage
+      permission="<RESOURCE>#SEARCH"
+      ariaLabel={t('<RESOURCE>_SEARCH.ARIA_LABEL')}
+    >
+```
+
+Generate with `--standalone` to skip permission gating for standalone apps (the `permission` prop is then omitted).
+
+| |  The matching permissions are added to helm/values.yaml during generation. Make sure the permission exists in your auth system. |
+| --------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#action-s9)ACTION S9 - Results chart
+
+The header provides a "Show chart" / "Hide chart" action. The generated handler only toggles visibility; implement the actual chart rendering.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S9 in `<resource>-search.page.tsx` 
+
+```tsx
+  const handleToggleChart = () => {
+    // ACTION S9: render the results chart; this only toggles visibility for now
+    setChartVisible((visible) => !visible);
+  };
+```
+
+Render your chart component based on the `chartVisible` state and the current `results`.
+
+## [](#action-s10)ACTION S10 - CSV export
+
+The "Export all" header action is stubbed. Implement the CSV export of the current results.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S10 in `<resource>-search.page.tsx` 
+
+```tsx
+  const handleExportAll = () => {
+    // ACTION S10: implement CSV export of the current results
+    if (typeof window !== 'undefined') {
+      window.alert('Export all is not implemented yet.');
+    }
+  };
+```
+
+Replace the placeholder with logic that serializes `results` to CSV and triggers a download.
+
+## [](#action-s8)ACTION S8 - Translations
+
+The generator merges i18n templates into your translation files. Every generated value is the placeholder `ACTION S8: ADD TRANSLATION`. Replace each placeholder with the actual text, and add keys for the criteria fields and result columns you introduced in [Search Criteria](search-criteria.html) and [Search Results](search-results.html).
+
+| Directory | src/assets/i18n (merged into en.json, de.json, …​) |
+| --------- | -------------------------------------------------- |
+| File      | generated from master.json                         |
+
+ACTION S8 - generated translation keys (excerpt) 
+
+```json
+{
+  "<RESOURCE>_SEARCH": {
+    "HEADER": "ACTION S8: ADD TRANSLATION",
+    "SUB_HEADER": "ACTION S8: ADD TRANSLATION",
+    "ARIA_LABEL": "ACTION S8: ADD TRANSLATION",
+    "EMPTY_RESULTS": "ACTION S8: ADD TRANSLATION",
+    "BREADCRUMB": "ACTION S8: ADD TRANSLATION",
+    "HEADER_ACTIONS": {
+      "EXPORT_ALL": "ACTION S8: ADD TRANSLATION",
+      "SHOW_CHART": "ACTION S8: ADD TRANSLATION",
+      "HIDE_CHART": "ACTION S8: ADD TRANSLATION"
+    },
+    "RESULTS": {
+      "ID": "ACTION S8: ADD TRANSLATION",
+      "ACTIONS": "ACTION S8: ADD TRANSLATION",
+      "COLUMN_GROUP": "ACTION S8: ADD TRANSLATION",
+      "COLUMN_SETTINGS": "ACTION S8: ADD TRANSLATION",
+      "NAME": "ACTION S8: ADD TRANSLATION"
+    },
+    "ERROR_MESSAGES": {
+      "SEARCH_RESULTS_LOADING_FAILED": "ACTION S8: ADD TRANSLATION"
+    },
+    "CRITERIA": {
+      "ACTIONS": {
+        "SEARCH": "ACTION S8: ADD TRANSLATION",
+        "RESET": "ACTION S8: ADD TRANSLATION"
+      },
+      "CHANGE_ME": {
+        "LABEL": "ACTION S8: ADD TRANSLATION",
+        "PLACEHOLDER": "ACTION S8: ADD TRANSLATION",
+        "ARIA_LABEL": "ACTION S8: ADD TRANSLATION"
+      }
+    }
+  }
+}
+```
+
+Replace the `CHANGE_ME` block with the keys for your actual criteria, and add a `RESULTS.<COLUMN>` key for each column.
+
 Map the API and Prepare Mock Data
 ====================
 The React search page fetches its data through a generated `<Resource>Api`, called from the `use<Resource>Search` hook. This page describes how to map the search criteria to the API request, how the search endpoint is defined in the OpenAPI file, and how to provide mock data while no real backend is available.
@@ -17457,141 +17592,6 @@ Figure 1\. Example output when the server is running and a request is made to th
 ## [](#using-the-mock-api)Using the Mock API
 
 Point your application’s BFF base URL to the mock server (e.g. `http://localhost:3000`) instead of the real backend, so the generated `<Resource>Api` calls the mock endpoints. Adjust the configured BFF/proxy target of your React UI app accordingly.
-
-Configure Search Add-ons
-====================
-Besides the search criteria and results, the generated React search page contains several add-ons that you may want to adapt: the breadcrumb, the header actions (chart toggle and export), the permission gating and the translations.
-
-## [](#action-s12)ACTION S12 - Breadcrumb
-
-The header section component wires a default breadcrumb. Adjust the home target and items to match your portal base route (the `href` MFE base).
-
-| Directory | src/components/<feature>                       |
-| --------- | ---------------------------------------------- |
-| File      | <resource>-search-header-section.component.tsx |
-
-ACTION S12 in `<resource>-search-header-section.component.tsx` 
-
-```tsx
-    // ACTION S12: wire the breadcrumb home/items to your portal base route (the `href` MFE base) if needed
-    breadcrumbHome={{ icon: 'pi pi-home', url: '/' }}
-    breadcrumbItems={[{ label: t(`${SEARCH_PREFIX}.BREADCRUMB`) }]}
-```
-
-Point `breadcrumbHome.url` to your application base route and adjust the items as needed.
-
-## [](#action-s13)ACTION S13 - Permission gating
-
-The search page is wrapped in a `PortalPage` that is gated on the `<RESOURCE>#SEARCH` permission. Users without that permission do not see the page content.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S13 in `<resource>-search.page.tsx` 
-
-```tsx
-    // ACTION S13: the page is gated on the SEARCH permission; the `standalone` flag skips gating for standalone apps
-    <PortalPage
-      permission="<RESOURCE>#SEARCH"
-      ariaLabel={t('<RESOURCE>_SEARCH.ARIA_LABEL')}
-    >
-```
-
-Generate with `--standalone` to skip permission gating for standalone apps (the `permission` prop is then omitted).
-
-| |  The matching permissions are added to helm/values.yaml during generation. Make sure the permission exists in your auth system. |
-| --------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#action-s9)ACTION S9 - Results chart
-
-The header provides a "Show chart" / "Hide chart" action. The generated handler only toggles visibility; implement the actual chart rendering.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S9 in `<resource>-search.page.tsx` 
-
-```tsx
-  const handleToggleChart = () => {
-    // ACTION S9: render the results chart; this only toggles visibility for now
-    setChartVisible((visible) => !visible);
-  };
-```
-
-Render your chart component based on the `chartVisible` state and the current `results`.
-
-## [](#action-s10)ACTION S10 - CSV export
-
-The "Export all" header action is stubbed. Implement the CSV export of the current results.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S10 in `<resource>-search.page.tsx` 
-
-```tsx
-  const handleExportAll = () => {
-    // ACTION S10: implement CSV export of the current results
-    if (typeof window !== 'undefined') {
-      window.alert('Export all is not implemented yet.');
-    }
-  };
-```
-
-Replace the placeholder with logic that serializes `results` to CSV and triggers a download.
-
-## [](#action-s8)ACTION S8 - Translations
-
-The generator merges i18n templates into your translation files. Every generated value is the placeholder `ACTION S8: ADD TRANSLATION`. Replace each placeholder with the actual text, and add keys for the criteria fields and result columns you introduced in [Search Criteria](search-criteria.html) and [Search Results](search-results.html).
-
-| Directory | src/assets/i18n (merged into en.json, de.json, …​) |
-| --------- | -------------------------------------------------- |
-| File      | generated from master.json                         |
-
-ACTION S8 - generated translation keys (excerpt) 
-
-```json
-{
-  "<RESOURCE>_SEARCH": {
-    "HEADER": "ACTION S8: ADD TRANSLATION",
-    "SUB_HEADER": "ACTION S8: ADD TRANSLATION",
-    "ARIA_LABEL": "ACTION S8: ADD TRANSLATION",
-    "EMPTY_RESULTS": "ACTION S8: ADD TRANSLATION",
-    "BREADCRUMB": "ACTION S8: ADD TRANSLATION",
-    "HEADER_ACTIONS": {
-      "EXPORT_ALL": "ACTION S8: ADD TRANSLATION",
-      "SHOW_CHART": "ACTION S8: ADD TRANSLATION",
-      "HIDE_CHART": "ACTION S8: ADD TRANSLATION"
-    },
-    "RESULTS": {
-      "ID": "ACTION S8: ADD TRANSLATION",
-      "ACTIONS": "ACTION S8: ADD TRANSLATION",
-      "COLUMN_GROUP": "ACTION S8: ADD TRANSLATION",
-      "COLUMN_SETTINGS": "ACTION S8: ADD TRANSLATION",
-      "NAME": "ACTION S8: ADD TRANSLATION"
-    },
-    "ERROR_MESSAGES": {
-      "SEARCH_RESULTS_LOADING_FAILED": "ACTION S8: ADD TRANSLATION"
-    },
-    "CRITERIA": {
-      "ACTIONS": {
-        "SEARCH": "ACTION S8: ADD TRANSLATION",
-        "RESET": "ACTION S8: ADD TRANSLATION"
-      },
-      "CHANGE_ME": {
-        "LABEL": "ACTION S8: ADD TRANSLATION",
-        "PLACEHOLDER": "ACTION S8: ADD TRANSLATION",
-        "ARIA_LABEL": "ACTION S8: ADD TRANSLATION"
-      }
-    }
-  }
-}
-```
-
-Replace the `CHANGE_ME` block with the keys for your actual criteria, and add a `RESULTS.<COLUMN>` key for each column.
 
 Configure Search Criteria
 ====================
@@ -19116,21 +19116,6 @@ This component displays data as a list or grid and allows you to switch between 
 
 To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
-
 OneCX Consent
 ====================
 ## [](#overview)Overview
@@ -19225,6 +19210,21 @@ URL normalization aims to avoid accidental mismatches:
 * Removes a trailing slash
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
+
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX GroupByCountDiagram
 ====================
@@ -20170,6 +20170,118 @@ For recommended libraries, the function applies the following defaults:
 * `strictVersion`: `false` — Permits version flexibility
 * `eager`: `false` — Enables lazy loading of shared modules
 
+ngrx-linter-rules
+====================
+`@onecx/ngrx-linter-rules` is an ESLint plugin that provides opinionated NgRx rules. It ships with a predefined config (`recommended`) which enables all rules with the severity `warn`.
+
+## [](#installation)Installation
+
+Install the plugin as a dev dependency:
+
+```sh
+npm i -D @onecx/ngrx-linter-rules
+```
+
+## [](#use-the-predefined-config-recommended)Use the predefined config (recommended)
+
+The plugin exports an ESLint config named `recommended`. This is the easiest way to enable all rules in one step.
+
+### [](#old-way-eslint-legacy-config-eslintrc)Old way: ESLint "legacy" config (`.eslintrc.*`)
+
+Add the recommended config via `extends`:
+
+```json
+{
+  "extends": ["plugin:@onecx/ngrx-linter-rules/recommended"]
+}
+```
+
+You can place this in your workspace root `.eslintrc.json` or in a project-level `.eslintrc.json`.
+
+### [](#new-way-eslint-flat-config-eslint-config)New way: ESLint flat config (`eslint.config.*`)
+
+The exported `configs.recommended` is in the legacy ESLint config shape. For a flat config setup, you can still reuse the generated rule map from `configs.recommended.rules`.
+
+```js
+// eslint.config.cjs
+const ngrxLinterRules = require('@onecx/ngrx-linter-rules')
+
+module.exports = [
+  {
+    plugins: {
+      '@onecx/ngrx-linter-rules': ngrxLinterRules.plugin,
+    },
+    rules: {
+      ...ngrxLinterRules.configs.recommended.rules,
+    },
+  },
+]
+```
+
+## [](#what-recommendedrules-means)What `recommendedRules` means
+
+Internally, the `recommended` config uses `recommendedRules`.`recommendedRules` is generated from the plugin’s exported `rules` object and sets every rule to `"warn"`.
+
+That means:
+
+* When a new rule is added to `@onecx/ngrx-linter-rules`, it is automatically included in `recommended`.
+* All rules are enabled under the rule namespace `@onecx/ngrx-linter-rules/<rule-name>`.
+
+Example rule keys:
+
+* `@onecx/ngrx-linter-rules/no-store-dispatch-in-effect`
+* `@onecx/ngrx-linter-rules/http-calls-only-in-effects`
+
+## [](#override-severities-or-disable-specific-rules)Override severities or disable specific rules
+
+You can override any rule after extending the config:
+
+```json
+{
+  "extends": ["plugin:@onecx/ngrx-linter-rules/recommended"],
+  "rules": {
+    "@onecx/ngrx-linter-rules/no-store-dispatch-in-effect": "error",
+    "@onecx/ngrx-linter-rules/http-calls-only-in-effects": "off"
+  }
+}
+```
+
+For flat config, override rules after spreading `configs.recommended.rules`:
+
+```js
+// eslint.config.cjs
+const ngrxLinterRules = require('@onecx/ngrx-linter-rules')
+
+module.exports = [
+  {
+    plugins: {
+      '@onecx/ngrx-linter-rules': ngrxLinterRules.plugin,
+    },
+    rules: {
+      ...ngrxLinterRules.configs.recommended.rules,
+      '@onecx/ngrx-linter-rules/no-store-dispatch-in-effect': 'error',
+      '@onecx/ngrx-linter-rules/http-calls-only-in-effects': 'off',
+    },
+  },
+]
+```
+
+React Libraries
+====================
+## [](#overview)Overview
+
+The React libraries in `onecx-portal-ui-libs` provide building blocks for integrating React microfrontends with the OneCX platform. They complement the framework-agnostic [@onecx/integration-interface](integration-interface.html) by adding React-focused helpers, HOCs, and integration utilities.
+
+## [](#libraries)Libraries
+
+| Library                                | Description                                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **@onecx/react-auth**                  | React helpers for authentication and integration with OneCX security flows.                                 |
+| **@onecx/react-integration-interface** | React-friendly wrappers and types for working with OneCX integration topics and interfaces.                 |
+| **@onecx/react-utils**                 | Utilities and HOCs for styling isolation, scoping, and common integration patterns in React microfrontends. |
+| **@onecx/react-remote-components**     | React utilities for consuming and rendering remote components registered in the OneCX platform.             |
+| **@onecx/react-webcomponents**         | Helpers for using web components in React-based OneCX microfrontends.                                       |
+
 Library: @onecx/integration-interface
 ====================
 ## [](#overview)Overview
@@ -20666,118 +20778,6 @@ __Table 18\. UserProfileAccountSettingsLocaleAndTimeSettings structure__
 
 | |  For Angular-based applications, the [@onecx/angular-integration-interface offers an Injectable UserService service](angular-integration-interface.html#user-service) exposing functions useful when dealing with user related data. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-ngrx-linter-rules
-====================
-`@onecx/ngrx-linter-rules` is an ESLint plugin that provides opinionated NgRx rules. It ships with a predefined config (`recommended`) which enables all rules with the severity `warn`.
-
-## [](#installation)Installation
-
-Install the plugin as a dev dependency:
-
-```sh
-npm i -D @onecx/ngrx-linter-rules
-```
-
-## [](#use-the-predefined-config-recommended)Use the predefined config (recommended)
-
-The plugin exports an ESLint config named `recommended`. This is the easiest way to enable all rules in one step.
-
-### [](#old-way-eslint-legacy-config-eslintrc)Old way: ESLint "legacy" config (`.eslintrc.*`)
-
-Add the recommended config via `extends`:
-
-```json
-{
-  "extends": ["plugin:@onecx/ngrx-linter-rules/recommended"]
-}
-```
-
-You can place this in your workspace root `.eslintrc.json` or in a project-level `.eslintrc.json`.
-
-### [](#new-way-eslint-flat-config-eslint-config)New way: ESLint flat config (`eslint.config.*`)
-
-The exported `configs.recommended` is in the legacy ESLint config shape. For a flat config setup, you can still reuse the generated rule map from `configs.recommended.rules`.
-
-```js
-// eslint.config.cjs
-const ngrxLinterRules = require('@onecx/ngrx-linter-rules')
-
-module.exports = [
-  {
-    plugins: {
-      '@onecx/ngrx-linter-rules': ngrxLinterRules.plugin,
-    },
-    rules: {
-      ...ngrxLinterRules.configs.recommended.rules,
-    },
-  },
-]
-```
-
-## [](#what-recommendedrules-means)What `recommendedRules` means
-
-Internally, the `recommended` config uses `recommendedRules`.`recommendedRules` is generated from the plugin’s exported `rules` object and sets every rule to `"warn"`.
-
-That means:
-
-* When a new rule is added to `@onecx/ngrx-linter-rules`, it is automatically included in `recommended`.
-* All rules are enabled under the rule namespace `@onecx/ngrx-linter-rules/<rule-name>`.
-
-Example rule keys:
-
-* `@onecx/ngrx-linter-rules/no-store-dispatch-in-effect`
-* `@onecx/ngrx-linter-rules/http-calls-only-in-effects`
-
-## [](#override-severities-or-disable-specific-rules)Override severities or disable specific rules
-
-You can override any rule after extending the config:
-
-```json
-{
-  "extends": ["plugin:@onecx/ngrx-linter-rules/recommended"],
-  "rules": {
-    "@onecx/ngrx-linter-rules/no-store-dispatch-in-effect": "error",
-    "@onecx/ngrx-linter-rules/http-calls-only-in-effects": "off"
-  }
-}
-```
-
-For flat config, override rules after spreading `configs.recommended.rules`:
-
-```js
-// eslint.config.cjs
-const ngrxLinterRules = require('@onecx/ngrx-linter-rules')
-
-module.exports = [
-  {
-    plugins: {
-      '@onecx/ngrx-linter-rules': ngrxLinterRules.plugin,
-    },
-    rules: {
-      ...ngrxLinterRules.configs.recommended.rules,
-      '@onecx/ngrx-linter-rules/no-store-dispatch-in-effect': 'error',
-      '@onecx/ngrx-linter-rules/http-calls-only-in-effects': 'off',
-    },
-  },
-]
-```
-
-React Libraries
-====================
-## [](#overview)Overview
-
-The React libraries in `onecx-portal-ui-libs` provide building blocks for integrating React microfrontends with the OneCX platform. They complement the framework-agnostic [@onecx/integration-interface](integration-interface.html) by adding React-focused helpers, HOCs, and integration utilities.
-
-## [](#libraries)Libraries
-
-| Library                                | Description                                                                                                 |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **@onecx/react-auth**                  | React helpers for authentication and integration with OneCX security flows.                                 |
-| **@onecx/react-integration-interface** | React-friendly wrappers and types for working with OneCX integration topics and interfaces.                 |
-| **@onecx/react-utils**                 | Utilities and HOCs for styling isolation, scoping, and common integration patterns in React microfrontends. |
-| **@onecx/react-remote-components**     | React utilities for consuming and rendering remote components registered in the OneCX platform.             |
-| **@onecx/react-webcomponents**         | Helpers for using web components in React-based OneCX microfrontends.                                       |
 
 OneCX IconService
 ====================
@@ -21312,6 +21312,16 @@ FilterType enum
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
 
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
+
 undefined
 ====================
 ## [](#sharedLibraryConfig)Shared Library Configuration
@@ -21479,56 +21489,6 @@ const sharedEntries = getOneCXSharedLibraryConfig(
 );
 ```
 
-undefined
-====================
-## [](#onecxSharedRecommendations)OneCX Shared Recommendations
-
-The `getOneCXSharedRecommendations` function provides OneCX-specific recommendations for shared library configurations. It automatically applies optimized settings for Angular, OneCX, RxJS, PrimeNG, ngx-translate, and ngrx packages.
-
-```ts
-getOneCXSharedRecommendations(
-  libraryName: string,
-  sharedConfig: SharedLibraryConfig
-): false | SharedLibraryConfig
-```
-
-### [](#onecxSharedRecommendationsUsage)Usage Example
-
-```ts
-import { getOneCXSharedRecommendations } from '@onecx/build-utils';
-
-const sharedConfig = {
-  singleton: false,
-  strictVersion: false,
-  eager: false,
-  requiredVersion: 'any',
-  shareScope: 'angular_21'
-};
-
-const recommendedConfig = getOneCXSharedRecommendations('@angular/core', sharedConfig);
-// Output: { singleton: false, strictVersion: false, eager: false, version: '1.0.0', requiredVersion: 'any', shareScope: 'angular_21' }
-```
-
-### [](#configProperties)Config Properties
-
-The `SharedLibraryConfig` object can include the following properties:
-
-| Property           | Type            | Description                                              |
-| ------------------ | --------------- | -------------------------------------------------------- |
-| singleton          | boolean         | Whether only one instance should exist                   |
-| strictVersion      | boolean         | Whether version mismatches should cause errors           |
-| eager              | boolean         | Whether to load immediately vs lazy                      |
-| requiredVersion    | string \| false | Required version or any/false for no requirement         |
-| version            | string          | Actual version of the package                            |
-| includeSecondaries | boolean         | Include secondary entry points (for @angular-architects) |
-| shareScope         | string          | Scope for sharing (e.g., angular\_21)                    |
-
-For recommended libraries, the function applies the following defaults:
-
-* `singleton`: `false` — Allows multiple versions to coexist
-* `strictVersion`: `false` — Permits version flexibility
-* `eager`: `false` — Enables lazy loading of shared modules
-
 Add Webpack Plugin for Angular Material
 ====================
 In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
@@ -21582,6 +21542,102 @@ module.exports = {
   plugins: [...plugins, modifyMaterialPlugin]
 }
 ```
+
+@onecx/angular-utils/cdk
+====================
+`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
+
+## [](#installation)Installation
+
+`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
+
+```sh
+npm i @onecx/angular-utils
+```
+
+## [](#api)API
+
+### [](#onecx-overlay-container)OnecxOverlayContainer
+
+A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
+
+### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
+
+A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
+
+undefined
+====================
+## [](#onecxSharedRecommendations)OneCX Shared Recommendations
+
+The `getOneCXSharedRecommendations` function provides OneCX-specific recommendations for shared library configurations. It automatically applies optimized settings for Angular, OneCX, RxJS, PrimeNG, ngx-translate, and ngrx packages.
+
+```ts
+getOneCXSharedRecommendations(
+  libraryName: string,
+  sharedConfig: SharedLibraryConfig
+): false | SharedLibraryConfig
+```
+
+### [](#onecxSharedRecommendationsUsage)Usage Example
+
+```ts
+import { getOneCXSharedRecommendations } from '@onecx/build-utils';
+
+const sharedConfig = {
+  singleton: false,
+  strictVersion: false,
+  eager: false,
+  requiredVersion: 'any',
+  shareScope: 'angular_21'
+};
+
+const recommendedConfig = getOneCXSharedRecommendations('@angular/core', sharedConfig);
+// Output: { singleton: false, strictVersion: false, eager: false, version: '1.0.0', requiredVersion: 'any', shareScope: 'angular_21' }
+```
+
+### [](#configProperties)Config Properties
+
+The `SharedLibraryConfig` object can include the following properties:
+
+| Property           | Type            | Description                                              |
+| ------------------ | --------------- | -------------------------------------------------------- |
+| singleton          | boolean         | Whether only one instance should exist                   |
+| strictVersion      | boolean         | Whether version mismatches should cause errors           |
+| eager              | boolean         | Whether to load immediately vs lazy                      |
+| requiredVersion    | string \| false | Required version or any/false for no requirement         |
+| version            | string          | Actual version of the package                            |
+| includeSecondaries | boolean         | Include secondary entry points (for @angular-architects) |
+| shareScope         | string          | Scope for sharing (e.g., angular\_21)                    |
+
+For recommended libraries, the function applies the following defaults:
+
+* `singleton`: `false` — Allows multiple versions to coexist
+* `strictVersion`: `false` — Permits version flexibility
+* `eager`: `false` — Enables lazy loading of shared modules
 
 Add Webpack Plugin for PrimeNG
 ====================
@@ -21673,52 +21729,6 @@ const config = withModuleFederationPlugin({
 });
 ```
 
-@onecx/angular-utils/cdk
-====================
-`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
-
-## [](#installation)Installation
-
-`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
-
-```sh
-npm i @onecx/angular-utils
-```
-
-## [](#api)API
-
-### [](#onecx-overlay-container)OnecxOverlayContainer
-
-A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
-  ]
-})
-export class RemoteModule {}
-```
-
-### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
-
-A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
-  ]
-})
-export class RemoteModule {}
-```
-
 Adjust Standalone Mode
 ====================
 In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
@@ -21759,15 +21769,33 @@ npm uninstall --save @onecx/standalone-shell
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
 
-OneCX InteractiveDataView
+undefined
 ====================
-## [](#overview)Overview
+AI Migration Agent 
 
-This document aims to showcase how to manage InteractiveDataView Component.
+**Before You Start**
 
-## [](#related-interfaces)Related Interfaces
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
 
-* [DataTableColumn](data-table-column.html)
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-19
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Migrate OneCX App from Angular 18 to Angular 19
 ====================
@@ -21857,34 +21885,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Add Webpack Plugin for Angular Material](add-angular-material-plugin.html)
 * [Provide ThemeConfig](provide-theme-config.html)
 * [Update Webpack Config to Use Dynamic Shared Entries](update-webpack-config.html)
-
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-19
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Provide ThemeConfig
 ====================
@@ -23502,34 +23502,6 @@ nx migrate --run-migrations
 
 After this step, proceed with the remaining post-migration steps.
 
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-20
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
-
 Adjust ngrx-accelerator library utilities
 ====================
 Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
@@ -23561,6 +23533,34 @@ After
 ```typescript
 import { OneCxActions } from 'ngrx-integration-interface';
 ```
+
+undefined
+====================
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-20
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Migrate OneCX App from Angular 19 to Angular 20
 ====================
@@ -23770,6 +23770,21 @@ export class AppComponent implements OnInit {
 }
 ```
 
+PortalDialogService Signature Changes
+====================
+In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
+
+## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
+
+* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
+
+## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
+
+* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
+
+| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Remove <code>keycloak-js</code> from your application
 ====================
 The `keycloak-js` dependency in `@onecx/angular-auth` has been marked as **optional**. This means:
@@ -23794,21 +23809,6 @@ Keycloak initialization failed! Could not load keycloak-js library which is requ
 ```
 
 If you see this error, your application **still needs `keycloak-js`**, and you must reinstall it.
-
-PortalDialogService Signature Changes
-====================
-In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 20) required changes to the `PortalDialogService` method signatures.
-
-## [](#%5Fsummary%5Fof%5Fchanges)Summary of Changes
-
-* The return type of `openDialog<T>` changed from: `Observable<DialogState<T>>` to `Observable<DialogState<T> | null>`
-
-## [](#%5Fupdate%5Fyour%5Fapplication)Update Your Application
-
-* Adjust your handling of `openDialog()` results. Since the method may now return `Observable<null>`, your code must handle the case where a dialog cannot be created.
-
-| |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Remove @onecx/shell-core
 ====================
@@ -26463,30 +26463,6 @@ The **import-onecx.sh** script can also be used to import custom data into the O
 
 to be continued…​
 
-Extending the OneCX default Environment
-====================
-OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
-
-There are several ways to expand the OneCX local environment
-
-## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
-
-If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
-
-Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
-
-| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
-| ----------------------------------------------------------------------------------------- |
-
-## [](#integrate-microservice-images)Integrate Microservice Images
-
-To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
-
-Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
-
-| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 Integrate Docker Images
 ====================
 If you need to extend this environment with your own containers or import additional data, please taken the following guidelines into account.
@@ -26699,6 +26675,30 @@ Verify that the services are running
 ./list-containers.sh
 ```
 
+Extending the OneCX default Environment
+====================
+OneCX functions as a collection of microservices and microfrontends. The [OneCX Shell](../../onecx-docs-overview/architecture/shell.html) orchestrates the microfrontends for a unified user interface. This concept allows for the easy integration of other services that are launched outside the [OneCX Network](../internal/networking.html).
+
+There are several ways to expand the OneCX local environment
+
+## [](#integrate-a-local-running-microfrontend)Integrate a local running Microfrontend
+
+If a microfrontend has been started separately, integration can be easily accomplished through routing and path rewriting by [Traefik](../utilities.html#traefik).
+
+Follow the instructions [Integrate a local Microfrontend](local-mfe.html) to use your microfrontend directly in OneCX.
+
+| |  This is the recommended procedure for integrating a **locally running microfrontend**. |
+| ----------------------------------------------------------------------------------------- |
+
+## [](#integrate-microservice-images)Integrate Microservice Images
+
+To integrate Docker images into OneCX, you need a separate docker.compose file to manage the integration.
+
+Follow the instructions in [Integrate Microservice Images](local-images.html) to integrate your images into OneCX.
+
+| |  This is the recommended approach for **integrating additional microservices**.For integrating locally running microfrontends, use the method described above. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Integrate a local Microfrontend
 ====================
 This approach enables **hot-reloading** of your locally running micro-frontend: changes you make there are automatically visible in OneCX after the rebuild. The best way for fast frontend development.
@@ -26783,21 +26783,6 @@ http:
 
 | |  If the microfrontend requires its own backend functionality, then these backend services must also be started and presumably integrated into OneCX. The **./toggle-mfes.sh** script does not check this. See [Integrate Local Docker Images](local-images.html) for details on how to integrate additional backend services. The method described here is for all microfrontends except the OneCX Shell. The OneCX Shell has a special role in OneCX and must be started with a specific command. See [Integrate OneCX Shell](../scripts/toggle-mfes.html#integrate-onecx-shell) for details. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-Add extra Data in OneCX Local Environment
-====================
-parking place
-
-## [](#adding-new-files)Adding New Files - Guidelines here?
-
-To add new files to the `imports` directory, follow these guidelines:
-
-1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
-2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
-3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
-4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
-
-By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
 
 Adding Custom Certificates for Java Applications in Docker
 ====================
@@ -26931,6 +26916,21 @@ services:
 ### [](#5-restart-and-verify)5\. Restart and Verify
 
 Verify the SSL/TLS connection works by triggering an HTTPS call and confirming no `PKIX path building failed` or any other TLS/SSL error appears.
+
+Add extra Data in OneCX Local Environment
+====================
+parking place
+
+## [](#adding-new-files)Adding New Files - Guidelines here?
+
+To add new files to the `imports` directory, follow these guidelines:
+
+1. **Naming Conventions** \- use consistent naming patterns based on the type of data being imported. The patterns are listed in the [Convention and file list](#convention-and-file-list) section.
+2. **File Structure** \- JSON files should adhere to the existing structure that is compliant with the respective service’s API.
+3. **Script Updates** \- If adding a new type of data, add new import script that includes new files and uses the appropriate service. Make sure to define the structure of the JSON files.
+4. **Testing** \- Test the import process by running the relevant script and verifying the data in the environment.
+
+By adhering to these conventions, you can ensure consistency and maintainability in the OneCX Local Environment.
 
 Networking in OneCX Local Environment
 ====================
@@ -27857,6 +27857,90 @@ Figure 1\. Successful stopping with cleanup
 ./stop-onecx.sh -p all -c
 ```
 
+Update local Docker images
+====================
+To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
+
+The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
+
+Command to display the available options:
+
+```bash
+./update-images.sh -h
+```
+
+| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined.
+
+The available options are:
+
+\-a
+
+Update all images, ignoring name filter (if option **\-n** is also used).  
+If used in combination with **\-c** then all orphaned images and stopped containers are removed.
+
+\-c
+
+Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
+Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
+Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-n <text>
+
+Name filter, update images which have <text> into image name
+
+## [](#examples)Examples
+
+### [](#update-traefik-image)Update Traefik Image
+
+The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
+
+```bash
+./update-images.sh  -n traefik -c
+```
+
+![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
+
+Figure 1\. Successful update with name filter and cleanup
+
+### [](#cleanup-only)Cleanup only
+
+Started without any name filter will remove all orphaned images. No additional confirmation is required.
+
+![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
+
+Figure 2\. Excerpt from the list of orphaned images
+
+```bash
+./update-images.sh  -c
+```
+
+The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
+
+Figure 3\. Image deletion failed
+
+![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
+
+Figure 4\. Image deletion successful after stopping the container
+
+### [](#update-all-images-and-cleanup)Update all images and cleanup
+
+With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
+
+```bash
+./update-images.sh  -a -c
+```
+
 Integrate Microfrontends into OneCX
 ====================
 The script **toggle-mfes.sh** integrates a locally running microfrontend into the OneCX environment, allowing it to interact with other microfrontends. This process is also reversible.
@@ -28036,90 +28120,6 @@ In this example, the OneCX Workspace microfrontend is running both in Docker Com
 ![script toggle mfes.sh priotize routes](../_images/scripts/script_toggle-mfes.sh_priotize-routes.png) 
 
 Figure 8\. Example routing for OneCX Workspace microservices
-
-Update local Docker images
-====================
-To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
-
-The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
-
-Command to display the available options:
-
-```bash
-./update-images.sh -h
-```
-
-| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#available-options)Available Options
-
-The script accepts several optional options to customize its behavior. Some options can be combined.
-
-The available options are:
-
-\-a
-
-Update all images, ignoring name filter (if option **\-n** is also used).  
-If used in combination with **\-c** then all orphaned images and stopped containers are removed.
-
-\-c
-
-Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
-Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
-Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-\-h
-
-Displays help information about the script and its available options. If used then all other options are ignored.
-
-\-n <text>
-
-Name filter, update images which have <text> into image name
-
-## [](#examples)Examples
-
-### [](#update-traefik-image)Update Traefik Image
-
-The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
-
-```bash
-./update-images.sh  -n traefik -c
-```
-
-![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
-
-Figure 1\. Successful update with name filter and cleanup
-
-### [](#cleanup-only)Cleanup only
-
-Started without any name filter will remove all orphaned images. No additional confirmation is required.
-
-![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
-
-Figure 2\. Excerpt from the list of orphaned images
-
-```bash
-./update-images.sh  -c
-```
-
-The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
-
-Figure 3\. Image deletion failed
-
-![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
-
-Figure 4\. Image deletion successful after stopping the container
-
-### [](#update-all-images-and-cleanup)Update all images and cleanup
-
-With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
-
-```bash
-./update-images.sh  -a -c
-```
 
 Migrate to v2
 ====================
@@ -33131,10 +33131,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Permission Backend Service
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -33247,6 +33243,10 @@ app:
         description: OneCX Permission Backend Service
         name: OneCX Permission SVC
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -34723,10 +34723,6 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 * `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
 * `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
 
-undefined
-====================
-
-
 OneCX Product Store Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -34829,6 +34825,10 @@ app:
         description: OneCX Product Store Operator
         name: OneCX Product Store Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -36497,6 +36497,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-tenant-bff/pkgs/container/onecx-tenant-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -36594,10 +36598,6 @@ app:
         description: OneCX Tenant Backend For Frontend
         name: OneCX Tenant BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -38446,10 +38446,6 @@ undefined
 ====================
 
 
-undefined
-====================
-
-
 OneCX User Profile Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-user-profile-bff/pkgs/container/onecx-user-profile-bff)
@@ -38552,6 +38548,10 @@ app:
         description: OneCX User Profile Backend For Frontend
         name: OneCX User Profile BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -40922,6 +40922,23 @@ app:
 
 undefined
 ====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Type               | Default  |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | -------- |
+| [onecx.redirect.host-forward-rules."host-forward-rules".host-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-host-pattern) Regex matched against the incoming request host. Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_HOST\_PATTERN                                                                                                                                                                                                                                                                                      | string             | required |
+| [onecx.redirect.host-forward-rules."host-forward-rules".host-replace-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-host-replace-pattern) Replacement pattern for the host regex match. Supports capture groups: use ($groupName) or $1, $2, etc. for group replacement. Example: if hostPattern is "(.\*)\\\\.old-domain\\\\.com" and hostReplacePattern is "$1.new-domain.com", a request to "api.old-domain.com" redirects to "api.new-domain.com". Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_HOST\_REPLACE\_PATTERN | string             | required |
+| [onecx.redirect.host-forward-rules."host-forward-rules".protocol-replace-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-protocol-replace-pattern) Optional replacement pattern for the target protocol (e.g. "https"). If not provided, the original request protocol is used. Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_PROTOCOL\_REPLACE\_PATTERN                                                                                                                                                                     | string             |          |
+| [onecx.redirect.rules.mode](#onecx-service-redirect%5Fonecx-redirect-rules-mode) combined: host forwarding and path rewrite are applied in one flow. separate: host forwarding and path rewrite are evaluated independently. Environment variable: ONECX\_REDIRECT\_RULES\_MODE                                                                                                                                                                                                                                                                                                                               | combined, separate | combined |
+| [onecx.redirect.rules.redirect-wait-seconds](#onecx-service-redirect%5Fonecx-redirect-rules-redirect-wait-seconds) Redirect wait time in seconds. Environment variable: ONECX\_REDIRECT\_RULES\_REDIRECT\_WAIT\_SECONDS                                                                                                                                                                                                                                                                                                                                                                                       | int                | 10       |
+| [onecx.redirect.url-rewrite-rules."url-rewrite-rules".pattern](#onecx-service-redirect%5Fonecx-redirect-url-rewrite-rules-url-rewrite-rules-pattern) Regex pattern tested against window.location.href (including fragment) in the browser. Environment variable: ONECX\_REDIRECT\_URL\_REWRITE\_RULES\_\_URL\_REWRITE\_RULES\_\_PATTERN                                                                                                                                                                                                                                                                      | string             | required |
+| [onecx.redirect.url-rewrite-rules."url-rewrite-rules".replace-pattern](#onecx-service-redirect%5Fonecx-redirect-url-rewrite-rules-url-rewrite-rules-replace-pattern) Replace-pattern to rewrite the URL. Use ($groupName) to reference named capture groups. Environment variable: ONECX\_REDIRECT\_URL\_REWRITE\_RULES\_\_URL\_REWRITE\_RULES\_\_REPLACE\_PATTERN                                                                                                                                                                                                                                            | string             | required |
+| [onecx.redirect.custom-redirect-template-path](#onecx-service-redirect%5Fonecx-redirect-custom-redirect-template-path) File path to custom redirect template Environment variable: ONECX\_REDIRECT\_CUSTOM\_REDIRECT\_TEMPLATE\_PATH                                                                                                                                                                                                                                                                                                                                                                          | string             |          |
+| [onecx.redirect.bundled-redirect-template-name](#onecx-service-redirect%5Fonecx-redirect-bundled-redirect-template-name) Bundled redirect template name loaded from classpath templates. Example: redirectWaitTemplate.html. Environment variable: ONECX\_REDIRECT\_BUNDLED\_REDIRECT\_TEMPLATE\_NAME                                                                                                                                                                                                                                                                                                         | string             |          |
+| [onecx.redirect.custom-fallback-template-path](#onecx-service-redirect%5Fonecx-redirect-custom-fallback-template-path) File path to custom fallback template Environment variable: ONECX\_REDIRECT\_CUSTOM\_FALLBACK\_TEMPLATE\_PATH                                                                                                                                                                                                                                                                                                                                                                          | string             |          |
+
+undefined
+====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
@@ -40939,23 +40956,6 @@ undefined
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
 | quarkus-qute                           | 3.33.1                                                                                             |                                                                                                                                                  |         |
-
-undefined
-====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Type               | Default  |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | -------- |
-| [onecx.redirect.host-forward-rules."host-forward-rules".host-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-host-pattern) Regex matched against the incoming request host. Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_HOST\_PATTERN                                                                                                                                                                                                                                                                                      | string             | required |
-| [onecx.redirect.host-forward-rules."host-forward-rules".host-replace-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-host-replace-pattern) Replacement pattern for the host regex match. Supports capture groups: use ($groupName) or $1, $2, etc. for group replacement. Example: if hostPattern is "(.\*)\\\\.old-domain\\\\.com" and hostReplacePattern is "$1.new-domain.com", a request to "api.old-domain.com" redirects to "api.new-domain.com". Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_HOST\_REPLACE\_PATTERN | string             | required |
-| [onecx.redirect.host-forward-rules."host-forward-rules".protocol-replace-pattern](#onecx-service-redirect%5Fonecx-redirect-host-forward-rules-host-forward-rules-protocol-replace-pattern) Optional replacement pattern for the target protocol (e.g. "https"). If not provided, the original request protocol is used. Environment variable: ONECX\_REDIRECT\_HOST\_FORWARD\_RULES\_\_HOST\_FORWARD\_RULES\_\_PROTOCOL\_REPLACE\_PATTERN                                                                                                                                                                     | string             |          |
-| [onecx.redirect.rules.mode](#onecx-service-redirect%5Fonecx-redirect-rules-mode) combined: host forwarding and path rewrite are applied in one flow. separate: host forwarding and path rewrite are evaluated independently. Environment variable: ONECX\_REDIRECT\_RULES\_MODE                                                                                                                                                                                                                                                                                                                               | combined, separate | combined |
-| [onecx.redirect.rules.redirect-wait-seconds](#onecx-service-redirect%5Fonecx-redirect-rules-redirect-wait-seconds) Redirect wait time in seconds. Environment variable: ONECX\_REDIRECT\_RULES\_REDIRECT\_WAIT\_SECONDS                                                                                                                                                                                                                                                                                                                                                                                       | int                | 10       |
-| [onecx.redirect.url-rewrite-rules."url-rewrite-rules".pattern](#onecx-service-redirect%5Fonecx-redirect-url-rewrite-rules-url-rewrite-rules-pattern) Regex pattern tested against window.location.href (including fragment) in the browser. Environment variable: ONECX\_REDIRECT\_URL\_REWRITE\_RULES\_\_URL\_REWRITE\_RULES\_\_PATTERN                                                                                                                                                                                                                                                                      | string             | required |
-| [onecx.redirect.url-rewrite-rules."url-rewrite-rules".replace-pattern](#onecx-service-redirect%5Fonecx-redirect-url-rewrite-rules-url-rewrite-rules-replace-pattern) Replace-pattern to rewrite the URL. Use ($groupName) to reference named capture groups. Environment variable: ONECX\_REDIRECT\_URL\_REWRITE\_RULES\_\_URL\_REWRITE\_RULES\_\_REPLACE\_PATTERN                                                                                                                                                                                                                                            | string             | required |
-| [onecx.redirect.custom-redirect-template-path](#onecx-service-redirect%5Fonecx-redirect-custom-redirect-template-path) File path to custom redirect template Environment variable: ONECX\_REDIRECT\_CUSTOM\_REDIRECT\_TEMPLATE\_PATH                                                                                                                                                                                                                                                                                                                                                                          | string             |          |
-| [onecx.redirect.bundled-redirect-template-name](#onecx-service-redirect%5Fonecx-redirect-bundled-redirect-template-name) Bundled redirect template name loaded from classpath templates. Example: redirectWaitTemplate.html. Environment variable: ONECX\_REDIRECT\_BUNDLED\_REDIRECT\_TEMPLATE\_NAME                                                                                                                                                                                                                                                                                                         | string             |          |
-| [onecx.redirect.custom-fallback-template-path](#onecx-service-redirect%5Fonecx-redirect-custom-fallback-template-path) File path to custom fallback template Environment variable: ONECX\_REDIRECT\_CUSTOM\_FALLBACK\_TEMPLATE\_PATH                                                                                                                                                                                                                                                                                                                                                                          | string             |          |
 
 OneCX Service Custom Auth Backend For Frontend
 ====================
