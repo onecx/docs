@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1692,290 +1976,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -4356,6 +4356,195 @@ You can use the same options as described in [Running and Testing Applications](
 * You can follow the [manual image build process](image%5Fbuild%5Fmanual.html) to build a local image in the application and adjust the .env UI variable to use your local image.
 * You can set up your application for hot reloading as described in [Hot Reload](enable%5Fhot%5Freload.html) for faster development and testing.
 
+Microfrontend Content Loading Mechanism
+====================
+## [](#%5Foverview)Overview
+
+This document explains how Microfrontend content is loaded in the OneCX platform using Module Federation.
+
+It helps you:
+
+* Understand available loading approaches
+* Choose the correct integration approach
+* Configure microfrontends correctly
+
+Microfrontend integration is primarily determined by two factors:
+
+* [**Content Type**](content-type.html)  
+   * Module  
+   * Remote Component
+* [**Expose Method**](expose-method.html)  
+   * Angular  
+   * Web Component
+
+These factors depend on the type of content exposed by the microfrontend and must be configured correctly in the Application Store.
+
+| |  **It is NOT recommended to use the Angular expose method.** Using the Angular expose method creates tight coupling between microfrontends and restricts the platform’s ability to support multiple frameworks and versions. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+| |  OneCX uses [Module Federation](https://webpack.js.org/concepts/module-federation/) with Webpack to load and expose microfrontends. |
+| ------------------------------------------------------------------------------------------------------------------------------------- |
+
+__Table 1\. Navigation__
+| [← Previous: Introduction to Module Federation](../../index.html) | [Next: Content Type →](content-type.html) |
+| ----------------------------------------------------------------- | ----------------------------------------- |
+
+Content Type in Microfrontend Loading
+====================
+## [](#%5Foverview)Overview
+
+Content Type defines what kind of UI is dynamically loaded as a microfrontend in the OneCX platform.
+
+It determines whether you are loading a full feature (Module) or a reusable UI component (Remote Component).
+
+Selecting the correct content type is important, as it affects how the microfrontend is loaded and displayed.
+
+## [](#%5Fcontent%5Ftype%5Fselection)Content Type Selection
+
+__Table 1\. Content Type Selection__
+| Use Case                                 | Content Type     | Loading Mechanism                     |
+| ---------------------------------------- | ---------------- | ------------------------------------- |
+| Full page or feature with routing        | Module           | [Shell UI Router](shell-router.html)  |
+| Reusable UI component embedded in a page | Remote Component | [Slot Component](slot-component.html) |
+
+__Table 2\. Navigation__
+| [← Previous: Microfrontend Content Loading](content-loading.html) | [Next: Shell UI Router →](shell-router.html) |
+| ----------------------------------------------------------------- | -------------------------------------------- |
+
+Expose Method in Microfrontend Loading
+====================
+## [](#%5Foverview)Overview
+
+The expose method is a factor considered by the respective loading mechanism (Shell UI Router or Slot Component) to ensure correct content loading.
+
+## [](#%5Fusage%5Fin%5Floading%5Fmechanisms)Usage in loading mechanisms
+
+| Loading type             | Impact                                                         |
+| ------------------------ | -------------------------------------------------------------- |
+| Module loading           | The loadChildren method and router configuration are affected. |
+| Remote component loading | A different mechanism for dynamic content creation is chosen.  |
+
+More details about the impact of the expose method can be found [here](webcomponents/index.html).
+
+__Table 1\. Navigation__
+| [← Previous: Introduction to Module Federation](../../index.html) |
+| ----------------------------------------------------------------- |
+
+Module Federation Loading Explained
+====================
+Independent of the content type and expose method, the OneCX platform loads exposed content using **Module Federation**.
+
+During this process, the exposed content is loaded using the file specified in the webpack configuration for the respective content. As this example uses Webpack, this configuration is specified in the `webpack.config.js` file.
+
+Example
+
+```javascript
+---
+const config = withModuleFederationPlugin({
+  name: 'my-application-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './MyDefaultModule': './src/main.ts',
+    './MyRemoteComponent': './src/app/remotes/my-comp/my-comp.component.main.ts'
+  },
+  ...
+})
+---
+== Notes
+```
+
+* `MyDefaultModule` \- The file is used for module loading.
+* `MyRemoteComponent` \- The file is used for remote component loading.
+
+## [](#%5Floading%5Fprocess)Loading process
+
+Files defined in the configuration are used to load the exposed content. These files should contain all the required setup to display content.
+
+The implementation inside these files depends on the chosen expose method.
+
+Shell UI Router
+====================
+## [](#%5Foverview)Overview
+
+The **Shell UI Router** acts as the central orchestrator, building the workspace and setting up routing based on backend configuration. It maps application paths to their respective microfrontend modules. At runtime, it uses **Module Federation** to dynamically load the required module when a route is activated. The loaded module is then rendered in the content area, enabling independent deployment and seamless navigation.
+
+### [](#%5Fworkspace%5Fand%5Froute%5Fconfiguration)Workspace and Route Configuration
+
+The Shell UI Router builds the workspace using configuration data provided by backend services. This configuration contains all applications registered for a workspace along with their associated paths.
+
+Each application must define a unique path. This path is used by the Shell UI Router to create routing rules and to identify which microfrontend module should be loaded for a given URL.
+
+Based on this configuration, the Shell UI Router maps each path to its corresponding microfrontend module. These mappings form the foundation for routing and ensure that the correct module is loaded when a user navigates within the workspace.
+
+### [](#%5Frouter%5Finitialization)Router Initialization
+
+Before handling any navigation, the Shell UI Router initializes the router using the workspace configuration. It reads the configured application paths and creates routing rules for each one.
+
+These rules define how URLs are matched to microfrontend modules during runtime. For every application, a corresponding route is registered in the router.
+
+This setup ensures that when a user navigates to a specific path, the Shell UI Router can correctly identify and trigger loading of the associated module.
+
+### [](#%5Froute%5Fstructure%5Fand%5Fproperties)Route Structure and Properties
+
+Each application is registered as a route in the Shell UI Router. Every route includes a defined path and a `loadChildren` method, along with additional properties used during routing.
+
+The `path` determines how a URL is matched, while `loadChildren` defines how the corresponding microfrontend module is loaded when the route is activated.
+
+These route definitions allow the Shell UI Router to connect navigation events with the correct module loading behavior, ensuring that the appropriate content is displayed.
+
+### [](#%5Fmodule%5Floading%5Fusing%5Fmodule%5Ffederation)Module Loading using Module Federation
+
+When a route is activated, the Shell UI uses the `loadChildren` method to load the corresponding microfrontend module.
+
+The `loadChildren` method is responsible for loading the remote module into the Shell UI’s memory using `@angular-architects/module-federation`. This enables dynamic loading of independently deployed applications at runtime.
+
+Once the remote module is successfully loaded, it is passed to the router, which renders the module’s content in the content area of the application.
+
+### [](#%5Fruntime%5Fnavigation%5Fflow%5Fexample)Runtime Navigation Flow (Example)
+
+Consider a workspace that includes a User Profile application with the path `/user`.
+
+When the application starts, the Shell UI registers a route for `/user` based on the workspace configuration. If the user navigates to a URL starting with `/user`, the router matches this route.
+
+The `loadChildren` method is then triggered, and the Shell UI uses Module Federation to load the User Profile microfrontend module.
+
+Once loaded, the router renders the module in the content area, allowing the user to interact with the application.
+
+__Table 1\. Navigation__
+| [← Previous: Content Type](content-type.html) | [Next: Slot Component →](slot-component.html) |
+| --------------------------------------------- | --------------------------------------------- |
+
+Slot Component
+====================
+## [](#%5Foverview)Overview
+
+The slot component mechanism in OneCX is used for dynamically rendering remote components in specific locations on a page using **Module Federation**. Slots are configurable at runtime.
+
+Remote component loading is handled by the slot component. The remote component loading mechanism can be found [here](../../architecture/remote-components.html).
+
+## [](#%5Fkey%5Faspects)Key aspects
+
+* The loading process starts when a slot component is rendered on a page.
+* Exposed remote component content is loaded using `@angular-architects/module-federation`.
+* After successful loading, the component is rendered inside the slot component.
+* Rendering uses a dynamic content creation mechanism based on the chosen expose method.
+
+## [](#%5Fslot%5Frendering%5Fprocess)Slot rendering process
+
+The following flow describes how slot rendering works:
+
+* App1 owns the page and defines a **slot location**.
+* App2 exposes a **remote component** using **module federation** that can be used in the slot.
+* Both App1 and App2 are available in the **workspace**.
+* The slot defined in App1 is **activated** in the **workspace**.
+* A remote component from App2 is **assigned** to the slot in App1.
+* When the slot is displayed, App1 dynamically loads the component **exposed** by App2 using **module federation**.
+* The component is then **rendered** in the slot using the technology defined in the **remote component configuration**.
+
+__Table 1\. Navigation__
+| [← Previous: Shell UI Router](shell-router.html) | [Next: Expose Method →](expose-method.html) |
+| ------------------------------------------------ | ------------------------------------------- |
+
 @onecx/angular-webcomponents Details
 ====================
 Using [@onecx/angular-webcomponents](#onecx/angular-webcomponents) to expose modules and Remote Components via Microfrontends is the recommended way within the OneCX platform. There are guides available that showcase how to transform already-created Microfrontend’s content to use Webcomponent method. In this section, all the specific functions available within the angular-webcomponents library are explained.
@@ -4566,194 +4755,138 @@ __Table 1\. Navigation__
 | [← Back to Module federation bootstrapping and configuration in OneCX](index.html) |
 | ---------------------------------------------------------------------------------- |
 
-Microfrontend Content Loading Mechanism
+OneCX Adaptation to Webcomponent Method
+====================
+As stated in [Microfrontend content loading documentation](../content-loading.html), every method of Microfrontend’s content exposal has an impact on the OneCX platform behavior for both module and Remote Component loading. The adaptations made by OneCX to work with Web Components were briefly mentioned in the Web Components preview, however depending on the content type, the behavior varies.
+
+## [](#module-loading-behavior)Module Loading Behavior
+
+### [](#%5Foverview)Overview
+
+This section explains how the Shell UI loads and renders Microfrontend modules using the Webcomponent expose method. It describes how routing, module federation, and Web Components work together, where the Shell loads the module and Web Components handle rendering through custom elements.
+
+* **Shell UI Responsibility** \- The Shell UI App is responsible for displaying Microfrontend’s module when router navigation is matched for a desired Microfrontend.
+* **Webcomponent Adaptation in loadChildren** \- With Webcomponent method, Shell UI will adapt the loadChildren method to:  
+   1. load desired remote module using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) (no change).  
+   2. use **WebComponentLoaderModule** as the module to be lazy-loaded (instead of the Microfrontend’s module).
+* **loadChildren Behavior** \- The [loadChildren method bound to a Route](https://angular.dev/guide/ngmodules/lazy-loading) is an asynchronous method that in the end should return a module to be displayed when activating a certain Route.
+* **Module Loading with Webcomponent** \- With Webcomponent method, the desired Microfrontend’s module is still being loaded using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation).
+* **Custom Elements Registration** \- During that loading, it should register a component in the Custom Elements Registry, as mentioned in the previous section.
+* **Shell UI Rendering Responsibility** \- For OneCX platform, it means that it no longer should load the Microfrontend’s module directly but ensure that the HTML code has the correct Custom Element in order to display the module.
+* **WebComponentLoaderModule** \- **WebComponentLoaderModule** is a simple Angular module with a Router set up to always display **WebComponentLoaderComponent**.
+* **WebComponentLoaderComponent Responsibility** \- This component is responsible for rendering the HTML element required to display the module with Web Components Custom Elements.
+* **Router Navigation Handling** \- Whenever Shell UI’s router detects a change of the Microfrontend (another path is matched than the current one), it calls **loadChildren method** to load the desired module and returns **WebComponentLoaderModule**.
+* **Component Initialization** \- The module then creates and initializes **WebComponentLoaderComponent**, which, after initializations, creates the HTML element.
+* **Web Components Binding** \- Then Web Components using Custom Elements technology bounds the Microfrontend’s module to the created element.
+* **Reference** \- For a detailed guide on how to expose Microfrontend’s module via Webcomponent method, please refer [here](../../onecx/microfrontend-bootstrapping/module-bootstrapping.html).
+
+## [](#remote-component-behavior)Remote Component Behavior
+
+### [](#%5Foverview%5F2)Overview
+
+This section explains how the Slot Component renders Microfrontend Remote Components using the Webcomponent method. Instead of directly creating Angular components, the Slot Component creates an HTML host element, while the microfrontend registers and binds its component using Web Components and Custom Elements.
+
+* **Slot Component Responsibility**Slot Component is responsible for displaying Microfrontend’s Remote Components during Slot Component initialization.
+* **Webcomponent Adaptation in Slot Component** \- With the Webcomponent method, the Slot Component will adapt the steps to:  
+   1. load desired remote content using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) (no change).  
+   2. create HTML element directly inside a container (instead of creating Microfrontend’s Remote Component instance).
+* **Dynamic Content Creation**The Slot Component content is based on [Angular ViewContainerRef](https://angular.dev/api/core/ViewContainerRef) to dynamically create content inside the Slot Component.
+* **Module Loading with Webcomponent** \- With Webcomponent method, the desired Microfrontend’s Remote Component is still being loaded using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation).
+* **Custom Elements Registration** \- During that loading, it should register a component in the Custom Elements Registry, as mentioned in the previous section.
+* **OneCX Rendering Responsibility** \- For OneCX platform, it means that it no longer should create the Microfrontend’s component directly but ensure that the HTML code has the correct element in order to display the component.
+* **Webcomponent Method Difference** \- The difference with the Webcomponent method is that, from the OneCX platform’s perspective, no component needs to be created. Instead, a "host" element must be created to allow Web Components' Custom Elements to display desired content.
+* **Reference** \- For a detailed guide on how to expose Microfrontend’s Remote Components via Webcomponent method, please refer [here](../../onecx/microfrontend-bootstrapping/remote-component-bootstrapping.html).
+
+Custom Elements in OneCX
 ====================
 ## [](#%5Foverview)Overview
 
-This document explains how Microfrontend content is loaded in the OneCX platform using Module Federation.
+This article explains how Custom Elements are used in OneCX to dynamically render microfrontend content by binding UI components to HTML elements. It describes the role of the Shell UI, Application Store, and microfrontends in loading, registering, and displaying content using the Web Component approach.
 
-It helps you:
+## [](#%5Fhow%5Fit%5Fworks)How It Works
 
-* Understand available loading approaches
-* Choose the correct integration approach
-* Configure microfrontends correctly
-
-Microfrontend integration is primarily determined by two factors:
-
-* [**Content Type**](content-type.html)  
-   * Module  
-   * Remote Component
-* [**Expose Method**](expose-method.html)  
-   * Angular  
-   * Web Component
-
-These factors depend on the type of content exposed by the microfrontend and must be configured correctly in the Application Store.
-
-| |  **It is NOT recommended to use the Angular expose method.** Using the Angular expose method creates tight coupling between microfrontends and restricts the platform’s ability to support multiple frameworks and versions. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-| |  OneCX uses [Module Federation](https://webpack.js.org/concepts/module-federation/) with Webpack to load and expose microfrontends. |
-| ------------------------------------------------------------------------------------------------------------------------------------- |
+* **Custom Elements** \- Custom Elements are part of the Web Components technology. It is a set of tools used to achieve the binding between components and HTML elements.
+* **Configuration** \- OneCX platform will create HTML elements specified via configuration whenever a module or Remote Component has to be displayed on a page.
+* **Content loading in OneCX** \- There are 2 steps that OneCX platform takes when dealing with content loading with Webcomponent expose method:  
+   * Load exposed content via Module Federation into memory  
+   * Create an HTML element on a page to which exposed content should be bound
+* **Responsibility of Microfrontend** \- In the Microfrontend content loading, it was mentioned that when exposing Microfrontend content, files specified per content should take care of all setup needed to display it.
+* **Custom Element Registration** \- With Webcomponent method, those files need to contain source code, which will register the Custom Element in the Custom Elements Registry.
+* **Binding Components to Elements** \- a file used for content loading needs to use Web Components to assign some component to the HTML element that OneCX platform will render.
+* **Rendering** \- When OneCX platform creates this HTML element on a page, the Custom Elements Registry will use the assigned component and display it on a page.
 
 __Table 1\. Navigation__
-| [← Previous: Introduction to Module Federation](../../index.html) | [Next: Content Type →](content-type.html) |
-| ----------------------------------------------------------------- | ----------------------------------------- |
+| [← Previous: Introduction to Web Components](index.html) | [Next: Webcomponent Expose Method Requirements →](expose-method-requirements.html) |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
 
-Content Type in Microfrontend Loading
+undefined
 ====================
-## [](#%5Foverview)Overview
+## [](#expose-microfrontends-content-as-web-components)Expose Microfrontend’s Content as Web Components
 
-Content Type defines what kind of UI is dynamically loaded as a microfrontend in the OneCX platform.
+OneCX platform offers different ways of [exposing Microfrontend’s content](../../../architecture/mfe.html). One of them is **Webcomponent method**.
 
-It determines whether you are loading a full feature (Module) or a reusable UI component (Remote Component).
+When exposing content with Webcomponent method, it is required to ensure the correct setup. For exposing Angular content, there are functionalities provided via the [@onecx/angular-webcomponents](#onecx/angular-webcomponents) library. For a detailed guide on how to expose Microfrontend’s content via Webcomponent method, please refer [here](adapt-webcomponent-method.html).
 
-Selecting the correct content type is important, as it affects how the microfrontend is loaded and displayed.
+| |  Using **[@onecx/angular-webcomponents](#onecx/angular-webcomponents)** library, according to the guide, is the recommended way of exposing Angular content. The set of functionalities provided via the library is taking care of all requirements related to the Web Components adaptation. Apart from automatic registration to the Custom Elements Registry, they ensure that the following issues are covered: Every module and Remote Component is going to have its own router. Routers (Shell’s router, displayed module’s router, and router of each displayed Remote Component) need to be synchronized so each can react to the router events. A Single Angular version can only create one platform to operate on, which means that for every content loaded within a page, the same platform has to be used for a specific version. ngZone of Shell UI has to be shared with all modules and Remote Components to allow Web Components to function correctly. In-depth explanations for those issues can be found in the [Module Federation multi-framework and version micro frontends document](https://www.angulararchitects.io/en/blog/multi-framework-and-version-micro-frontends-with-module-federation-the-good-the-bad-the-ugly/). |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-## [](#%5Fcontent%5Ftype%5Fselection)Content Type Selection
-
-__Table 1\. Content Type Selection__
-| Use Case                                 | Content Type     | Loading Mechanism                     |
-| ---------------------------------------- | ---------------- | ------------------------------------- |
-| Full page or feature with routing        | Module           | [Shell UI Router](shell-router.html)  |
-| Reusable UI component embedded in a page | Remote Component | [Slot Component](slot-component.html) |
-
-__Table 2\. Navigation__
-| [← Previous: Microfrontend Content Loading](content-loading.html) | [Next: Shell UI Router →](shell-router.html) |
-| ----------------------------------------------------------------- | -------------------------------------------- |
-
-Expose Method in Microfrontend Loading
+undefined
 ====================
-## [](#%5Foverview)Overview
+### [](#%5Fwebcomponent%5Fexpose%5Fmethod%5Frequirements)Webcomponent Expose Method Requirements
 
-The expose method is a factor considered by the respective loading mechanism (Shell UI Router or Slot Component) to ensure correct content loading.
+To correctly use Webcomponent expose method, 2 requirements need to be fulfilled:
 
-## [](#%5Fusage%5Fin%5Floading%5Fmechanisms)Usage in loading mechanisms
+1. Database is correctly configured for module or Remote Component  
+   1. **technology** set to **WebComponent**  
+   2. **tag name** set to agreed **HTML element name**
+2. Microfrontend is adapted to expose Web Components compliant content  
+   1. desired component needs to be registered as Custom Element in the Custom Elements Registry  
+   2. Angular issues are covered (use the `[@onecx/angular-webcomponents](#onecx/angular-webcomponents)` library to cover them by default)  
+         1. multiple routers synchronization  
+         2. ngZone sharing  
+         3. platform sharing
 
-| Loading type             | Impact                                                         |
-| ------------------------ | -------------------------------------------------------------- |
-| Module loading           | The loadChildren method and router configuration are affected. |
-| Remote component loading | A different mechanism for dynamic content creation is chosen.  |
+| |  Database configuration is easy to set up using the Application Store Application. |
+| ------------------------------------------------------------------------------------ |
 
-More details about the impact of the expose method can be found [here](webcomponents/index.html).
+| |  To ensure Microfrontend compliance with Web Components for Angular modules and Remote Components, it is recommended to use the **[@onecx/angular-webcomponents](#onecx/angular-webcomponents)** library. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 __Table 1\. Navigation__
-| [← Previous: Introduction to Module Federation](../../index.html) |
-| ----------------------------------------------------------------- |
+| [← Previous: Custom Elements](custom-elements.html) |
+| --------------------------------------------------- |
 
-Module Federation Loading Explained
+Web Components in OneCX
 ====================
-Independent of the content type and expose method, the OneCX platform loads exposed content using **Module Federation**.
+## [](#overview)Overview
 
-During this process, the exposed content is loaded using the file specified in the webpack configuration for the respective content. As this example uses Webpack, this configuration is specified in the `webpack.config.js` file.
+Web Components is a suite of different technologies used to create reusable custom elements with encapsulated functionality. In the OneCX context, they are useful for dynamic content creation for both modules and the display of Remote Components in Microfrontends. Prior to reading this document, it is recommended to read the documentation of [microfrontend content loading](../content-loading.html) to get familiar with the content loading mechanisms available within the OneCX platform.
 
-Example
+| |  Webcomponent expose method enables the OneCX platform to use UI Apps developed with different frameworks and versions. It is the **recommended method for all Applications**. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-```javascript
----
-const config = withModuleFederationPlugin({
-  name: 'my-application-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './MyDefaultModule': './src/main.ts',
-    './MyRemoteComponent': './src/app/remotes/my-comp/my-comp.component.main.ts'
-  },
-  ...
-})
----
-== Notes
-```
+| |  Web Components technologies are used within OneCX platform. However, OneCX offers its own functionalities that should be used to expose Microfrontend’s content using the Webcomponent expose method. Those functionalities are based on Web Components technologies, so there is no need to get familiar with them. Nevertheless, more resources about Web Components can be found [here](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-* `MyDefaultModule` \- The file is used for module loading.
-* `MyRemoteComponent` \- The file is used for remote component loading.
+### [](#key-concepts)Key concepts
 
-## [](#%5Floading%5Fprocess)Loading process
+* [Web Components Preview](webcomponent-preview.html)
+* [Expose Microfrontend’s Content as Web Components](expose-content-as-webcomponent.html)
+* [OneCX Adaptation to Webcomponent Method](adapt-webcomponent-method.html)
+* [@onecx/angular-webcomponents Details](../../onecx/angular-webcomponents.html)
 
-Files defined in the configuration are used to load the exposed content. These files should contain all the required setup to display content.
-
-The implementation inside these files depends on the chosen expose method.
-
-Shell UI Router
+undefined
 ====================
-## [](#%5Foverview)Overview
+## [](#webcomponents-preview)Web Components Preview
 
-The **Shell UI Router** acts as the central orchestrator, building the workspace and setting up routing based on backend configuration. It maps application paths to their respective microfrontend modules. At runtime, it uses **Module Federation** to dynamically load the required module when a route is activated. The loaded module is then rendered in the content area, enabling independent deployment and seamless navigation.
+Web Components are used in OneCX context for dynamic content creation. OneCX platform uses Web Components technologies to bound UI components to HTML elements. OneCX platform will use information from the Application Store to determine what HTML elements have to be rendered to allow certain modules and Remote Components to be bound to page content.
 
-### [](#%5Fworkspace%5Fand%5Froute%5Fconfiguration)Workspace and Route Configuration
+With Webcomponent expose method, the OneCX platform is only loading the code required for Microfrontend’s content into the Shell UI memory and creating a "host" element for Remote Components or modules to attach to using Web Components. The Microfrontend’s exposed content is partially responsible for the content creation. Microfrontends have to adapt exposed modules and components, so they are using Web Components Custom Elements.
 
-The Shell UI Router builds the workspace using configuration data provided by backend services. This configuration contains all applications registered for a workspace along with their associated paths.
+### [](#%5Fkey%5Fconcepts)Key concepts
 
-Each application must define a unique path. This path is used by the Shell UI Router to create routing rules and to identify which microfrontend module should be loaded for a given URL.
-
-Based on this configuration, the Shell UI Router maps each path to its corresponding microfrontend module. These mappings form the foundation for routing and ensure that the correct module is loaded when a user navigates within the workspace.
-
-### [](#%5Frouter%5Finitialization)Router Initialization
-
-Before handling any navigation, the Shell UI Router initializes the router using the workspace configuration. It reads the configured application paths and creates routing rules for each one.
-
-These rules define how URLs are matched to microfrontend modules during runtime. For every application, a corresponding route is registered in the router.
-
-This setup ensures that when a user navigates to a specific path, the Shell UI Router can correctly identify and trigger loading of the associated module.
-
-### [](#%5Froute%5Fstructure%5Fand%5Fproperties)Route Structure and Properties
-
-Each application is registered as a route in the Shell UI Router. Every route includes a defined path and a `loadChildren` method, along with additional properties used during routing.
-
-The `path` determines how a URL is matched, while `loadChildren` defines how the corresponding microfrontend module is loaded when the route is activated.
-
-These route definitions allow the Shell UI Router to connect navigation events with the correct module loading behavior, ensuring that the appropriate content is displayed.
-
-### [](#%5Fmodule%5Floading%5Fusing%5Fmodule%5Ffederation)Module Loading using Module Federation
-
-When a route is activated, the Shell UI uses the `loadChildren` method to load the corresponding microfrontend module.
-
-The `loadChildren` method is responsible for loading the remote module into the Shell UI’s memory using `@angular-architects/module-federation`. This enables dynamic loading of independently deployed applications at runtime.
-
-Once the remote module is successfully loaded, it is passed to the router, which renders the module’s content in the content area of the application.
-
-### [](#%5Fruntime%5Fnavigation%5Fflow%5Fexample)Runtime Navigation Flow (Example)
-
-Consider a workspace that includes a User Profile application with the path `/user`.
-
-When the application starts, the Shell UI registers a route for `/user` based on the workspace configuration. If the user navigates to a URL starting with `/user`, the router matches this route.
-
-The `loadChildren` method is then triggered, and the Shell UI uses Module Federation to load the User Profile microfrontend module.
-
-Once loaded, the router renders the module in the content area, allowing the user to interact with the application.
-
-__Table 1\. Navigation__
-| [← Previous: Content Type](content-type.html) | [Next: Slot Component →](slot-component.html) |
-| --------------------------------------------- | --------------------------------------------- |
-
-Slot Component
-====================
-## [](#%5Foverview)Overview
-
-The slot component mechanism in OneCX is used for dynamically rendering remote components in specific locations on a page using **Module Federation**. Slots are configurable at runtime.
-
-Remote component loading is handled by the slot component. The remote component loading mechanism can be found [here](../../architecture/remote-components.html).
-
-## [](#%5Fkey%5Faspects)Key aspects
-
-* The loading process starts when a slot component is rendered on a page.
-* Exposed remote component content is loaded using `@angular-architects/module-federation`.
-* After successful loading, the component is rendered inside the slot component.
-* Rendering uses a dynamic content creation mechanism based on the chosen expose method.
-
-## [](#%5Fslot%5Frendering%5Fprocess)Slot rendering process
-
-The following flow describes how slot rendering works:
-
-* App1 owns the page and defines a **slot location**.
-* App2 exposes a **remote component** using **module federation** that can be used in the slot.
-* Both App1 and App2 are available in the **workspace**.
-* The slot defined in App1 is **activated** in the **workspace**.
-* A remote component from App2 is **assigned** to the slot in App1.
-* When the slot is displayed, App1 dynamically loads the component **exposed** by App2 using **module federation**.
-* The component is then **rendered** in the slot using the technology defined in the **remote component configuration**.
-
-__Table 1\. Navigation__
-| [← Previous: Shell UI Router](shell-router.html) | [Next: Expose Method →](expose-method.html) |
-| ------------------------------------------------ | ------------------------------------------- |
+* [Custom Elements](custom-elements.html)
+* [Webcomponent Expose Method Requirements](expose-method-requirements.html)
 
 undefined
 ====================
@@ -5340,139 +5473,6 @@ It is recommended to use the [@onecx/angular-webcomponents](../angular-webcompon
 __Table 1\. Navigation__
 | [← Previous: Content Exposed Using Angular Method](angular-expose-method.html) | [Next: Back to Microfrontend Bootstrapping →](index.html) |
 | ------------------------------------------------------------------------------ | --------------------------------------------------------- |
-
-OneCX Adaptation to Webcomponent Method
-====================
-As stated in [Microfrontend content loading documentation](../content-loading.html), every method of Microfrontend’s content exposal has an impact on the OneCX platform behavior for both module and Remote Component loading. The adaptations made by OneCX to work with Web Components were briefly mentioned in the Web Components preview, however depending on the content type, the behavior varies.
-
-## [](#module-loading-behavior)Module Loading Behavior
-
-### [](#%5Foverview)Overview
-
-This section explains how the Shell UI loads and renders Microfrontend modules using the Webcomponent expose method. It describes how routing, module federation, and Web Components work together, where the Shell loads the module and Web Components handle rendering through custom elements.
-
-* **Shell UI Responsibility** \- The Shell UI App is responsible for displaying Microfrontend’s module when router navigation is matched for a desired Microfrontend.
-* **Webcomponent Adaptation in loadChildren** \- With Webcomponent method, Shell UI will adapt the loadChildren method to:  
-   1. load desired remote module using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) (no change).  
-   2. use **WebComponentLoaderModule** as the module to be lazy-loaded (instead of the Microfrontend’s module).
-* **loadChildren Behavior** \- The [loadChildren method bound to a Route](https://angular.dev/guide/ngmodules/lazy-loading) is an asynchronous method that in the end should return a module to be displayed when activating a certain Route.
-* **Module Loading with Webcomponent** \- With Webcomponent method, the desired Microfrontend’s module is still being loaded using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation).
-* **Custom Elements Registration** \- During that loading, it should register a component in the Custom Elements Registry, as mentioned in the previous section.
-* **Shell UI Rendering Responsibility** \- For OneCX platform, it means that it no longer should load the Microfrontend’s module directly but ensure that the HTML code has the correct Custom Element in order to display the module.
-* **WebComponentLoaderModule** \- **WebComponentLoaderModule** is a simple Angular module with a Router set up to always display **WebComponentLoaderComponent**.
-* **WebComponentLoaderComponent Responsibility** \- This component is responsible for rendering the HTML element required to display the module with Web Components Custom Elements.
-* **Router Navigation Handling** \- Whenever Shell UI’s router detects a change of the Microfrontend (another path is matched than the current one), it calls **loadChildren method** to load the desired module and returns **WebComponentLoaderModule**.
-* **Component Initialization** \- The module then creates and initializes **WebComponentLoaderComponent**, which, after initializations, creates the HTML element.
-* **Web Components Binding** \- Then Web Components using Custom Elements technology bounds the Microfrontend’s module to the created element.
-* **Reference** \- For a detailed guide on how to expose Microfrontend’s module via Webcomponent method, please refer [here](../../onecx/microfrontend-bootstrapping/module-bootstrapping.html).
-
-## [](#remote-component-behavior)Remote Component Behavior
-
-### [](#%5Foverview%5F2)Overview
-
-This section explains how the Slot Component renders Microfrontend Remote Components using the Webcomponent method. Instead of directly creating Angular components, the Slot Component creates an HTML host element, while the microfrontend registers and binds its component using Web Components and Custom Elements.
-
-* **Slot Component Responsibility**Slot Component is responsible for displaying Microfrontend’s Remote Components during Slot Component initialization.
-* **Webcomponent Adaptation in Slot Component** \- With the Webcomponent method, the Slot Component will adapt the steps to:  
-   1. load desired remote content using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) (no change).  
-   2. create HTML element directly inside a container (instead of creating Microfrontend’s Remote Component instance).
-* **Dynamic Content Creation**The Slot Component content is based on [Angular ViewContainerRef](https://angular.dev/api/core/ViewContainerRef) to dynamically create content inside the Slot Component.
-* **Module Loading with Webcomponent** \- With Webcomponent method, the desired Microfrontend’s Remote Component is still being loaded using [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation).
-* **Custom Elements Registration** \- During that loading, it should register a component in the Custom Elements Registry, as mentioned in the previous section.
-* **OneCX Rendering Responsibility** \- For OneCX platform, it means that it no longer should create the Microfrontend’s component directly but ensure that the HTML code has the correct element in order to display the component.
-* **Webcomponent Method Difference** \- The difference with the Webcomponent method is that, from the OneCX platform’s perspective, no component needs to be created. Instead, a "host" element must be created to allow Web Components' Custom Elements to display desired content.
-* **Reference** \- For a detailed guide on how to expose Microfrontend’s Remote Components via Webcomponent method, please refer [here](../../onecx/microfrontend-bootstrapping/remote-component-bootstrapping.html).
-
-Custom Elements in OneCX
-====================
-## [](#%5Foverview)Overview
-
-This article explains how Custom Elements are used in OneCX to dynamically render microfrontend content by binding UI components to HTML elements. It describes the role of the Shell UI, Application Store, and microfrontends in loading, registering, and displaying content using the Web Component approach.
-
-## [](#%5Fhow%5Fit%5Fworks)How It Works
-
-* **Custom Elements** \- Custom Elements are part of the Web Components technology. It is a set of tools used to achieve the binding between components and HTML elements.
-* **Configuration** \- OneCX platform will create HTML elements specified via configuration whenever a module or Remote Component has to be displayed on a page.
-* **Content loading in OneCX** \- There are 2 steps that OneCX platform takes when dealing with content loading with Webcomponent expose method:  
-   * Load exposed content via Module Federation into memory  
-   * Create an HTML element on a page to which exposed content should be bound
-* **Responsibility of Microfrontend** \- In the Microfrontend content loading, it was mentioned that when exposing Microfrontend content, files specified per content should take care of all setup needed to display it.
-* **Custom Element Registration** \- With Webcomponent method, those files need to contain source code, which will register the Custom Element in the Custom Elements Registry.
-* **Binding Components to Elements** \- a file used for content loading needs to use Web Components to assign some component to the HTML element that OneCX platform will render.
-* **Rendering** \- When OneCX platform creates this HTML element on a page, the Custom Elements Registry will use the assigned component and display it on a page.
-
-__Table 1\. Navigation__
-| [← Previous: Introduction to Web Components](index.html) | [Next: Webcomponent Expose Method Requirements →](expose-method-requirements.html) |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-
-undefined
-====================
-## [](#expose-microfrontends-content-as-web-components)Expose Microfrontend’s Content as Web Components
-
-OneCX platform offers different ways of [exposing Microfrontend’s content](../../../architecture/mfe.html). One of them is **Webcomponent method**.
-
-When exposing content with Webcomponent method, it is required to ensure the correct setup. For exposing Angular content, there are functionalities provided via the [@onecx/angular-webcomponents](#onecx/angular-webcomponents) library. For a detailed guide on how to expose Microfrontend’s content via Webcomponent method, please refer [here](adapt-webcomponent-method.html).
-
-| |  Using **[@onecx/angular-webcomponents](#onecx/angular-webcomponents)** library, according to the guide, is the recommended way of exposing Angular content. The set of functionalities provided via the library is taking care of all requirements related to the Web Components adaptation. Apart from automatic registration to the Custom Elements Registry, they ensure that the following issues are covered: Every module and Remote Component is going to have its own router. Routers (Shell’s router, displayed module’s router, and router of each displayed Remote Component) need to be synchronized so each can react to the router events. A Single Angular version can only create one platform to operate on, which means that for every content loaded within a page, the same platform has to be used for a specific version. ngZone of Shell UI has to be shared with all modules and Remote Components to allow Web Components to function correctly. In-depth explanations for those issues can be found in the [Module Federation multi-framework and version micro frontends document](https://www.angulararchitects.io/en/blog/multi-framework-and-version-micro-frontends-with-module-federation-the-good-the-bad-the-ugly/). |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fwebcomponent%5Fexpose%5Fmethod%5Frequirements)Webcomponent Expose Method Requirements
-
-To correctly use Webcomponent expose method, 2 requirements need to be fulfilled:
-
-1. Database is correctly configured for module or Remote Component  
-   1. **technology** set to **WebComponent**  
-   2. **tag name** set to agreed **HTML element name**
-2. Microfrontend is adapted to expose Web Components compliant content  
-   1. desired component needs to be registered as Custom Element in the Custom Elements Registry  
-   2. Angular issues are covered (use the `[@onecx/angular-webcomponents](#onecx/angular-webcomponents)` library to cover them by default)  
-         1. multiple routers synchronization  
-         2. ngZone sharing  
-         3. platform sharing
-
-| |  Database configuration is easy to set up using the Application Store Application. |
-| ------------------------------------------------------------------------------------ |
-
-| |  To ensure Microfrontend compliance with Web Components for Angular modules and Remote Components, it is recommended to use the **[@onecx/angular-webcomponents](#onecx/angular-webcomponents)** library. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-__Table 1\. Navigation__
-| [← Previous: Custom Elements](custom-elements.html) |
-| --------------------------------------------------- |
-
-Web Components in OneCX
-====================
-## [](#overview)Overview
-
-Web Components is a suite of different technologies used to create reusable custom elements with encapsulated functionality. In the OneCX context, they are useful for dynamic content creation for both modules and the display of Remote Components in Microfrontends. Prior to reading this document, it is recommended to read the documentation of [microfrontend content loading](../content-loading.html) to get familiar with the content loading mechanisms available within the OneCX platform.
-
-| |  Webcomponent expose method enables the OneCX platform to use UI Apps developed with different frameworks and versions. It is the **recommended method for all Applications**. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Web Components technologies are used within OneCX platform. However, OneCX offers its own functionalities that should be used to expose Microfrontend’s content using the Webcomponent expose method. Those functionalities are based on Web Components technologies, so there is no need to get familiar with them. Nevertheless, more resources about Web Components can be found [here](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#key-concepts)Key concepts
-
-* [Web Components Preview](webcomponent-preview.html)
-* [Expose Microfrontend’s Content as Web Components](expose-content-as-webcomponent.html)
-* [OneCX Adaptation to Webcomponent Method](adapt-webcomponent-method.html)
-* [@onecx/angular-webcomponents Details](../../onecx/angular-webcomponents.html)
-
-undefined
-====================
-## [](#webcomponents-preview)Web Components Preview
-
-Web Components are used in OneCX context for dynamic content creation. OneCX platform uses Web Components technologies to bound UI components to HTML elements. OneCX platform will use information from the Application Store to determine what HTML elements have to be rendered to allow certain modules and Remote Components to be bound to page content.
-
-With Webcomponent expose method, the OneCX platform is only loading the code required for Microfrontend’s content into the Shell UI memory and creating a "host" element for Remote Components or modules to attach to using Web Components. The Microfrontend’s exposed content is partially responsible for the content creation. Microfrontends have to adapt exposed modules and components, so they are using Web Components Custom Elements.
-
-### [](#%5Fkey%5Fconcepts)Key concepts
-
-* [Custom Elements](custom-elements.html)
-* [Webcomponent Expose Method Requirements](expose-method-requirements.html)
 
 OneCX Platform
 ====================
@@ -7876,6 +7876,65 @@ For a further introduction, please checkout the [NgRX documentation](https://ngr
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
 
+NgRx
+====================
+## [](#what-is-ngrx)What Is NgRx?
+
+* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
+* Core building blocks:  
+   * Actions: Plain events that describe what happened.  
+   * Reducers: Pure functions that compute new state from the previous state and an action.  
+   * Selectors: Memoized queries to read and derive data from state.  
+   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
+   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+
+## [](#overview)Overview
+
+Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+
+Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+
+## [](#core-packages)Core Packages
+
+* Store: `@ngrx/store` — application and feature state containers.
+* Effects: `@ngrx/effects` — side-effects and async flows.
+* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
+* Router Store: `@ngrx/router-store` — integrates Angular Router state.
+* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
+* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+
+## [](#getting-started)Getting Started
+
+Install commonly used packages:
+
+```bash
+npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```
+
+High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+
+## [](#onecx-guides-and-examples)OneCX Guides and Examples
+
+* [Lazy Loading Tabs with NgRx](lazy-loading.html)
+* Adding Search Criteria:  
+   * [Search Criteria](search-criteria/search-criteria.html)  
+   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
+   * [Calendar](search-criteria/calendar.html)  
+   * [Dropdown](search-criteria/dropdown.html)  
+   * [MultiSelect](search-criteria/multiselect.html)
+
+## [](#useful-links)Useful Links
+
+* Official website: [NgRx](https://ngrx.io/)
+* Documentation: [Docs](https://ngrx.io/docs)
+* Store: [Store](https://ngrx.io/guide/store)
+* Effects: [Effects](https://ngrx.io/guide/effects)
+* Entity: [Entity](https://ngrx.io/guide/entity)
+* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
+* Router Store: [Router Store](https://ngrx.io/guide/router-store)
+* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
+* Schematics: [Schematics](https://ngrx.io/guide/schematics)
+
 Lazy loading tabs
 ====================
 ## [](#goal)Goal: Load tabs dynamically
@@ -8062,65 +8121,6 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-NgRx
-====================
-## [](#what-is-ngrx)What Is NgRx?
-
-* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
-* Core building blocks:  
-   * Actions: Plain events that describe what happened.  
-   * Reducers: Pure functions that compute new state from the previous state and an action.  
-   * Selectors: Memoized queries to read and derive data from state.  
-   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
-   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
-
-## [](#overview)Overview
-
-Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
-
-Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
-
-## [](#core-packages)Core Packages
-
-* Store: `@ngrx/store` — application and feature state containers.
-* Effects: `@ngrx/effects` — side-effects and async flows.
-* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
-* Router Store: `@ngrx/router-store` — integrates Angular Router state.
-* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
-* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
-
-## [](#getting-started)Getting Started
-
-Install commonly used packages:
-
-```bash
-npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
-```
-
-High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
-
-## [](#onecx-guides-and-examples)OneCX Guides and Examples
-
-* [Lazy Loading Tabs with NgRx](lazy-loading.html)
-* Adding Search Criteria:  
-   * [Search Criteria](search-criteria/search-criteria.html)  
-   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
-   * [Calendar](search-criteria/calendar.html)  
-   * [Dropdown](search-criteria/dropdown.html)  
-   * [MultiSelect](search-criteria/multiselect.html)
-
-## [](#useful-links)Useful Links
-
-* Official website: [NgRx](https://ngrx.io/)
-* Documentation: [Docs](https://ngrx.io/docs)
-* Store: [Store](https://ngrx.io/guide/store)
-* Effects: [Effects](https://ngrx.io/guide/effects)
-* Entity: [Entity](https://ngrx.io/guide/entity)
-* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
-* Router Store: [Router Store](https://ngrx.io/guide/router-store)
-* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
-* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Content Visibility Based on Permissions
 ====================
@@ -15074,13 +15074,6 @@ Figure 4\. Search UI with adapted search and example data
 
 undefined
 ====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
 ## [](#customize-form-fields)Customize form fields
 
 The form fields of the dialog need to be adapted
@@ -15172,6 +15165,13 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -15873,6 +15873,206 @@ ACTION S10 in `book-search.component.ts`
         ...
 ```
 
+Configure Search Results
+====================
+After generating the base search page, you need to configure how the search results are displayed to the user.  
+The following actions must be taken.
+
+## [](#action-s5)ACTION S5
+
+If not yet done, specify the base entity properties in the OpenAPI specification, see [Create an Entity Schema](../create-schema.html).
+
+## [](#action-s6)ACTION S6
+
+Specify Columns in Result table
+
+The next step is to configure the columns of the search results table. Here you can define which properties of your entity should be displayed in the results table, as well as their characteristics (e.g. if they are sortable or filterable).
+
+### Template: Generated Search Result Columns
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.columns.ts                               |
+
+ACTION S6 in `<resource>-search.columns.ts` 
+
+```javascript
+export const <resource>SearchColumns: DataTableColumn[] = [
+  {
+    columnType: ColumnType.STRING,
+    id: 'changeMe',
+    nameKey: '<RESOURCE>_SEARCH.RESULTS.CHANGE_ME',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.DEFAULT',
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.EXTENDED',
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  }
+  // ACTION S6: Define search results columns
+];
+```
+
+Where **changeMe** is a column added to the `<Resource>SearchColumns`.
+
+---
+
+### Example: Book Search Result Columns
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.columns.ts                   |
+
+Example: Book Search Result Columns 
+
+```javascript
+export const bookSearchColumns: DataTableColumn[] = [
+  {
+    columnType: ColumnType.STRING,
+    id: 'bookTitle',
+    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TITLE',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      'BOOK_SEARCH.PREDEFINED_GROUP.DEFAULT',
+      'BOOK_SEARCH.PREDEFINED_GROUP.EXTENDED',
+      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  },
+  {
+    columnType: ColumnType.TRANSLATION_KEY,
+    id: 'bookType',
+    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TYPE',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  }
+  // ACTION S6: Define search results columns
+]
+```
+
+Where **bookTitle** and **bookType** are columns added to the `BookSearchColumns`. The column **bookType** is only added to the predefined group **FULL**, so it will only be visible for users who select this group in the UI.
+
+Refer to the [DataTableColumn overview](../../../onecx-portal-ui-libs/components/interactive-data-view/data-table-column.html) for more information.
+
+## [](#action-s7)ACTION S7
+
+Mapping from Entity/Resource to Row Item
+
+The final step in configuring the search results is to create a mapping from the feature state to the row item used in the data table. This mapping is necessary to ensure that the correct data is displayed in the search results table.  
+This is also the place to add translation keys for columns with the type `TRANSLATION_KEY`, if required.
+
+### Template: Mapping from Entity to Row Item
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.selectors.ts                             |
+
+Adust Selector in `<resource>-search.selectors.ts` 
+
+```typescript
+export const selectResults = createSelector(
+  <resource>SearchSelectors.selectResults,
+  (results: <resource>[]): RowListGridData[] => {
+    return results.map((item) => ({
+      imagePath: '',
+      ...item,
+      // ACTION S7: Create a mapping of the items and their corresponding translation keys
+    }));
+  }
+);
+```
+
+---
+
+### Example: Mapping Book Types
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.selectors.ts                 |
+
+Example: Book Search Result Mapping 
+
+```javascript
+export const selectResults = createSelector(bookSearchSelectors.selectResults, (results: Book[]): RowListGridData[] => {
+  return results.map((item) => ({
+    imagePath: '',
+    ...item,
+    bookType: item.bookType
+      ? `BOOK_SEARCH.RESULTS.BOOK_TYPES.${item.bookType.toUpperCase()}`
+      : ''
+    // ACTION S7: Create a mapping of the items and their corresponding translation keys
+  }))
+})
+```
+
+This example shows how to map a property `bookType` to a translation key.
+
+## [](#action-s8)ACTION S8
+
+Add translations for search result data
+
+Ensure that all column headers and the mapped values in columns have the necessary translations added.
+
+### Template: Translations for Search Results
+
+| Directory | <root-of-ui-app>/src/app/assets/i18n |
+| --------- | ------------------------------------ |
+| Files     | en.json / de.json                    |
+
+---
+
+### Example: Translations for Book Search Results
+
+| Directory | bookstore/src/app/assets/i18n |
+| --------- | ----------------------------- |
+| Files     | en.json / de.json             |
+
+Adjust translations in `en.json` 
+
+```json
+  "BOOK_SEARCH": {
+    ...
+    "RESULTS": {
+      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
+      "BOOK_TITLE": "Book Title",
+      "BOOK_TYPE": "Book Type",
+      "BOOK_TYPES": {
+        "CRIME": "Crime",
+        "DRAMA": "Drama",
+        "FANTASY": "Fantasy",
+        "PROSE": "Prose",
+        "SCIENCE": "Science"
+      }
+    },
+    ...
+```
+
+Refer to the [Multi-Language Guide](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
+
+Adjust translations in `de.json` 
+
+```json
+  "BOOK_SEARCH": {
+    ...
+    "RESULTS": {
+      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
+      "BOOK_TITLE": "Buchtitel",
+      "BOOK_TYPE": "Buchtyp",
+      "BOOK_TYPES": {
+        "CRIME": "Krimi",
+        "DRAMA": "Drama",
+        "FANTASY": "Fantasie",
+        "PROSE": "Prosa",
+        "SCIENCE": "Wissenschaft"
+      }
+    },
+  ...
+```
+
 Configure Search Criteria
 ====================
 After generating the base of the search page, you can configure search criteria to allow users to filter existing data. It is necessary to add such criteria to both the user interface and the backend services to ensure proper data processing.
@@ -16486,206 +16686,6 @@ Make sure to review the test results and address any issues that may arise to en
 ![test result search](../../_images/test_result_search.png) 
 
 Figure 1\. Test results
-
-Configure Search Results
-====================
-After generating the base search page, you need to configure how the search results are displayed to the user.  
-The following actions must be taken.
-
-## [](#action-s5)ACTION S5
-
-If not yet done, specify the base entity properties in the OpenAPI specification, see [Create an Entity Schema](../create-schema.html).
-
-## [](#action-s6)ACTION S6
-
-Specify Columns in Result table
-
-The next step is to configure the columns of the search results table. Here you can define which properties of your entity should be displayed in the results table, as well as their characteristics (e.g. if they are sortable or filterable).
-
-### Template: Generated Search Result Columns
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.columns.ts                               |
-
-ACTION S6 in `<resource>-search.columns.ts` 
-
-```javascript
-export const <resource>SearchColumns: DataTableColumn[] = [
-  {
-    columnType: ColumnType.STRING,
-    id: 'changeMe',
-    nameKey: '<RESOURCE>_SEARCH.RESULTS.CHANGE_ME',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.DEFAULT',
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.EXTENDED',
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  }
-  // ACTION S6: Define search results columns
-];
-```
-
-Where **changeMe** is a column added to the `<Resource>SearchColumns`.
-
----
-
-### Example: Book Search Result Columns
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.columns.ts                   |
-
-Example: Book Search Result Columns 
-
-```javascript
-export const bookSearchColumns: DataTableColumn[] = [
-  {
-    columnType: ColumnType.STRING,
-    id: 'bookTitle',
-    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TITLE',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      'BOOK_SEARCH.PREDEFINED_GROUP.DEFAULT',
-      'BOOK_SEARCH.PREDEFINED_GROUP.EXTENDED',
-      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  },
-  {
-    columnType: ColumnType.TRANSLATION_KEY,
-    id: 'bookType',
-    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TYPE',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  }
-  // ACTION S6: Define search results columns
-]
-```
-
-Where **bookTitle** and **bookType** are columns added to the `BookSearchColumns`. The column **bookType** is only added to the predefined group **FULL**, so it will only be visible for users who select this group in the UI.
-
-Refer to the [DataTableColumn overview](../../../onecx-portal-ui-libs/components/interactive-data-view/data-table-column.html) for more information.
-
-## [](#action-s7)ACTION S7
-
-Mapping from Entity/Resource to Row Item
-
-The final step in configuring the search results is to create a mapping from the feature state to the row item used in the data table. This mapping is necessary to ensure that the correct data is displayed in the search results table.  
-This is also the place to add translation keys for columns with the type `TRANSLATION_KEY`, if required.
-
-### Template: Mapping from Entity to Row Item
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.selectors.ts                             |
-
-Adust Selector in `<resource>-search.selectors.ts` 
-
-```typescript
-export const selectResults = createSelector(
-  <resource>SearchSelectors.selectResults,
-  (results: <resource>[]): RowListGridData[] => {
-    return results.map((item) => ({
-      imagePath: '',
-      ...item,
-      // ACTION S7: Create a mapping of the items and their corresponding translation keys
-    }));
-  }
-);
-```
-
----
-
-### Example: Mapping Book Types
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.selectors.ts                 |
-
-Example: Book Search Result Mapping 
-
-```javascript
-export const selectResults = createSelector(bookSearchSelectors.selectResults, (results: Book[]): RowListGridData[] => {
-  return results.map((item) => ({
-    imagePath: '',
-    ...item,
-    bookType: item.bookType
-      ? `BOOK_SEARCH.RESULTS.BOOK_TYPES.${item.bookType.toUpperCase()}`
-      : ''
-    // ACTION S7: Create a mapping of the items and their corresponding translation keys
-  }))
-})
-```
-
-This example shows how to map a property `bookType` to a translation key.
-
-## [](#action-s8)ACTION S8
-
-Add translations for search result data
-
-Ensure that all column headers and the mapped values in columns have the necessary translations added.
-
-### Template: Translations for Search Results
-
-| Directory | <root-of-ui-app>/src/app/assets/i18n |
-| --------- | ------------------------------------ |
-| Files     | en.json / de.json                    |
-
----
-
-### Example: Translations for Book Search Results
-
-| Directory | bookstore/src/app/assets/i18n |
-| --------- | ----------------------------- |
-| Files     | en.json / de.json             |
-
-Adjust translations in `en.json` 
-
-```json
-  "BOOK_SEARCH": {
-    ...
-    "RESULTS": {
-      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
-      "BOOK_TITLE": "Book Title",
-      "BOOK_TYPE": "Book Type",
-      "BOOK_TYPES": {
-        "CRIME": "Crime",
-        "DRAMA": "Drama",
-        "FANTASY": "Fantasy",
-        "PROSE": "Prose",
-        "SCIENCE": "Science"
-      }
-    },
-    ...
-```
-
-Refer to the [Multi-Language Guide](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
-
-Adjust translations in `de.json` 
-
-```json
-  "BOOK_SEARCH": {
-    ...
-    "RESULTS": {
-      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
-      "BOOK_TITLE": "Buchtitel",
-      "BOOK_TYPE": "Buchtyp",
-      "BOOK_TYPES": {
-        "CRIME": "Krimi",
-        "DRAMA": "Drama",
-        "FANTASY": "Fantasie",
-        "PROSE": "Prosa",
-        "SCIENCE": "Wissenschaft"
-      }
-    },
-  ...
-```
 
 undefined
 ====================
@@ -18698,32 +18698,6 @@ Some logs are intentionally high-volume and are separated into dedicated namespa
 
 These are excluded in the example above.
 
-OneCX UI Libraries
-====================
-`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
-
-This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
-
-## [](#overview)Overview
-
-| Library                                                                                  | Description                                                                                                     |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
-| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
-| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
-| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
-| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
-| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
-| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
-| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
-| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
-| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
-| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
-| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
-| [**@onecx/build-utils**](libraries/build-utils.html)                                     | Provides build utilities for OneCX applications                                                                 |
-
-For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
-
 OneCX UI Libraries: Local Development
 ====================
 This guide explains how to set up a local development environment for testing changes to the libraries, located in the **onecx-portal-ui-libs** repository and integrating them in local applications and a local [OneCX Shell](../onecx-shell/index.html).
@@ -18879,6 +18853,32 @@ To do so, follow the documentation on [running custom applications locally](../o
 
 | |  The steps for running the shell should match the steps for running existing OneCX core apps. |
 | ----------------------------------------------------------------------------------------------- |
+
+OneCX UI Libraries
+====================
+`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
+
+This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
+
+## [](#overview)Overview
+
+| Library                                                                                  | Description                                                                                                     |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
+| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
+| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
+| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
+| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
+| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
+| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
+| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
+| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
+| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
+| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
+| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
+| [**@onecx/build-utils**](libraries/build-utils.html)                                     | Provides build utilities for OneCX applications                                                                 |
+
+For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
 
 OneCX UI Libraries: Compatibility
 ====================
@@ -19413,6 +19413,126 @@ __Table 4\. ObjectDetailItem interface__
 | \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
 | \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
 
+OneCX SearchHeader
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage SearchHeader component.
+
+This component displays the search result data as a diagram. Please, visit the storybook page for the [SearchHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+
+## [](#customization)Customization
+
+The SearchHeader component allows for content customization:
+
+* define header title
+* add input fields
+* add header actions buttons
+* `*ocxAdvanced` directive  
+   * The `*ocxAdvanced` directive specifies whether a field is part of the `basic` or `advanced` mode. This mode can be toggled using the Basic\\|Advanced button in the search header which is only displayed when this directive is used for defining advanced input fields. The directive will be added to the div element:  
+   ```html  
+    <form [formGroup]="criteriaGroup">  
+         <div class="grid mt-0 p-fluid">  
+           <div *ocxAdvanced class="col-12 md:col-3">  
+             <span class="p-float-label">  
+              // PLACE YOUR INPUT FIELD HERE  
+             </span>  
+           </div>  
+           ...  
+   ```
+
+To find out how to work with the SearchHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the SearchHeader component interface, please read the further documentation.
+
+### [](#ocx-basic-and-advanced-directives)ocxBasic and ocxAdvanced Directives
+
+The `*ocxBasic` and `*ocxAdvanced` directives are [structural directives](https://angular.dev/guide/directives/structural-directives) that provide advanced search field visibility control within the SearchHeader component. These directives enable the creation of a two-tier search interface where fields can be categorized as either basic or advanced.
+
+Here’s a simple example showing how to use the directives:
+
+```html
+<ocx-search-header
+  ...>
+  <form [formGroup]="criteriaForm" class="flex flex-wrap gap-3">
+    <span class="p-float-label">
+      <input
+        id="title"
+        ...>
+      <label for="title">Title</label>
+    </span>
+
+    <span *ocxBasic class="p-float-label">
+      <p-multiSelect
+        id="status"
+        ...>
+      </p-multiSelect>
+      <label for="status">Status</label>
+    </span>
+
+    <span *ocxAdvanced class="p-float-label">
+      <p-multiSelect
+        id="priority"
+        ...>
+      </p-multiSelect>
+      <label for="priority">Priority</label>
+    </span>
+  </form>
+</ocx-search-header>
+```
+
+* **Basic Mode**: Fields marked with `*ocxAdvanced` are hidden by default and only basic fields and fields without directive are visible. (Here: only Title and Status visible)
+* **Advanced Mode**: All fields without an directive or with `*ocxAdvanced` are visible. (Here: Title and Priority visible)
+* **Toggle Button**: The Basic|Advanced toggle button appears automatically when at least one field uses either the `*ocxBasic` or `*ocxAdvanced` directive
+
+## [](#inputs)Inputs
+
+__Table 1\. SearchHeader inputs__
+| Property name          | Type                       | Default   | Description                                                                                                                                                     |                                                                |
+| ---------------------- | -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| header                 | string                     | ''        | Translation key for header title.                                                                                                                               |                                                                |
+| subheader              | string \| undefined        | \-        | Translation key for sub-header title.                                                                                                                           |                                                                |
+| viewMode               | 'basic' \| 'advanced'      | 'basic'   | Determines if 'basic' or 'advanced' search criterias are displayed.                                                                                             |                                                                |
+| manualBreadcrumbs      | boolean                    | false     | Determines to use custom or default rendered breadcrumbs.                                                                                                       |                                                                |
+| actions                | [ColumnType](#column-type) | \[\]      | Array of actions available in the header in form of a button or a menu item. Please refer to [PageHeader component](page-header.html) for detailed information. |                                                                |
+| searchButtonDisabled   | boolean                    | false     | Determines if the search button should be rendered.                                                                                                             |                                                                |
+| resetButtonDisabled    | boolean                    | false     | Determines if the reset button should be rendered.                                                                                                              |                                                                |
+| searchConfigPermission | string \| string\[\]       | undefined | \-                                                                                                                                                              | Defines the permission key(s) for displaying the searchConfig. |
+| pageName               | string \| undefined        | \-        | Defines page name for searchConfig.                                                                                                                             |                                                                |
+
+## [](#outputs)Outputs
+
+__Table 2\. SearchHeader outputs__
+| Property name               | Type                                                                         | Description                                                                                                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| searched                    | EventEmitter<any>                                                            | Emits event when search button is clicked.                                                                                                                     |
+| resetted                    | EventEmitter<any>                                                            | Emits event when reset button is clicked.                                                                                                                      |
+| selectedSearchConfigChanged | EventEmitter<[SearchConfigData](#search-config-data) \| undefined>           | Emits the [SearchConfigData](#search-config-data) upon change of selected searchConfig.                                                                        |
+| viewModeChanged             | EventEmitter<'basic' \| 'advanced'>                                          | Emits the viewMode 'basic' or 'advanced' when the Basic\|Advanced button is clicked.                                                                           |
+| componentStateChanged       | EventEmitter <[SearchHeaderComponentState](#search-header-component-state)\> | Emits the [SearchHeaderComponentState](#search-header-component-state) with updated viewMode or searchConfig if changed, to ensure consistent component state. |
+
+## [](#types)Types
+
+### [](#search-header-component-state)SearchHeaderComponentState
+
+SearchHeaderComponentState is used to maintain consistent ComponentState.
+
+__Table 3\. SearchHeaderComponentState interface__
+| Property name        | Type              | Description                    |
+| -------------------- | ----------------- | ------------------------------ |
+| activeViewMode       | EventEmitter<any> | Current active viewMode.       |
+| selectedSearchConfig | EventEmitter<any> | Current selected searchConfig. |
+
+### [](#search-config-data)SearchConfigData
+
+SearchConfigData is used for the SearchConfig component.
+
+__Table 4\. SearchConfigData interface__
+| Property name       | Type                        | Description                                                        |
+| ------------------- | --------------------------- | ------------------------------------------------------------------ |
+| name                | string \| undefined         | Name of the searchConfig.                                          |
+| fieldValues         | { \[key: string\]: string } | Data values to display.                                            |
+| displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
+| viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
+
 Library: @onecx/angular-integration-interface
 ====================
 ## [](#overview)Overview
@@ -19729,126 +19849,6 @@ __Table 15\. Workspace Service methods__
 | -------------------------------------------------------------------------------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
-
-OneCX SearchHeader
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage SearchHeader component.
-
-This component displays the search result data as a diagram. Please, visit the storybook page for the [SearchHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
-
-## [](#customization)Customization
-
-The SearchHeader component allows for content customization:
-
-* define header title
-* add input fields
-* add header actions buttons
-* `*ocxAdvanced` directive  
-   * The `*ocxAdvanced` directive specifies whether a field is part of the `basic` or `advanced` mode. This mode can be toggled using the Basic\\|Advanced button in the search header which is only displayed when this directive is used for defining advanced input fields. The directive will be added to the div element:  
-   ```html  
-    <form [formGroup]="criteriaGroup">  
-         <div class="grid mt-0 p-fluid">  
-           <div *ocxAdvanced class="col-12 md:col-3">  
-             <span class="p-float-label">  
-              // PLACE YOUR INPUT FIELD HERE  
-             </span>  
-           </div>  
-           ...  
-   ```
-
-To find out how to work with the SearchHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-searchheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the SearchHeader component interface, please read the further documentation.
-
-### [](#ocx-basic-and-advanced-directives)ocxBasic and ocxAdvanced Directives
-
-The `*ocxBasic` and `*ocxAdvanced` directives are [structural directives](https://angular.dev/guide/directives/structural-directives) that provide advanced search field visibility control within the SearchHeader component. These directives enable the creation of a two-tier search interface where fields can be categorized as either basic or advanced.
-
-Here’s a simple example showing how to use the directives:
-
-```html
-<ocx-search-header
-  ...>
-  <form [formGroup]="criteriaForm" class="flex flex-wrap gap-3">
-    <span class="p-float-label">
-      <input
-        id="title"
-        ...>
-      <label for="title">Title</label>
-    </span>
-
-    <span *ocxBasic class="p-float-label">
-      <p-multiSelect
-        id="status"
-        ...>
-      </p-multiSelect>
-      <label for="status">Status</label>
-    </span>
-
-    <span *ocxAdvanced class="p-float-label">
-      <p-multiSelect
-        id="priority"
-        ...>
-      </p-multiSelect>
-      <label for="priority">Priority</label>
-    </span>
-  </form>
-</ocx-search-header>
-```
-
-* **Basic Mode**: Fields marked with `*ocxAdvanced` are hidden by default and only basic fields and fields without directive are visible. (Here: only Title and Status visible)
-* **Advanced Mode**: All fields without an directive or with `*ocxAdvanced` are visible. (Here: Title and Priority visible)
-* **Toggle Button**: The Basic|Advanced toggle button appears automatically when at least one field uses either the `*ocxBasic` or `*ocxAdvanced` directive
-
-## [](#inputs)Inputs
-
-__Table 1\. SearchHeader inputs__
-| Property name          | Type                       | Default   | Description                                                                                                                                                     |                                                                |
-| ---------------------- | -------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| header                 | string                     | ''        | Translation key for header title.                                                                                                                               |                                                                |
-| subheader              | string \| undefined        | \-        | Translation key for sub-header title.                                                                                                                           |                                                                |
-| viewMode               | 'basic' \| 'advanced'      | 'basic'   | Determines if 'basic' or 'advanced' search criterias are displayed.                                                                                             |                                                                |
-| manualBreadcrumbs      | boolean                    | false     | Determines to use custom or default rendered breadcrumbs.                                                                                                       |                                                                |
-| actions                | [ColumnType](#column-type) | \[\]      | Array of actions available in the header in form of a button or a menu item. Please refer to [PageHeader component](page-header.html) for detailed information. |                                                                |
-| searchButtonDisabled   | boolean                    | false     | Determines if the search button should be rendered.                                                                                                             |                                                                |
-| resetButtonDisabled    | boolean                    | false     | Determines if the reset button should be rendered.                                                                                                              |                                                                |
-| searchConfigPermission | string \| string\[\]       | undefined | \-                                                                                                                                                              | Defines the permission key(s) for displaying the searchConfig. |
-| pageName               | string \| undefined        | \-        | Defines page name for searchConfig.                                                                                                                             |                                                                |
-
-## [](#outputs)Outputs
-
-__Table 2\. SearchHeader outputs__
-| Property name               | Type                                                                         | Description                                                                                                                                                    |
-| --------------------------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| searched                    | EventEmitter<any>                                                            | Emits event when search button is clicked.                                                                                                                     |
-| resetted                    | EventEmitter<any>                                                            | Emits event when reset button is clicked.                                                                                                                      |
-| selectedSearchConfigChanged | EventEmitter<[SearchConfigData](#search-config-data) \| undefined>           | Emits the [SearchConfigData](#search-config-data) upon change of selected searchConfig.                                                                        |
-| viewModeChanged             | EventEmitter<'basic' \| 'advanced'>                                          | Emits the viewMode 'basic' or 'advanced' when the Basic\|Advanced button is clicked.                                                                           |
-| componentStateChanged       | EventEmitter <[SearchHeaderComponentState](#search-header-component-state)\> | Emits the [SearchHeaderComponentState](#search-header-component-state) with updated viewMode or searchConfig if changed, to ensure consistent component state. |
-
-## [](#types)Types
-
-### [](#search-header-component-state)SearchHeaderComponentState
-
-SearchHeaderComponentState is used to maintain consistent ComponentState.
-
-__Table 3\. SearchHeaderComponentState interface__
-| Property name        | Type              | Description                    |
-| -------------------- | ----------------- | ------------------------------ |
-| activeViewMode       | EventEmitter<any> | Current active viewMode.       |
-| selectedSearchConfig | EventEmitter<any> | Current selected searchConfig. |
-
-### [](#search-config-data)SearchConfigData
-
-SearchConfigData is used for the SearchConfig component.
-
-__Table 4\. SearchConfigData interface__
-| Property name       | Type                        | Description                                                        |
-| ------------------- | --------------------------- | ------------------------------------------------------------------ |
-| name                | string \| undefined         | Name of the searchConfig.                                          |
-| fieldValues         | { \[key: string\]: string } | Data values to display.                                            |
-| displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
-| viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
 
 angular-linter-rules
 ====================
@@ -21312,6 +21312,16 @@ FilterType enum
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
 
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
+
 @onecx/angular-utils/cdk
 ====================
 `@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
@@ -21357,16 +21367,6 @@ import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
 })
 export class RemoteModule {}
 ```
-
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
 
 undefined
 ====================
@@ -22519,83 +22519,6 @@ __Table 2\. Input Properties__
 | \-                   | layout                       | Sets layout direction of container Values: vertical, horizontal Default value: vertical                     |
 | \-                   | breakpoint                   | Sets breakpoint when horizontal layout switches to vertical layout Values: sm, md, lg, xl Default value: md |
 
-Replace ButtonDialogComponent
-====================
-In OneCX v6, replace `ButtonDialogComponent` with `DialogInlineComponent` for inline dialogs with configurable buttons and dynamic content.
-
-## [](#%5Fcode%5Fchanges)Code Changes
-
-* Remove `ButtonDialogComponent` from `@onecx/portal-integration-angular`.
-* Add `DialogInlineComponent` from `@onecx/angular-accelerator`.
-* Replace tag `<ocx-button-dialog>` with `<ocx-dialog-inline>`.
-* Migrate input properties and output events as per the mapping table below.
-
-### [](#%5Fexample)Example
-
-Before
-
-```html
-<ocx-button-dialog
-  [config]="dialogConfig"
-  (resultEmitter)="onDialogResult($event)">
-  <p>Dialog Content to display</p>
-</ocx-button-dialog>
-```
-
-```typescript
-export class ExampleComponent {
-  dialogConfig = {
-    primaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CONFIRM' },
-    secondaryButtonIncluded: true,
-    secondaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CANCEL' },
-    customButtons: [{ id: 'help', label: 'Help', alignment: 'left' }],
-    autoFocusButton: 'primary'
-  }
-
-  onDialogResult(result: any) {
-    console.log('Dialog result (inline):', result);
-  }
-}
-```
-
-After
-
-```html
-<ocx-dialog-inline
-  [config]="dialogConfig"
-  (resultEmitter)="onDialogResult($event)">
-  <p>Dialog Content to display</p>
-</ocx-dialog-inline>
-```
-
-```typescript
-export class ExampleComponent {
-  dialogConfig = {
-    primaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CONFIRM' },
-    secondaryButtonIncluded: true,
-    secondaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CANCEL' },
-    customButtons: [{ id: 'help', label: 'Help', alignment: 'left' }],
-    autoFocusButton: 'primary'
-  }
-
-  onDialogResult(result: any) {
-    console.log('Dialog result (inline):', result);
-  }
-}
-```
-
-## [](#%5Fproperties%5Fmapping)Properties Mapping
-
-__Table 1\. Input Properties__
-| ButtonDialogComponent | DialogInlineComponent | Notes                                                                                                                 |
-| --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| config                | config                | ButtonDialogConfig. Indicates the dialog configuration object for buttons, labels etc. No change in config structure. |
-
-__Table 2\. Output Events__
-| ButtonDialogComponent | DialogInlineComponent | Notes                                                               |
-| --------------------- | --------------------- | ------------------------------------------------------------------- |
-| resultEmitter         | resultEmitter         | Emits the type of button clicked (e.g. primary, secondary, custom). |
-
 Replace SearchCriteriaComponent
 ====================
 In OneCX v6, Replace **SearchCriteriaComponent** with **SearchHeaderComponent**. SearcghHeaderComponent can accept search templates and provides options to add toolbar content with alignment.
@@ -22709,6 +22632,83 @@ __Table 2\. Output Events__
 | search                  | searched              | Emits on search action. Provides nothing                                      |
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
+
+Replace ButtonDialogComponent
+====================
+In OneCX v6, replace `ButtonDialogComponent` with `DialogInlineComponent` for inline dialogs with configurable buttons and dynamic content.
+
+## [](#%5Fcode%5Fchanges)Code Changes
+
+* Remove `ButtonDialogComponent` from `@onecx/portal-integration-angular`.
+* Add `DialogInlineComponent` from `@onecx/angular-accelerator`.
+* Replace tag `<ocx-button-dialog>` with `<ocx-dialog-inline>`.
+* Migrate input properties and output events as per the mapping table below.
+
+### [](#%5Fexample)Example
+
+Before
+
+```html
+<ocx-button-dialog
+  [config]="dialogConfig"
+  (resultEmitter)="onDialogResult($event)">
+  <p>Dialog Content to display</p>
+</ocx-button-dialog>
+```
+
+```typescript
+export class ExampleComponent {
+  dialogConfig = {
+    primaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CONFIRM' },
+    secondaryButtonIncluded: true,
+    secondaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CANCEL' },
+    customButtons: [{ id: 'help', label: 'Help', alignment: 'left' }],
+    autoFocusButton: 'primary'
+  }
+
+  onDialogResult(result: any) {
+    console.log('Dialog result (inline):', result);
+  }
+}
+```
+
+After
+
+```html
+<ocx-dialog-inline
+  [config]="dialogConfig"
+  (resultEmitter)="onDialogResult($event)">
+  <p>Dialog Content to display</p>
+</ocx-dialog-inline>
+```
+
+```typescript
+export class ExampleComponent {
+  dialogConfig = {
+    primaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CONFIRM' },
+    secondaryButtonIncluded: true,
+    secondaryButtonDetails: { key: 'OCX_BUTTON_DIALOG.CANCEL' },
+    customButtons: [{ id: 'help', label: 'Help', alignment: 'left' }],
+    autoFocusButton: 'primary'
+  }
+
+  onDialogResult(result: any) {
+    console.log('Dialog result (inline):', result);
+  }
+}
+```
+
+## [](#%5Fproperties%5Fmapping)Properties Mapping
+
+__Table 1\. Input Properties__
+| ButtonDialogComponent | DialogInlineComponent | Notes                                                                                                                 |
+| --------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| config                | config                | ButtonDialogConfig. Indicates the dialog configuration object for buttons, labels etc. No change in config structure. |
+
+__Table 2\. Output Events__
+| ButtonDialogComponent | DialogInlineComponent | Notes                                                               |
+| --------------------- | --------------------- | ------------------------------------------------------------------- |
+| resultEmitter         | resultEmitter         | Emits the type of button clicked (e.g. primary, secondary, custom). |
 
 Replace BASE_URL injection token
 ====================
@@ -23502,444 +23502,6 @@ nx migrate --run-migrations
 
 After this step, proceed with the remaining post-migration steps.
 
-Set shareScope values in Helm
-====================
-After migration to Angular 21, add a `shareScope` field per microfrontend spec entry in your Helm values.
-
-## [](#%5Frequired%5Fchange)Required change
-
-Set `shareScope` based on app technology:
-
-```yaml
-shareScope: angular_21  # for Angular MFEs
-shareScope: react_21    # for React MFEs
-```
-
-Add this field in the microfrontend properties for each exposed entry (for example in `helm/values.yaml` under `app.operator.microfrontend.specs.<entry>`).
-
-Example:
-
-```yaml
-app:
-  operator:
-    microfrontend:
-      specs:
-        main:
-          exposedModule: ./OneCXThemeModule
-          shareScope: angular_21
-        theme-data:
-          exposedModule: ./OneCXThemeDataComponent
-          shareScope: angular_21
-        theme-logo:
-          exposedModule: ./OneCXCurrentThemeLogoComponent
-          shareScope: angular_21
-```
-
-| |  A strict and consistent shareScope value allows Angular 21 applications to share Angular 21 package instances across host and remotes. Use exactly the same value across connected apps of the same technology/runtime. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Adjust ngrx utilities usage
-====================
-In OneCX v8, some `@onecx/ngrx-accelerator` utility names changed. If your app still uses the old utility names, TypeScript compilation fails after upgrade.
-
-| |  This adaptation is required only if you changed generated code, added custom ngrx implementation, or if your project is affected by these renamed utilities as a breaking change. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#%5Frequired%5Frename)Required rename
-
-* `filterForQueryParamsChanged` → `filterOutQueryParamsHaveNotChanged`
-* `filterForOnlyQueryParamsChanged` → `filterOutOnlyQueryParamsChanged`
-
-## [](#%5Fexample)Example
-
-Before
-
-```typescript
-import {
-  filterForQueryParamsChanged,
-  filterForOnlyQueryParamsChanged,
-} from '@onecx/ngrx-accelerator'
-```
-
-After
-
-```typescript
-import {
-  filterOutQueryParamsHaveNotChanged,
-  filterOutOnlyQueryParamsChanged,
-} from '@onecx/ngrx-accelerator'
-```
-
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-21
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
-
-ESM bundling awareness (prerequisite)
-====================
-In OneCX v8, `@onecx/accelerator` and `@onecx/integration-interface` are published as ES modules.
-
-For standard Angular application builds, this is usually non-breaking. This page helps you quickly detect and fix issues in custom runtime/build setups.
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-* Packages are ESM (`"type": "module"`).
-* CommonJS-only usage patterns (for example `require()` in custom Node scripts) may need adaptation.
-
-## [](#%5Fwhen%5Fto%5Fcheck%5Fthis)When to check this
-
-Check this prerequisite if your project includes custom scripts/tooling such as:
-
-* Node scripts importing OneCX packages directly
-* Custom webpack/rspack wrappers around MF runtime loading
-* Test/dev scripts running outside Angular CLI/Nx standard build flow
-
-## [](#%5Ftypical%5Fissues%5Fyou%5Fmight%5Fface)Typical issues you might face
-
-* `ERR_REQUIRE_ESM`
-* `require is not defined in ES module scope`
-* Module resolution/import errors in custom scripts after dependency update
-
-## [](#%5Fsolutions)Solutions
-
-### [](#%5F1%5Freplace%5Frequire%5Fwith%5Fesm%5Fimports)1) Replace `require()` with ESM imports
-
-Before
-
-```javascript
-const { EventsTopic } = require('@onecx/integration-interface')
-```
-
-After
-
-```typescript
-import { EventsTopic } from '@onecx/integration-interface'
-```
-
-### [](#%5F2%5Fensure%5Fscriptmodule%5Fruntime%5Fsupports%5Fesm)2) Ensure script/module runtime supports ESM
-
-* Use an ESM-capable Node runtime and script configuration.
-* Keep host and remotes on consistent dependency/runtime expectations.
-
-### [](#%5F3%5Fif%5Fno%5Fcustom%5Fruntime%5Fusage%5Fexists)3) If no custom runtime usage exists
-
-No action is needed. Treat this as awareness-only and continue with migration steps.
-
-Migrate OneCX App from Angular 20 to Angular 21
-====================
-## [](#overview)Overview
-
-| |  This guide is a work in progress. Angular 21 support and OneCX UI libraries v8 are not final yet. Angular 21 support will be provided with OneCX Shell v3. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-This guide provides step-by-step instructions for migrating OneCX applications from Angular 20 to Angular 21\. As part of upgrading to Angular 21, you must update your OneCX UI libraries to version 8\. This library update is not a standalone migration but a required part of the Angular version upgrade process, as OneCX v8 libraries provide Angular 21 compatibility and include required breaking changes.
-
-## [](#prerequisites)Prerequisites
-
-Before starting this migration:
-
-* Your OneCX application is currently running on Angular 20
-* You have OneCX UI libraries v7.x installed
-* You have a working development environment
-
-## [](#ai-driven-migration-assistance)AI Driven Migration Assistance
-
-To simplify the migration process, you can use the AI-driven migration assistant. The [OneCX AI Refactoring Agents](https://github.com/onecx/onecx-ai-refactoring-agents) repository provides a dedicated migration agent to automate the OneCX Angular migration process. Below is the migration agent setup, which you can copy and use with your preferred AI tool. These agents have been tested with GitHub Copilot (Claude Sonnet 4.6) in agent mode.
-
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-21
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
-
-## [](#migration-steps-before-angular-21)Migration Steps before upgrading to Angular 21
-
-To simplify the migration process, it is recommended to complete the following steps before upgrading to Angular 21\. You can click the name of any change to open a detailed migration guide with instructions, code examples, and explanations.
-
-* [Replace deprecated topic publisher classes](replace-topic-publishers.html)
-* [Adjust ngrx utilities usage](adjust-ngrx-utilities.html)
-* [Note: Onecx V8 bundling Changes](esm-bundling.html)
-
-## [](#upgrade-to-angular-21)Upgrade to Angular 21
-
-After completing the pre-migration steps, you can proceed with upgrading your application to Angular 21.
-
-If the project is an NX workspace, follow the instructions in [Upgrade NX Application to Angular 21](update-nx-angular-version-21.html). After completing the NX migration steps, also review the official Angular update guide for any additional steps or considerations: [Angular Update Guide](https://angular.dev/update-guide?v=20.0-21.0&l=1).
-
-If the project is not an NX workspace, follow the official Angular update guide to perform the version upgrade by following this link: [Angular Update Guide](https://angular.dev/update-guide?v=20.0-21.0&l=1).
-
-## [](#migration-steps-after-angular-21)Migration Steps after upgrading to Angular 21
-
-Once the previous steps are completed, **the application should be upgraded to Angular 21 and libs v8 should be installed**. After the version updates are completed, the remaining steps of the migration can be followed.
-
-* [Required Package Updates](update-v8-packages.html)
-* [Set shareScope values in Helm](add-share-scope-angular-21.html)
-* [Move auth implementation imports from @onecx/angular-auth to @onecx/shell-auth](move-auth-to-shell-auth.html)
-* [Update imports to supported public APIs](update-public-api-imports.html)
-* [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
-* [Update Webpack Config](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
-
-Split shell and apps authentication
-====================
-In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
-
-This split separates shell-specific authentication logic from regular application token-based authentication.
-
-| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-The following symbols are no longer exported from `@onecx/angular-auth`:
-
-* `AuthServiceWrapper`
-* `provideAuthService`
-* `KeycloakAuthService`
-* `DisabledAuthService`
-* `AuthService`
-
-In v8 these implementation APIs are provided by `@onecx/shell-auth`.
-
-## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
-
-1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
-2. Uninstall `keycloak-js` dependency.  
-```bash  
-npm uninstall keycloak-js  
-```
-
-## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
-
-1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
-2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
-3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
-
-Replace removed topic publisher classes
-====================
-In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
-
-If your app still uses these classes, TypeScript compilation will fail.
-
-## [](#%5Fremoved%5Fclasses)Removed classes
-
-* `CurrentLocationPublisher`
-* `EventsPublisher`
-* `ParametersPublisher`
-* `ResizedEventsPublisher`
-
-## [](#%5Frequired%5Fmigration)Required migration
-
-Replace publisher wrappers with their corresponding topic classes.
-
-| Removed in v8            | Use instead          |
-| ------------------------ | -------------------- |
-| CurrentLocationPublisher | CurrentLocationTopic |
-| EventsPublisher          | EventsTopic          |
-| ParametersPublisher      | ParametersTopic      |
-| ResizedEventsPublisher   | ResizedEventsTopic   |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { EventsPublisher } from '@onecx/integration-interface'
-
-const eventsPublisher$ = new EventsPublisher()
-eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
-```
-
-After
-
-```typescript
-import { EventsTopic } from '@onecx/integration-interface'
-
-const eventsTopic = new EventsTopic()
-eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
-```
-
-Upgrade NX Application to Angular 21
-====================
-This guide describes how to upgrade an NX-based OneCX application to Angular 21\. Complete the pre-migration steps from the main migration guide before you continue.
-
-## [](#%5Fupdate%5Fonecxnx%5Fplugin)Update @onecx/nx-plugin
-
-Update `@onecx/nx-plugin` to latest 8.x.y available.
-
-```bash
-npm install @onecx/nx-plugin@^8
-```
-
-## [](#%5Fupdate%5Fnx%5Fand%5Fangular%5Fpackages)Update NX and Angular packages
-
-Update the Angular and NX packages in your workspace by running:
-
-```bash
-nx migrate latest --interactive
-```
-
-Apply all proposed updates up to Angular 21.
-
-For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](#https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
-
-For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](#https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
-
-## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update package versions in `package.json`
-
-1. Update all used `@onecx/*` packages to version `^8.0.0`.  
-Example:  
-```json  
-npm install @onecx/<package-name>@^8  
-```
-2. Update the packages listed here to the specified versions: [Required Package Updates](update-v8-packages.html).
-3. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
-
-| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Frun%5Fnx%5Fmigration)Run NX migration
-
-After updating package versions, run:
-
-```bash
-nx migrate --run-migrations
-```
-
-After this step, proceed with the remaining post-migration steps.
-
-## [](#%5Fcleanup%5Fmigration%5Fdependencies)Cleanup Migration Dependencies
-
-After completing all migration steps, remove migration-only dependencies that are no longer required:
-
-```bash
-npm uninstall @onecx/nx-migration-utils @nx/devkit
-```
-
-Update imports to supported public APIs
-====================
-OneCX v8 contains multiple public API export updates across libraries. To avoid compile errors after upgrading, ensure your imports use package entry points and currently exported symbols.
-
-## [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { AuthServiceWrapper } from '@onecx/angular-auth/src/lib/auth-service-wrapper'
-```
-
-After
-
-```typescript
-import { AuthServiceWrapper } from '@onecx/shell-auth'
-```
-
-Required Package Updates
-====================
-If the following packages are used in your project, update them to ensure compatibility with Angular 21 and OneCX UI libs v8:
-
-| Package                                         | Required Version | Notes                                             |
-| ----------------------------------------------- | ---------------- | ------------------------------------------------- |
-| @onecx/\*                                       | ^8.x.y           | Upgrade all used OneCX UI libraries from v7 to v8 |
-| primeng                                         | ^21.0.0          | Required by @onecx/angular-accelerator            |
-| primeicons                                      | ^7.0.0           | Updated for Angular 21 compatibility              |
-| primeflex                                       | ^4.0.0           | Updated for Angular 21 compatibility              |
-| @primeng/themes                                 | ^21.0.0          | Required with PrimeNG v21                         |
-| @ngrx/\*                                        | ^21.0.0          | Required when using @onecx/ngrx-accelerator       |
-| @ngx-translate/core, @ngx-translate/http-loader | ^17.0.0          | Required by OneCX translation utilities           |
-| ngx-build-plus                                  | ^21.0.0          | Angular 21 compatible version                     |
-
-## [](#installation-commands)Installation Commands
-
-Run this command to update the supporting packages:
-
-```bash
-npm install @ngx-translate/core@^17.0.0 \
-  @ngx-translate/http-loader@^17.0.0 \
-  primeng@^21.0.0 \
-  primeicons@^7.1.0 \
-  primeflex@^4.0.0 \
-  ngrx-store-localstorage@^21.0.0 \
-  ngx-build-plus@^21.0.0 \
-  @nx/plugin@^22.1.3 \
-  @onecx/nx-plugin@^22.1.3
-
-npm install @ngrx/<package-name>@^21
-
-npm install @onecx/<package-name>@^8
-```
-
-Optional debugging preference: debug-js namespaces
-====================
-In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
-
-This is not a breaking change for consumers.
-
-## [](#%5Fenable%5Flogging)Enable Logging
-
-Use this only as a debugging preference when troubleshooting.
-
-For troubleshooting, enable logs via browser local storage:
-
-```js
-localStorage.debug = '@onecx*'
-location.reload()
-```
-
-You can narrow logging to specific libraries, for example:
-
-```js
-localStorage.debug = '@onecx/angular-auth*'
-location.reload()
-```
-
-See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
-
 Adjust ngrx-accelerator library utilities
 ====================
 Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
@@ -24506,6 +24068,444 @@ The following fields in `ObjectDetailItem` have changed:
 * `actionItemAriaLabelKey` (string) → now of type `TranslationKey`
 
 If your application passes data to `objectDetails`, update these fields accordingly to match the new interface.
+
+Set shareScope values in Helm
+====================
+After migration to Angular 21, add a `shareScope` field per microfrontend spec entry in your Helm values.
+
+## [](#%5Frequired%5Fchange)Required change
+
+Set `shareScope` based on app technology:
+
+```yaml
+shareScope: angular_21  # for Angular MFEs
+shareScope: react_21    # for React MFEs
+```
+
+Add this field in the microfrontend properties for each exposed entry (for example in `helm/values.yaml` under `app.operator.microfrontend.specs.<entry>`).
+
+Example:
+
+```yaml
+app:
+  operator:
+    microfrontend:
+      specs:
+        main:
+          exposedModule: ./OneCXThemeModule
+          shareScope: angular_21
+        theme-data:
+          exposedModule: ./OneCXThemeDataComponent
+          shareScope: angular_21
+        theme-logo:
+          exposedModule: ./OneCXCurrentThemeLogoComponent
+          shareScope: angular_21
+```
+
+| |  A strict and consistent shareScope value allows Angular 21 applications to share Angular 21 package instances across host and remotes. Use exactly the same value across connected apps of the same technology/runtime. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-21
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
+
+Adjust ngrx utilities usage
+====================
+In OneCX v8, some `@onecx/ngrx-accelerator` utility names changed. If your app still uses the old utility names, TypeScript compilation fails after upgrade.
+
+| |  This adaptation is required only if you changed generated code, added custom ngrx implementation, or if your project is affected by these renamed utilities as a breaking change. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#%5Frequired%5Frename)Required rename
+
+* `filterForQueryParamsChanged` → `filterOutQueryParamsHaveNotChanged`
+* `filterForOnlyQueryParamsChanged` → `filterOutOnlyQueryParamsChanged`
+
+## [](#%5Fexample)Example
+
+Before
+
+```typescript
+import {
+  filterForQueryParamsChanged,
+  filterForOnlyQueryParamsChanged,
+} from '@onecx/ngrx-accelerator'
+```
+
+After
+
+```typescript
+import {
+  filterOutQueryParamsHaveNotChanged,
+  filterOutOnlyQueryParamsChanged,
+} from '@onecx/ngrx-accelerator'
+```
+
+ESM bundling awareness (prerequisite)
+====================
+In OneCX v8, `@onecx/accelerator` and `@onecx/integration-interface` are published as ES modules.
+
+For standard Angular application builds, this is usually non-breaking. This page helps you quickly detect and fix issues in custom runtime/build setups.
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+* Packages are ESM (`"type": "module"`).
+* CommonJS-only usage patterns (for example `require()` in custom Node scripts) may need adaptation.
+
+## [](#%5Fwhen%5Fto%5Fcheck%5Fthis)When to check this
+
+Check this prerequisite if your project includes custom scripts/tooling such as:
+
+* Node scripts importing OneCX packages directly
+* Custom webpack/rspack wrappers around MF runtime loading
+* Test/dev scripts running outside Angular CLI/Nx standard build flow
+
+## [](#%5Ftypical%5Fissues%5Fyou%5Fmight%5Fface)Typical issues you might face
+
+* `ERR_REQUIRE_ESM`
+* `require is not defined in ES module scope`
+* Module resolution/import errors in custom scripts after dependency update
+
+## [](#%5Fsolutions)Solutions
+
+### [](#%5F1%5Freplace%5Frequire%5Fwith%5Fesm%5Fimports)1) Replace `require()` with ESM imports
+
+Before
+
+```javascript
+const { EventsTopic } = require('@onecx/integration-interface')
+```
+
+After
+
+```typescript
+import { EventsTopic } from '@onecx/integration-interface'
+```
+
+### [](#%5F2%5Fensure%5Fscriptmodule%5Fruntime%5Fsupports%5Fesm)2) Ensure script/module runtime supports ESM
+
+* Use an ESM-capable Node runtime and script configuration.
+* Keep host and remotes on consistent dependency/runtime expectations.
+
+### [](#%5F3%5Fif%5Fno%5Fcustom%5Fruntime%5Fusage%5Fexists)3) If no custom runtime usage exists
+
+No action is needed. Treat this as awareness-only and continue with migration steps.
+
+Migrate OneCX App from Angular 20 to Angular 21
+====================
+## [](#overview)Overview
+
+| |  This guide is a work in progress. Angular 21 support and OneCX UI libraries v8 are not final yet. Angular 21 support will be provided with OneCX Shell v3. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+This guide provides step-by-step instructions for migrating OneCX applications from Angular 20 to Angular 21\. As part of upgrading to Angular 21, you must update your OneCX UI libraries to version 8\. This library update is not a standalone migration but a required part of the Angular version upgrade process, as OneCX v8 libraries provide Angular 21 compatibility and include required breaking changes.
+
+## [](#prerequisites)Prerequisites
+
+Before starting this migration:
+
+* Your OneCX application is currently running on Angular 20
+* You have OneCX UI libraries v7.x installed
+* You have a working development environment
+
+## [](#ai-driven-migration-assistance)AI Driven Migration Assistance
+
+To simplify the migration process, you can use the AI-driven migration assistant. The [OneCX AI Refactoring Agents](https://github.com/onecx/onecx-ai-refactoring-agents) repository provides a dedicated migration agent to automate the OneCX Angular migration process. Below is the migration agent setup, which you can copy and use with your preferred AI tool. These agents have been tested with GitHub Copilot (Claude Sonnet 4.6) in agent mode.
+
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-21
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
+
+## [](#migration-steps-before-angular-21)Migration Steps before upgrading to Angular 21
+
+To simplify the migration process, it is recommended to complete the following steps before upgrading to Angular 21\. You can click the name of any change to open a detailed migration guide with instructions, code examples, and explanations.
+
+* [Replace deprecated topic publisher classes](replace-topic-publishers.html)
+* [Adjust ngrx utilities usage](adjust-ngrx-utilities.html)
+* [Note: Onecx V8 bundling Changes](esm-bundling.html)
+
+## [](#upgrade-to-angular-21)Upgrade to Angular 21
+
+After completing the pre-migration steps, you can proceed with upgrading your application to Angular 21.
+
+If the project is an NX workspace, follow the instructions in [Upgrade NX Application to Angular 21](update-nx-angular-version-21.html). After completing the NX migration steps, also review the official Angular update guide for any additional steps or considerations: [Angular Update Guide](https://angular.dev/update-guide?v=20.0-21.0&l=1).
+
+If the project is not an NX workspace, follow the official Angular update guide to perform the version upgrade by following this link: [Angular Update Guide](https://angular.dev/update-guide?v=20.0-21.0&l=1).
+
+## [](#migration-steps-after-angular-21)Migration Steps after upgrading to Angular 21
+
+Once the previous steps are completed, **the application should be upgraded to Angular 21 and libs v8 should be installed**. After the version updates are completed, the remaining steps of the migration can be followed.
+
+* [Required Package Updates](update-v8-packages.html)
+* [Set shareScope values in Helm](add-share-scope-angular-21.html)
+* [Move auth implementation imports from @onecx/angular-auth to @onecx/shell-auth](move-auth-to-shell-auth.html)
+* [Update imports to supported public APIs](update-public-api-imports.html)
+* [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
+* [Update Webpack Config](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
+
+Split shell and apps authentication
+====================
+In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
+
+This split separates shell-specific authentication logic from regular application token-based authentication.
+
+| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+The following symbols are no longer exported from `@onecx/angular-auth`:
+
+* `AuthServiceWrapper`
+* `provideAuthService`
+* `KeycloakAuthService`
+* `DisabledAuthService`
+* `AuthService`
+
+In v8 these implementation APIs are provided by `@onecx/shell-auth`.
+
+## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
+
+1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
+2. Uninstall `keycloak-js` dependency.  
+```bash  
+npm uninstall keycloak-js  
+```
+
+## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
+
+1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
+2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
+3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
+
+Replace removed topic publisher classes
+====================
+In OneCX libs v8, deprecated publisher wrapper classes were removed from `@onecx/integration-interface` topic APIs.
+
+If your app still uses these classes, TypeScript compilation will fail.
+
+## [](#%5Fremoved%5Fclasses)Removed classes
+
+* `CurrentLocationPublisher`
+* `EventsPublisher`
+* `ParametersPublisher`
+* `ResizedEventsPublisher`
+
+## [](#%5Frequired%5Fmigration)Required migration
+
+Replace publisher wrappers with their corresponding topic classes.
+
+| Removed in v8            | Use instead          |
+| ------------------------ | -------------------- |
+| CurrentLocationPublisher | CurrentLocationTopic |
+| EventsPublisher          | EventsTopic          |
+| ParametersPublisher      | ParametersTopic      |
+| ResizedEventsPublisher   | ResizedEventsTopic   |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { EventsPublisher } from '@onecx/integration-interface'
+
+const eventsPublisher$ = new EventsPublisher()
+eventsPublisher$.publish({ type: 'authentication#logoutButtonClicked' })
+```
+
+After
+
+```typescript
+import { EventsTopic } from '@onecx/integration-interface'
+
+const eventsTopic = new EventsTopic()
+eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
+```
+
+Upgrade NX Application to Angular 21
+====================
+This guide describes how to upgrade an NX-based OneCX application to Angular 21\. Complete the pre-migration steps from the main migration guide before you continue.
+
+## [](#%5Fupdate%5Fonecxnx%5Fplugin)Update @onecx/nx-plugin
+
+Update `@onecx/nx-plugin` to latest 8.x.y available.
+
+```bash
+npm install @onecx/nx-plugin@^8
+```
+
+## [](#%5Fupdate%5Fnx%5Fand%5Fangular%5Fpackages)Update NX and Angular packages
+
+Update the Angular and NX packages in your workspace by running:
+
+```bash
+nx migrate latest --interactive
+```
+
+Apply all proposed updates up to Angular 21.
+
+For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](#https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
+
+For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](#https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
+
+## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update package versions in `package.json`
+
+1. Update all used `@onecx/*` packages to version `^8.0.0`.  
+Example:  
+```json  
+npm install @onecx/<package-name>@^8  
+```
+2. Update the packages listed here to the specified versions: [Required Package Updates](update-v8-packages.html).
+3. After updating `package.json`, run `npm install` to install the new versions. If you see peer dependency errors, update the affected packages to compatible versions.
+
+| |  If you still see dependency conflicts that reference old versions, reinstall dependencies from scratch: rm -rf node\_modules package-lock.json .angular dist \~/.angular/cache && npm cache clean --force && npm install |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  Make sure to migrate the updated packages and resolve any breaking changes. Refer to the official documentation of each package for migration guides and instructions. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Frun%5Fnx%5Fmigration)Run NX migration
+
+After updating package versions, run:
+
+```bash
+nx migrate --run-migrations
+```
+
+After this step, proceed with the remaining post-migration steps.
+
+## [](#%5Fcleanup%5Fmigration%5Fdependencies)Cleanup Migration Dependencies
+
+After completing all migration steps, remove migration-only dependencies that are no longer required:
+
+```bash
+npm uninstall @onecx/nx-migration-utils @nx/devkit
+```
+
+Update imports to supported public APIs
+====================
+OneCX v8 contains multiple public API export updates across libraries. To avoid compile errors after upgrading, ensure your imports use package entry points and currently exported symbols.
+
+## [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { AuthServiceWrapper } from '@onecx/angular-auth/src/lib/auth-service-wrapper'
+```
+
+After
+
+```typescript
+import { AuthServiceWrapper } from '@onecx/shell-auth'
+```
+
+Required Package Updates
+====================
+If the following packages are used in your project, update them to ensure compatibility with Angular 21 and OneCX UI libs v8:
+
+| Package                                         | Required Version | Notes                                             |
+| ----------------------------------------------- | ---------------- | ------------------------------------------------- |
+| @onecx/\*                                       | ^8.x.y           | Upgrade all used OneCX UI libraries from v7 to v8 |
+| primeng                                         | ^21.0.0          | Required by @onecx/angular-accelerator            |
+| primeicons                                      | ^7.0.0           | Updated for Angular 21 compatibility              |
+| primeflex                                       | ^4.0.0           | Updated for Angular 21 compatibility              |
+| @primeng/themes                                 | ^21.0.0          | Required with PrimeNG v21                         |
+| @ngrx/\*                                        | ^21.0.0          | Required when using @onecx/ngrx-accelerator       |
+| @ngx-translate/core, @ngx-translate/http-loader | ^17.0.0          | Required by OneCX translation utilities           |
+| ngx-build-plus                                  | ^21.0.0          | Angular 21 compatible version                     |
+
+## [](#installation-commands)Installation Commands
+
+Run this command to update the supporting packages:
+
+```bash
+npm install @ngx-translate/core@^17.0.0 \
+  @ngx-translate/http-loader@^17.0.0 \
+  primeng@^21.0.0 \
+  primeicons@^7.1.0 \
+  primeflex@^4.0.0 \
+  ngrx-store-localstorage@^21.0.0 \
+  ngx-build-plus@^21.0.0 \
+  @nx/plugin@^22.1.3 \
+  @onecx/nx-plugin@^22.1.3
+
+npm install @ngrx/<package-name>@^21
+
+npm install @onecx/<package-name>@^8
+```
+
+Optional debugging preference: debug-js namespaces
+====================
+In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
+
+This is not a breaking change for consumers.
+
+## [](#%5Fenable%5Flogging)Enable Logging
+
+Use this only as a debugging preference when troubleshooting.
+
+For troubleshooting, enable logs via browser local storage:
+
+```js
+localStorage.debug = '@onecx*'
+location.reload()
+```
+
+You can narrow logging to specific libraries, for example:
+
+```js
+localStorage.debug = '@onecx/angular-auth*'
+location.reload()
+```
+
+See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
 
 OneCX Backend Service (SVC) Generator
 ====================
@@ -28379,30 +28379,6 @@ OneCX Local Environment v1 mounts one global volume:
 
 Additionally, some services (`traefik`, `postgresdb`, `pgadmin` and `keycloak-app`) mount local directories for initialization data.
 
-Add Webpack App UI Manually to OneCX
-====================
-When you have created a custom application and want to run it in the OneCX local environment, you need to add the application to the OneCX. This involves adding the application to the product store, adding the application to the workspace, and assigning permissions and roles for accessing the application.
-
-This guide is created for webpack module apps. To see all supported types of microservices, see the [Microservices and Microfrontends](../../../onecx-docs-overview/architecture/microservices.html) documentation.
-
-Alternatively you can use `local-env-cli` to add your application to the OneCX local environment. See [local-env-cli](../../../onecx-docs-start/first-app/app%5Fsetup%5Fcli.html) for more details.
-
-## [](#prerequisites)Prerequisites
-
-Before you can add your custom application to the OneCX, you need to have the following prerequisites in place:
-
-* Your app needs to have webpack module federation implemented. See the [Module Federation with Webpack](../../../onecx-docs-overview/module-federation/webpack.html) documentation for details on how to implement webpack module federation in your application.
-* You have to add [custom micro frontends](../local-mfe.html) to the OneCX local environment with `./toggle-mfe` script.
-
-## [](#guide-steps)Guide Steps
-
-1. [Add the application and UI component to the product store](add%5Fapplication%5Fui%5Fcomponent%5Fproduct%5Fstore.html)
-2. [Add the application to the workspace](add%5Fapplication%5Fto%5Fworkspace.html)
-3. [Assign permissions and roles (Optional)](add%5Fapplication%5Fpermissions.html)
-
-| |  Like all manual changes in the local environment, manually created applications will be lost when the Postgres volume is deleted (e.g. by running ./stop-onecx.sh -c). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
 Assign permissions and roles (Optional)
 ====================
 After adding the application to the workspace, you may want to assign permissions and roles for accessing the application. Permissions are set by using the following component in the application HTML:
@@ -28469,6 +28445,30 @@ Figure 5\. Example permission details
 ![Click the circle to assign the permission to the role](../../_images/extend/add_application_manually/permission_select.png) 
 
 Figure 6\. Assign the permission to the role
+
+Add Webpack App UI Manually to OneCX
+====================
+When you have created a custom application and want to run it in the OneCX local environment, you need to add the application to the OneCX. This involves adding the application to the product store, adding the application to the workspace, and assigning permissions and roles for accessing the application.
+
+This guide is created for webpack module apps. To see all supported types of microservices, see the [Microservices and Microfrontends](../../../onecx-docs-overview/architecture/microservices.html) documentation.
+
+Alternatively you can use `local-env-cli` to add your application to the OneCX local environment. See [local-env-cli](../../../onecx-docs-start/first-app/app%5Fsetup%5Fcli.html) for more details.
+
+## [](#prerequisites)Prerequisites
+
+Before you can add your custom application to the OneCX, you need to have the following prerequisites in place:
+
+* Your app needs to have webpack module federation implemented. See the [Module Federation with Webpack](../../../onecx-docs-overview/module-federation/webpack.html) documentation for details on how to implement webpack module federation in your application.
+* You have to add [custom micro frontends](../local-mfe.html) to the OneCX local environment with `./toggle-mfe` script.
+
+## [](#guide-steps)Guide Steps
+
+1. [Add the application and UI component to the product store](add%5Fapplication%5Fui%5Fcomponent%5Fproduct%5Fstore.html)
+2. [Add the application to the workspace](add%5Fapplication%5Fto%5Fworkspace.html)
+3. [Assign permissions and roles (Optional)](add%5Fapplication%5Fpermissions.html)
+
+| |  Like all manual changes in the local environment, manually created applications will be lost when the Postgres volume is deleted (e.g. by running ./stop-onecx.sh -c). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Add the application to the workspace
 ====================
@@ -40213,9 +40213,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
-
-## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
@@ -40293,7 +40291,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fworkspace%5Fui)OneCX Workspace UI
+## [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+## [](#%5Fonecx%5Fworkspace%5Fui%5F2)OneCX Workspace UI
 
 ### [](#%5Fwhat%5Fis%5Fworkspace%5Fmanagement)What is Workspace Management?
 
