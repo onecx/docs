@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1692,290 +1976,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -8267,28 +8267,6 @@ userService.getPermissions().pipe((
 ))
 ```
 
-PrimeNG
-====================
-## [](#overview)Overview
-
-PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
-
-## [](#theming-with-primeng)Theming with PrimeNG
-
-PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
-
-## [](#useful-links)Useful Links
-
-* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
-* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
-* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
-* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
-* OneCX PrimeNG Integration Guide: [Theming with PrimeNG](theming.html)
-
-## [](#onecx-integration)OneCX Integration
-
-PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on how to use PrimeNG within OneCX, refer to the {OneCX PrimeNG Integration Guide}\[Theming with PrimeNG\].
-
 OneCX PrimeNG Theming
 ====================
 ## [](#overview)Overview
@@ -8371,6 +8349,28 @@ provideThemeConfig({
   }
 })
 ```
+
+PrimeNG
+====================
+## [](#overview)Overview
+
+PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
+
+## [](#theming-with-primeng)Theming with PrimeNG
+
+PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
+
+## [](#useful-links)Useful Links
+
+* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
+* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
+* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
+* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
+* OneCX PrimeNG Integration Guide: [Theming with PrimeNG](theming.html)
+
+## [](#onecx-integration)OneCX Integration
+
+PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on how to use PrimeNG within OneCX, refer to the {OneCX PrimeNG Integration Guide}\[Theming with PrimeNG\].
 
 OneCX Routing
 ====================
@@ -9974,6 +9974,130 @@ Microfrontend (MFE):
 
 * `AppConfigService.init(baseUrl)` (MFE) must run during bootstrap.
 
+Calendar
+====================
+## [](#goal)Goal: Add Calendar Input
+
+Add a Calendar as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleDate: z
+        .string()
+        .transform((v) => (v ? new Date(v) : undefined))
+        .optional(),
+```
+
+## [](#html)2\. HTML
+
+Next, add the following code to your formGroup in the html file and adapt:
+
+* by replacing all occurences of `exampleDate` with the actual name which is defined
+* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-calendar
+            id="exampleDate"
+            formControlName="exampleDate"
+            name="exampleDate"
+            ngDefaultControl
+            pInputDate
+            type="text"
+            appendTo="body"
+            [showClear]="true"
+            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
+            >
+        </p-calendar>
+        <label for="exampleDate">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#selectors)3\. Selectors
+
+Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+    import { Calendar } from 'primeng/calendar';
+    ...
+
+    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
+    ...
+
+    search(formValue: FormGroup) {
+      const searchCriteria = buildSearchCriteria(
+        formValue.getRawValue(),
+        this.calendars, <-- ADD THIS LINE
+        {
+            removeNullValues: true,
+        },
+      );
+      this.store.dispatch(
+      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
+      );
+    }
+```
+
+## [](#effects)4\. Effects (Optional)
+
+If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+  syncParamsToUrl$ = createEffect(
+    () => {
+      return this.actions$.pipe(
+        ofType(
+          <%= featureClassName %>SearchActions.searchButtonClicked,
+          <%= featureClassName %>SearchActions.resetButtonClicked,
+        ),
+        concatLatestFrom(() => [
+          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
+          this.route.queryParams,
+        ]),
+        tap(([, criteria, queryParams]) => {
+          const results =
+            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
+          if (!results.success || !equal(criteria, results.data)) {
+            const params = {
+              ...criteria,
+              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
+            };
+            this.router.navigate([], {
+              relativeTo: this.route,
+              queryParams: params,
+              replaceUrl: true,
+              onSameUrlNavigation: 'ignore',
+            });
+          }
+        }),
+      );
+    },
+    { dispatch: false },
+  );
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 Dropdown
 ====================
 ## [](#goal)Goal: Add Dropdown Input
@@ -10235,130 +10359,6 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
-
-Calendar
-====================
-## [](#goal)Goal: Add Calendar Input
-
-Add a Calendar as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleDate** with the actual name in the following code snippets |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-First add a new member to the <%= featurePropertyName %>SearchCriteriasSchema:
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleDate: z
-        .string()
-        .transform((v) => (v ? new Date(v) : undefined))
-        .optional(),
-```
-
-## [](#html)2\. HTML
-
-Next, add the following code to your formGroup in the html file and adapt:
-
-* by replacing all occurences of `exampleDate` with the actual name which is defined
-* `dateFormat` according to your requirements following this primeng specific date format <https://primeng.org/calendar#format> where `mm/dd/yy` is the default.
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-calendar
-            id="exampleDate"
-            formControlName="exampleDate"
-            name="exampleDate"
-            ngDefaultControl
-            pInputDate
-            type="text"
-            appendTo="body"
-            [showClear]="true"
-            dateFormat="" <-- SPECIFY THE REQUIRED DATE FORMAT OR REMOVE THIS PROPERTY IF DEFAULT SHOULD BE USED
-            >
-        </p-calendar>
-        <label for="exampleDate">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-| |  Make sure to include the appendTo="body" property in the p-calendar component, otherwise the calendar could be rendered incorrectly and cause layout issues. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#selectors)3\. Selectors
-
-Furthermore, the following needs to be done to correctly create date strings out of a p-calendar selector:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-    import { Calendar } from 'primeng/calendar';
-    ...
-
-    @ViewChildren(Calendar) calendars!: QueryList<Calendar>;
-    ...
-
-    search(formValue: FormGroup) {
-      const searchCriteria = buildSearchCriteria(
-        formValue.getRawValue(),
-        this.calendars, <-- ADD THIS LINE
-        {
-            removeNullValues: true,
-        },
-      );
-      this.store.dispatch(
-      <%= featureClassName %>SearchActions.searchButtonClicked({ searchCriteria }),
-      );
-    }
-```
-
-## [](#effects)4\. Effects (Optional)
-
-If it is required to only have the `date` and not the `` datetime+' in the URL, you need to adapt the `+syncParamsToUrl$ `` effect:
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-  syncParamsToUrl$ = createEffect(
-    () => {
-      return this.actions$.pipe(
-        ofType(
-          <%= featureClassName %>SearchActions.searchButtonClicked,
-          <%= featureClassName %>SearchActions.resetButtonClicked,
-        ),
-        concatLatestFrom(() => [
-          this.store.select(<%= featurePropertyName %>SearchSelectors.selectCriteria),
-          this.route.queryParams,
-        ]),
-        tap(([, criteria, queryParams]) => {
-          const results =
-            <%= featurePropertyName %>SearchCriteriasSchema.safeParse(queryParams);
-          if (!results.success || !equal(criteria, results.data)) {
-            const params = {
-              ...criteria,
-              exampleDate: criteria.exampleDate?.toISOString()?.slice(0, 10) <-- ADD THIS LINE TO ONLY HAVE THE DATE IN THE URL
-            };
-            this.router.navigate([], {
-              relativeTo: this.route,
-              queryParams: params,
-              replaceUrl: true,
-              onSameUrlNavigation: 'ignore',
-            });
-          }
-        }),
-      );
-    },
-    { dispatch: false },
-  );
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -10916,6 +10916,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
+
 AutoComplete for suggestions with array of type string
 ====================
 ## [](#goal)Goal: Add AutoComplet String
@@ -11151,14 +11159,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -16707,6 +16707,536 @@ nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
 
 After running the generator, you can modify all files to your needs.
 
+Configure Detail View (React)
+====================
+After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
+
+| |  This section covers the React implementation. For Angular, see [Configure Detail View (Angular)](../../generator/details/detail-properties.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#action-d1)ACTION D1
+
+Add Detail Properties in TypeScript Component
+
+To display additional properties in the detail view, you need to adapt the TypeScript component of the detail view.
+
+| Directory | bookstore/src/pages/book/book-details |
+| --------- | ------------------------------------- |
+| File      | book-details.store.ts                 |
+
+| Directory | bookstore/src/pages/book/book-details |
+| --------- | ------------------------------------- |
+| File      | book-details.types.ts                 |
+
+### Example: Generated Details in Book Component
+
+Original `book-details.store.ts` 
+
+```javascript
+export const useBookDetailsStore = create<BookDetailsState>((set) => ({
+  editMode: false,
+  formData: {
+    id: "",
+    modificationCount: 0,
+    // ACTION D1: Add additional form field initializations here
+  },
+  hasUnsavedChanges: false,
+  showCancelConfirm: false,
+  setEditMode: (editMode) => set({ editMode }),
+  setFormData: (formData) => set({ formData }),
+  setHasUnsavedChanges: (hasUnsavedChanges) => set({ hasUnsavedChanges }),
+  setShowCancelConfirm: (showCancelConfirm) => set({ showCancelConfirm }),
+  resetFormData: (details) =>
+    set({
+      formData: {
+        id: details.id,
+        modificationCount: details.modificationCount,
+        // ACTION D4: Add additional form field initializations here
+      },
+      hasUnsavedChanges: false,
+    }),
+  showDeleteConfirm: false,
+  setShowDeleteConfirm: (showDeleteConfirm) => set({ showDeleteConfirm }),
+}));
+```
+
+Original `book-details.types.ts` 
+
+```javascript
+export interface BookDetails {
+  id: string;
+  modificationCount: number;
+  // ACTION D1: Add additional detail properties here
+}
+
+export interface BookDetailsFormData {
+  id: string;
+  modificationCount: number;
+  // ACTION D1: Add additional form field properties here
+}
+```
+
+---
+
+### Example: Book Details in Book Component
+
+Book details in `book-details.store.ts` 
+
+```javascript
+export const useBookDetailsStore = create<BookDetailsState>((set) => ({
+  editMode: false,
+  formData: {
+    id: "",
+    modificationCount: 0,
+    bookTitle: "",
+    bookType: "",
+    // ACTION D1: Add additional form field initializations here
+  },
+  hasUnsavedChanges: false,
+  showCancelConfirm: false,
+  setEditMode: (editMode) => set({ editMode }),
+  setFormData: (formData) => set({ formData }),
+  setHasUnsavedChanges: (hasUnsavedChanges) => set({ hasUnsavedChanges }),
+  setShowCancelConfirm: (showCancelConfirm) => set({ showCancelConfirm }),
+  resetFormData: (details) =>
+    set({
+      formData: {
+        id: details.id,
+        modificationCount: details.modificationCount,
+        bookTitle: details.bookTitle,
+        bookType: details.bookType,
+        // ACTION D4: Add additional form field initializations here
+      },
+      hasUnsavedChanges: false,
+    }),
+  showDeleteConfirm: false,
+  setShowDeleteConfirm: (showDeleteConfirm) => set({ showDeleteConfirm }),
+}));
+```
+
+Where **bookTitle** and **bookType** are properties of the book entity to be displayed and managed in the detail view.
+
+## [](#action-d2)ACTION D2
+
+Add Detail Properties in JSX
+
+To display additional properties in the detail view, you need to adapt the JSX of the detail view.
+
+| Directory | bookstore/src/components/book/book-detail |
+| --------- | ----------------------------------------- |
+| File      | book-details-form.tsx                     |
+
+### Example: Generated Book Details Form in JSX
+
+Original `book-details-form.tsx` 
+
+```javascript
+...
+      {/* ACTION D2: Add additional form fields here */}
+      <div className="mb-3">
+        <label
+          htmlFor="modificationCount"
+          className="block mb-1 text-xs font-bold text-900 mt-3"
+        >
+          Modification Count
+        </label>
+
+        <InputText
+          id="modificationCount"
+          disabled={!editMode}
+          value={String(formData.modificationCount ?? '')}
+          onChange={(e) =>
+            onChange('modificationCount', parseInt(e.target.value, 10) || 0)
+          }
+          className="w-full"
+        />
+      </div>
+...
+```
+
+---
+
+### Example: Book Details Form in JSX
+
+Book details in `book-details-form.tsx` 
+
+```javascript
+      <div className="mb-3">
+        <label
+          htmlFor="bookTitle"
+          className="block mb-1 text-xs font-bold text-900 mt-3"
+        >
+          Book Title
+        </label>
+
+        <InputText
+          id="bookTitle"
+          disabled={!editMode}
+          value={formData.bookTitle ?? ''}
+          onChange={(e) => onChange('bookTitle', e.target.value)}
+          className="w-full"
+        />
+      </div>
+
+      <div className="mb-3">
+        <label
+          htmlFor="bookType"
+          className="block mb-1 text-xs font-bold text-900 mt-3"
+        >
+          Book Type
+        </label>
+
+        <InputText
+          id="bookType"
+          disabled={!editMode}
+          value={formData.bookType ?? ''}
+          onChange={(e) => onChange('bookType', e.target.value)}
+          className="w-full"
+        />
+      </div>
+```
+
+Where **bookTitle** and **bookType** are properties of the book entity to be displayed and managed in the detail view.
+
+## [](#action-D3)ACTION D3
+
+Add Translations
+
+Ensure that all necessary translations are added.  
+More details in [Multi-Language](../../../docs-guides-ui/angular/translation/multi-language.html).
+
+### Template: Generated Translations
+
+| Directory | <root-of-ui-app>/src/assets/i18n |
+| --------- | -------------------------------- |
+| Files     | de.json, en.json                 |
+
+Adjust translations in `en.json` 
+
+```json
+  "BOOK_DETAILS": {
+    "HEADER": "Book Details",
+    "SUB_HEADER": "Display of Book Details",
+    "HELP_ARTICLE_ID": "Help Article",
+    "BREADCRUMB": "Details",
+    "ARIA_LABEL": "Page Header with Details",
+    "ERROR_MESSAGES": {
+      "DETAILS_LOADING_FAILED": "Loading details failed."
+    },
+    "GENERAL": {
+      "BACK": "Back",
+      "MORE": "More",
+      "EDIT": "Edit",
+      "DELETE": "Delete",
+      "CANCEL": "Cancel",
+      "SAVE": "Save"
+    },
+    "FORM": {
+      "ID": "ID",
+      "NAME": "Page Header with Details",
+      "FORM_FIELDS": "ACTION D3: Add additional form field translation keys here"
+    },
+    "CANCEL": {
+      "HEADER": "Confirm cancellation",
+      "MESSAGE": "Please confirm that you want to cancel editing and reset changes.",
+      "CONFIRM": "Confirm"
+    },
+    "UPDATE": {
+      "SUCCESS": "Update successful",
+      "ERROR": "Update failed",
+      "FORM": {
+        "SAVE": "Save",
+        "CANCEL": "Cancel"
+      },
+      "HEADER": "Update Book"
+    },
+    "DELETE": {
+      "HEADER": "Delete Book",
+      "MESSAGE": "Please confirm that you want to delete this Book item.",
+      "CONFIRM": "Confirm",
+      "CANCEL": "Cancel",
+      "SUCCESS": "Book deleted successfully",
+      "ERROR": "Could not delete Book"
+    }
+  }
+```
+
+The `FORM_FIELDS` entry in the `FORM` section marks where to add a translation key for each additional form field. It is a placeholder tagged with `ACTION D3`: replace it with your own keys and adapt the default values to your application.
+
+---
+
+### Example
+
+| Directory | bookstore/src/assets/i18n |
+| --------- | ------------------------- |
+| Files     | de.json, en.json          |
+
+Example: Translations in `en.json` 
+
+```json
+  "BOOK_DETAILS": {
+    "HEADER": "Book Details",
+    "SUB_HEADER": "Display of Book Details",
+    "HELP_ARTICLE_ID": "Help Article",
+    "BREADCRUMB": "Details",
+    "ARIA_LABEL": "Page Header with Details",
+    "ERROR_MESSAGES": {
+      "DETAILS_LOADING_FAILED": "Loading details failed."
+    },
+    "GENERAL": {
+      "BACK": "Back",
+      "MORE": "More",
+      "EDIT": "Edit",
+      "DELETE": "Delete",
+      "CANCEL": "Cancel",
+      "SAVE": "Save"
+    },
+    "FORM": {
+      "ID": "ID",
+      "NAME": "Page Header with Details",
+      "BOOK_TITLE": "Book Title",
+      "BOOK_TYPE": "Book Type"
+    },
+    "CANCEL": {
+      "HEADER": "Confirm cancellation",
+      "MESSAGE": "Please confirm that you want to cancel editing and reset changes.",
+      "CONFIRM": "Confirm"
+    },
+    "UPDATE": {
+      "SUCCESS": "Update successful",
+      "ERROR": "Update failed",
+      "FORM": {
+        "SAVE": "Save",
+        "CANCEL": "Cancel"
+      },
+      "HEADER": "Update Book"
+    },
+    "DELETE": {
+      "HEADER": "Delete Book",
+      "MESSAGE": "Please confirm that you want to delete this Book item.",
+      "CONFIRM": "Confirm",
+      "CANCEL": "Cancel",
+      "SUCCESS": "Book deleted successfully",
+      "ERROR": "Could not delete Book"
+    }
+  },
+```
+
+Where **BOOK\_TITLE** and **BOOK\_TYPE** are the translation keys for the additional form fields added in ACTION D1 and D2.
+
+Example: Translations in `de.json` 
+
+```json
+  "BOOK_DETAILS": {
+    "HEADER": "Buchdetails",
+    "SUB_HEADER": "Anzeige von Buchdetails",
+    "HELP_ARTICLE_ID": "Hilfeartikel",
+    "BREADCRUMB": "Details",
+    "ARIA_LABEL": "Seitenkopf mit Details",
+    "ERROR_MESSAGES": {
+      "DETAILS_LOADING_FAILED": "Details konnten nicht geladen werden."
+    },
+    "GENERAL": {
+      "BACK": "Zurück",
+      "MORE": "Mehr",
+      "EDIT": "Bearbeiten",
+      "DELETE": "Löschen",
+      "CANCEL": "Abbrechen",
+      "SAVE": "Speichern"
+    },
+    "FORM": {
+      "ID": "ID",
+      "NAME": "Seitenkopf mit Details",
+      "BOOK_TITLE": "Buchtitel",
+      "BOOK_TYPE": "Buchtyp"
+    },
+    "CANCEL": {
+      "HEADER": "Abbruch bestätigen",
+      "MESSAGE": "Bitte bestätigen Sie, dass Sie die Bearbeitung abbrechen und die Änderungen zurücksetzen möchten.",
+      "CONFIRM": "Bestätigen"
+    },
+    "UPDATE": {
+      "SUCCESS": "Speichern erfolgreich",
+      "ERROR": "Speichern fehlgeschlagen",
+      "FORM": {
+        "SAVE": "Speichern",
+        "CANCEL": "Abbrechen"
+      },
+      "HEADER": "Buch ändern"
+    },
+    "DELETE": {
+      "HEADER": "Buch löschen",
+      "MESSAGE": "Bitte bestätigen Sie, dass Sie das Buch löschen möchten.",
+      "CONFIRM": "Bestätigen",
+      "CANCEL": "Abbrechen",
+      "SUCCESS": "Buch erfolgreich gelöscht",
+      "ERROR": "Konnte Buch nicht löschen"
+    }
+  },
+```
+
+## [](#action-d4)ACTION D4
+
+Add Form Field Initializations
+
+When using edit mode, you need to ensure all form fields are properly initialized from the details object. This is done in both the store and the page component.
+
+| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
+| --------- | ------------------------------------------------------- |
+| File      | <resource>-details.store.ts                             |
+| File      | <resource>-details.page.tsx                             |
+
+ACTION D4 in `<resource>-details.store.ts` 
+
+```javascript
+formData: {
+  id: details.id,
+  modificationCount: details.modificationCount,
+  // ACTION D4: Add additional form field initializations here
+},
+```
+
+ACTION D4 in `<resource>-details.page.tsx` 
+
+```javascript
+resetFormData({
+  id: details.id,
+  modificationCount: details.modificationCount,
+  // ACTION D4: Add additional form field initializations here
+});
+```
+
+Configure Detail Tests (React)
+====================
+| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](../../generator/details/detail-tests.html). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#action-d11)ACTION D11
+
+Configure Detail Tests
+
+In alignment to the adaptations made in the detail component, you will also need to adapt the generated tests for the detail component. This includes updating the test data and expected results in the test files to reflect the changes made to the detail component, such as the property definitions and the structure of the detail view.  
+This ensures that the tests accurately validate the functionality of the detail component based on the customized implementation.
+
+---
+
+### [](#detail-component)Detail Component
+
+#### [](#location-of-detail-component-tests)Location of Detail Component Tests
+
+| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
+| --------- | ------------------------------------------------------- |
+| File      | <resource>-details.hook.test.ts (hook tests)            |
+| File      | <resource>-details.page.test.tsx (page tests)           |
+
+#### [](#tests-for-the-book)Tests for the book
+
+| Directory | bookstore/src/pages/book/book-details |
+| --------- | ------------------------------------- |
+| File      | book-details.hook.test.ts             |
+| File      | book-details.page.test.tsx            |
+
+Update the test data in the test file to reflect the expected structure and values based on the customized detail component implementation.
+
+ACTION D11 in `<resource>-details.hook.test.ts` 
+
+```javascript
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { useBookDetails } from './book-details.hook';
+
+  it('should fetch details when id is provided', async () => {
+    const mockDetails = {
+      id: 'test-id',
+      modificationCount: 0,
+      // ACTION D11: Add additional fields to match your implementation
+    };
+
+    mockService.getBookById.mockResolvedValue({
+      data: { resource: mockDetails }
+    });
+
+    const { result } = renderHook(() => useBookDetails(mockService));
+
+    await act(async () => {
+      await result.current.fetchDetails('test-id');
+    });
+
+    await waitFor(() => {
+      expect(result.current.details).toEqual(mockDetails);
+    });
+  });
+```
+
+ACTION D11 in `<resource>-details.page.test.tsx` 
+
+```javascript
+(useBookDetails as any).mockReturnValue({
+  details: {
+    id: 'test-id',
+    modificationCount: 0,
+    // ACTION D11: Adjust test data to match your detail properties
+  },
+  loading: false,
+  error: null,
+  fetchDetails: vi.fn(),
+});
+```
+
+## [](#action-d12)ACTION D12
+
+Adjust API Request Structure
+
+When using edit mode in React, you may need to adjust the API request structure to match your backend’s expected signature. The generated code uses a type cast (`as any`) for flexibility, but you should update it to match your actual API requirements.
+
+| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
+| --------- | ------------------------------------------------------- |
+| File      | <resource>-details.hook.ts                              |
+
+ACTION D12 in `<resource>-details.hook.ts` 
+
+```javascript
+const updateDetails = useCallback(async (updatedDetails: BookDetails) => {
+  if (!details?.id) return false;
+
+  setIsSubmitting(true);
+  setError(null);
+  try {
+    // ACTION D12: Adjust request structure to match your API signature
+    // The API expects: updateBookById(id: string, updateRequest: UpdateBookRequest)
+    // You may need to transform updatedDetails to match the UpdateRequest structure
+    await bookService.updateBookById(
+      details.id,
+      updatedDetails as any
+    );
+    setDetails(updatedDetails);
+    return true;
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Failed to update details');
+    return false;
+  } finally {
+    setIsSubmitting(false);
+  }
+}, [details, bookService]);
+```
+
+---
+
+## [](#execute-tests)Execute Tests
+
+After adapting the tests, you can execute them to ensure that they are working correctly and validating the functionality of the detail component as expected.  
+Use the following command to run all tests:
+
+```bash
+npm run test
+```
+
+This will execute the test suite and provide feedback on the success or failure of the tests based on the adapted test cases and expected results.  
+Make sure to review the test results and address any issues that may arise to ensure that your detail component is functioning correctly and meets the desired requirements.
+
+![test result detail](../../_images/test_result_detail.png) 
+
+Figure 1\. Test results
+
 Map the API and Prepare Mock Data
 ====================
 The React search page fetches its data through a generated `<Resource>Api`, called from the `use<Resource>Search` hook. This page describes how to map the search criteria to the API request, how the search endpoint is defined in the OpenAPI file, and how to provide mock data while no real backend is available.
@@ -17333,536 +17863,6 @@ npm run test
 
 | |  Search your IDE for **ACTION S** to find every place that still needs adaptation before the tests reflect your real entity. |
 | ------------------------------------------------------------------------------------------------------------------------------ |
-
-Configure Detail View (React)
-====================
-After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
-
-| |  This section covers the React implementation. For Angular, see [Configure Detail View (Angular)](../../generator/details/detail-properties.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#action-d1)ACTION D1
-
-Add Detail Properties in TypeScript Component
-
-To display additional properties in the detail view, you need to adapt the TypeScript component of the detail view.
-
-| Directory | bookstore/src/pages/book/book-details |
-| --------- | ------------------------------------- |
-| File      | book-details.store.ts                 |
-
-| Directory | bookstore/src/pages/book/book-details |
-| --------- | ------------------------------------- |
-| File      | book-details.types.ts                 |
-
-### Example: Generated Details in Book Component
-
-Original `book-details.store.ts` 
-
-```javascript
-export const useBookDetailsStore = create<BookDetailsState>((set) => ({
-  editMode: false,
-  formData: {
-    id: "",
-    modificationCount: 0,
-    // ACTION D1: Add additional form field initializations here
-  },
-  hasUnsavedChanges: false,
-  showCancelConfirm: false,
-  setEditMode: (editMode) => set({ editMode }),
-  setFormData: (formData) => set({ formData }),
-  setHasUnsavedChanges: (hasUnsavedChanges) => set({ hasUnsavedChanges }),
-  setShowCancelConfirm: (showCancelConfirm) => set({ showCancelConfirm }),
-  resetFormData: (details) =>
-    set({
-      formData: {
-        id: details.id,
-        modificationCount: details.modificationCount,
-        // ACTION D4: Add additional form field initializations here
-      },
-      hasUnsavedChanges: false,
-    }),
-  showDeleteConfirm: false,
-  setShowDeleteConfirm: (showDeleteConfirm) => set({ showDeleteConfirm }),
-}));
-```
-
-Original `book-details.types.ts` 
-
-```javascript
-export interface BookDetails {
-  id: string;
-  modificationCount: number;
-  // ACTION D1: Add additional detail properties here
-}
-
-export interface BookDetailsFormData {
-  id: string;
-  modificationCount: number;
-  // ACTION D1: Add additional form field properties here
-}
-```
-
----
-
-### Example: Book Details in Book Component
-
-Book details in `book-details.store.ts` 
-
-```javascript
-export const useBookDetailsStore = create<BookDetailsState>((set) => ({
-  editMode: false,
-  formData: {
-    id: "",
-    modificationCount: 0,
-    bookTitle: "",
-    bookType: "",
-    // ACTION D1: Add additional form field initializations here
-  },
-  hasUnsavedChanges: false,
-  showCancelConfirm: false,
-  setEditMode: (editMode) => set({ editMode }),
-  setFormData: (formData) => set({ formData }),
-  setHasUnsavedChanges: (hasUnsavedChanges) => set({ hasUnsavedChanges }),
-  setShowCancelConfirm: (showCancelConfirm) => set({ showCancelConfirm }),
-  resetFormData: (details) =>
-    set({
-      formData: {
-        id: details.id,
-        modificationCount: details.modificationCount,
-        bookTitle: details.bookTitle,
-        bookType: details.bookType,
-        // ACTION D4: Add additional form field initializations here
-      },
-      hasUnsavedChanges: false,
-    }),
-  showDeleteConfirm: false,
-  setShowDeleteConfirm: (showDeleteConfirm) => set({ showDeleteConfirm }),
-}));
-```
-
-Where **bookTitle** and **bookType** are properties of the book entity to be displayed and managed in the detail view.
-
-## [](#action-d2)ACTION D2
-
-Add Detail Properties in JSX
-
-To display additional properties in the detail view, you need to adapt the JSX of the detail view.
-
-| Directory | bookstore/src/components/book/book-detail |
-| --------- | ----------------------------------------- |
-| File      | book-details-form.tsx                     |
-
-### Example: Generated Book Details Form in JSX
-
-Original `book-details-form.tsx` 
-
-```javascript
-...
-      {/* ACTION D2: Add additional form fields here */}
-      <div className="mb-3">
-        <label
-          htmlFor="modificationCount"
-          className="block mb-1 text-xs font-bold text-900 mt-3"
-        >
-          Modification Count
-        </label>
-
-        <InputText
-          id="modificationCount"
-          disabled={!editMode}
-          value={String(formData.modificationCount ?? '')}
-          onChange={(e) =>
-            onChange('modificationCount', parseInt(e.target.value, 10) || 0)
-          }
-          className="w-full"
-        />
-      </div>
-...
-```
-
----
-
-### Example: Book Details Form in JSX
-
-Book details in `book-details-form.tsx` 
-
-```javascript
-      <div className="mb-3">
-        <label
-          htmlFor="bookTitle"
-          className="block mb-1 text-xs font-bold text-900 mt-3"
-        >
-          Book Title
-        </label>
-
-        <InputText
-          id="bookTitle"
-          disabled={!editMode}
-          value={formData.bookTitle ?? ''}
-          onChange={(e) => onChange('bookTitle', e.target.value)}
-          className="w-full"
-        />
-      </div>
-
-      <div className="mb-3">
-        <label
-          htmlFor="bookType"
-          className="block mb-1 text-xs font-bold text-900 mt-3"
-        >
-          Book Type
-        </label>
-
-        <InputText
-          id="bookType"
-          disabled={!editMode}
-          value={formData.bookType ?? ''}
-          onChange={(e) => onChange('bookType', e.target.value)}
-          className="w-full"
-        />
-      </div>
-```
-
-Where **bookTitle** and **bookType** are properties of the book entity to be displayed and managed in the detail view.
-
-## [](#action-D3)ACTION D3
-
-Add Translations
-
-Ensure that all necessary translations are added.  
-More details in [Multi-Language](../../../docs-guides-ui/angular/translation/multi-language.html).
-
-### Template: Generated Translations
-
-| Directory | <root-of-ui-app>/src/assets/i18n |
-| --------- | -------------------------------- |
-| Files     | de.json, en.json                 |
-
-Adjust translations in `en.json` 
-
-```json
-  "BOOK_DETAILS": {
-    "HEADER": "Book Details",
-    "SUB_HEADER": "Display of Book Details",
-    "HELP_ARTICLE_ID": "Help Article",
-    "BREADCRUMB": "Details",
-    "ARIA_LABEL": "Page Header with Details",
-    "ERROR_MESSAGES": {
-      "DETAILS_LOADING_FAILED": "Loading details failed."
-    },
-    "GENERAL": {
-      "BACK": "Back",
-      "MORE": "More",
-      "EDIT": "Edit",
-      "DELETE": "Delete",
-      "CANCEL": "Cancel",
-      "SAVE": "Save"
-    },
-    "FORM": {
-      "ID": "ID",
-      "NAME": "Page Header with Details",
-      "FORM_FIELDS": "ACTION D3: Add additional form field translation keys here"
-    },
-    "CANCEL": {
-      "HEADER": "Confirm cancellation",
-      "MESSAGE": "Please confirm that you want to cancel editing and reset changes.",
-      "CONFIRM": "Confirm"
-    },
-    "UPDATE": {
-      "SUCCESS": "Update successful",
-      "ERROR": "Update failed",
-      "FORM": {
-        "SAVE": "Save",
-        "CANCEL": "Cancel"
-      },
-      "HEADER": "Update Book"
-    },
-    "DELETE": {
-      "HEADER": "Delete Book",
-      "MESSAGE": "Please confirm that you want to delete this Book item.",
-      "CONFIRM": "Confirm",
-      "CANCEL": "Cancel",
-      "SUCCESS": "Book deleted successfully",
-      "ERROR": "Could not delete Book"
-    }
-  }
-```
-
-The `FORM_FIELDS` entry in the `FORM` section marks where to add a translation key for each additional form field. It is a placeholder tagged with `ACTION D3`: replace it with your own keys and adapt the default values to your application.
-
----
-
-### Example
-
-| Directory | bookstore/src/assets/i18n |
-| --------- | ------------------------- |
-| Files     | de.json, en.json          |
-
-Example: Translations in `en.json` 
-
-```json
-  "BOOK_DETAILS": {
-    "HEADER": "Book Details",
-    "SUB_HEADER": "Display of Book Details",
-    "HELP_ARTICLE_ID": "Help Article",
-    "BREADCRUMB": "Details",
-    "ARIA_LABEL": "Page Header with Details",
-    "ERROR_MESSAGES": {
-      "DETAILS_LOADING_FAILED": "Loading details failed."
-    },
-    "GENERAL": {
-      "BACK": "Back",
-      "MORE": "More",
-      "EDIT": "Edit",
-      "DELETE": "Delete",
-      "CANCEL": "Cancel",
-      "SAVE": "Save"
-    },
-    "FORM": {
-      "ID": "ID",
-      "NAME": "Page Header with Details",
-      "BOOK_TITLE": "Book Title",
-      "BOOK_TYPE": "Book Type"
-    },
-    "CANCEL": {
-      "HEADER": "Confirm cancellation",
-      "MESSAGE": "Please confirm that you want to cancel editing and reset changes.",
-      "CONFIRM": "Confirm"
-    },
-    "UPDATE": {
-      "SUCCESS": "Update successful",
-      "ERROR": "Update failed",
-      "FORM": {
-        "SAVE": "Save",
-        "CANCEL": "Cancel"
-      },
-      "HEADER": "Update Book"
-    },
-    "DELETE": {
-      "HEADER": "Delete Book",
-      "MESSAGE": "Please confirm that you want to delete this Book item.",
-      "CONFIRM": "Confirm",
-      "CANCEL": "Cancel",
-      "SUCCESS": "Book deleted successfully",
-      "ERROR": "Could not delete Book"
-    }
-  },
-```
-
-Where **BOOK\_TITLE** and **BOOK\_TYPE** are the translation keys for the additional form fields added in ACTION D1 and D2.
-
-Example: Translations in `de.json` 
-
-```json
-  "BOOK_DETAILS": {
-    "HEADER": "Buchdetails",
-    "SUB_HEADER": "Anzeige von Buchdetails",
-    "HELP_ARTICLE_ID": "Hilfeartikel",
-    "BREADCRUMB": "Details",
-    "ARIA_LABEL": "Seitenkopf mit Details",
-    "ERROR_MESSAGES": {
-      "DETAILS_LOADING_FAILED": "Details konnten nicht geladen werden."
-    },
-    "GENERAL": {
-      "BACK": "Zurück",
-      "MORE": "Mehr",
-      "EDIT": "Bearbeiten",
-      "DELETE": "Löschen",
-      "CANCEL": "Abbrechen",
-      "SAVE": "Speichern"
-    },
-    "FORM": {
-      "ID": "ID",
-      "NAME": "Seitenkopf mit Details",
-      "BOOK_TITLE": "Buchtitel",
-      "BOOK_TYPE": "Buchtyp"
-    },
-    "CANCEL": {
-      "HEADER": "Abbruch bestätigen",
-      "MESSAGE": "Bitte bestätigen Sie, dass Sie die Bearbeitung abbrechen und die Änderungen zurücksetzen möchten.",
-      "CONFIRM": "Bestätigen"
-    },
-    "UPDATE": {
-      "SUCCESS": "Speichern erfolgreich",
-      "ERROR": "Speichern fehlgeschlagen",
-      "FORM": {
-        "SAVE": "Speichern",
-        "CANCEL": "Abbrechen"
-      },
-      "HEADER": "Buch ändern"
-    },
-    "DELETE": {
-      "HEADER": "Buch löschen",
-      "MESSAGE": "Bitte bestätigen Sie, dass Sie das Buch löschen möchten.",
-      "CONFIRM": "Bestätigen",
-      "CANCEL": "Abbrechen",
-      "SUCCESS": "Buch erfolgreich gelöscht",
-      "ERROR": "Konnte Buch nicht löschen"
-    }
-  },
-```
-
-## [](#action-d4)ACTION D4
-
-Add Form Field Initializations
-
-When using edit mode, you need to ensure all form fields are properly initialized from the details object. This is done in both the store and the page component.
-
-| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
-| --------- | ------------------------------------------------------- |
-| File      | <resource>-details.store.ts                             |
-| File      | <resource>-details.page.tsx                             |
-
-ACTION D4 in `<resource>-details.store.ts` 
-
-```javascript
-formData: {
-  id: details.id,
-  modificationCount: details.modificationCount,
-  // ACTION D4: Add additional form field initializations here
-},
-```
-
-ACTION D4 in `<resource>-details.page.tsx` 
-
-```javascript
-resetFormData({
-  id: details.id,
-  modificationCount: details.modificationCount,
-  // ACTION D4: Add additional form field initializations here
-});
-```
-
-Configure Detail Tests (React)
-====================
-| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](../../generator/details/detail-tests.html). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#action-d11)ACTION D11
-
-Configure Detail Tests
-
-In alignment to the adaptations made in the detail component, you will also need to adapt the generated tests for the detail component. This includes updating the test data and expected results in the test files to reflect the changes made to the detail component, such as the property definitions and the structure of the detail view.  
-This ensures that the tests accurately validate the functionality of the detail component based on the customized implementation.
-
----
-
-### [](#detail-component)Detail Component
-
-#### [](#location-of-detail-component-tests)Location of Detail Component Tests
-
-| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
-| --------- | ------------------------------------------------------- |
-| File      | <resource>-details.hook.test.ts (hook tests)            |
-| File      | <resource>-details.page.test.tsx (page tests)           |
-
-#### [](#tests-for-the-book)Tests for the book
-
-| Directory | bookstore/src/pages/book/book-details |
-| --------- | ------------------------------------- |
-| File      | book-details.hook.test.ts             |
-| File      | book-details.page.test.tsx            |
-
-Update the test data in the test file to reflect the expected structure and values based on the customized detail component implementation.
-
-ACTION D11 in `<resource>-details.hook.test.ts` 
-
-```javascript
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { useBookDetails } from './book-details.hook';
-
-  it('should fetch details when id is provided', async () => {
-    const mockDetails = {
-      id: 'test-id',
-      modificationCount: 0,
-      // ACTION D11: Add additional fields to match your implementation
-    };
-
-    mockService.getBookById.mockResolvedValue({
-      data: { resource: mockDetails }
-    });
-
-    const { result } = renderHook(() => useBookDetails(mockService));
-
-    await act(async () => {
-      await result.current.fetchDetails('test-id');
-    });
-
-    await waitFor(() => {
-      expect(result.current.details).toEqual(mockDetails);
-    });
-  });
-```
-
-ACTION D11 in `<resource>-details.page.test.tsx` 
-
-```javascript
-(useBookDetails as any).mockReturnValue({
-  details: {
-    id: 'test-id',
-    modificationCount: 0,
-    // ACTION D11: Adjust test data to match your detail properties
-  },
-  loading: false,
-  error: null,
-  fetchDetails: vi.fn(),
-});
-```
-
-## [](#action-d12)ACTION D12
-
-Adjust API Request Structure
-
-When using edit mode in React, you may need to adjust the API request structure to match your backend’s expected signature. The generated code uses a type cast (`as any`) for flexibility, but you should update it to match your actual API requirements.
-
-| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
-| --------- | ------------------------------------------------------- |
-| File      | <resource>-details.hook.ts                              |
-
-ACTION D12 in `<resource>-details.hook.ts` 
-
-```javascript
-const updateDetails = useCallback(async (updatedDetails: BookDetails) => {
-  if (!details?.id) return false;
-
-  setIsSubmitting(true);
-  setError(null);
-  try {
-    // ACTION D12: Adjust request structure to match your API signature
-    // The API expects: updateBookById(id: string, updateRequest: UpdateBookRequest)
-    // You may need to transform updatedDetails to match the UpdateRequest structure
-    await bookService.updateBookById(
-      details.id,
-      updatedDetails as any
-    );
-    setDetails(updatedDetails);
-    return true;
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Failed to update details');
-    return false;
-  } finally {
-    setIsSubmitting(false);
-  }
-}, [details, bookService]);
-```
-
----
-
-## [](#execute-tests)Execute Tests
-
-After adapting the tests, you can execute them to ensure that they are working correctly and validating the functionality of the detail component as expected.  
-Use the following command to run all tests:
-
-```bash
-npm run test
-```
-
-This will execute the test suite and provide feedback on the success or failure of the tests based on the adapted test cases and expected results.  
-Make sure to review the test results and address any issues that may arise to ensure that your detail component is functioning correctly and meets the desired requirements.
-
-![test result detail](../../_images/test_result_detail.png) 
-
-Figure 1\. Test results
 
 OneCX Quarkus Extensions
 ====================
@@ -19116,101 +19116,6 @@ This component displays data as a list or grid and allows you to switch between 
 
 To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
-OneCX Consent
-====================
-## [](#overview)Overview
-
-The Consent component (`<ocx-consent>`) gates projected content behind explicit user consent.
-
-Typical GDPR/ePrivacy use cases include embedding third-party resources (maps, analytics, videos) where no network requests should happen before opt-in.
-
-## [](#usage)Usage
-
-Import the `AngularAcceleratorModule` and use the component in your template.
-
-```html
-<ocx-consent
-  [url]="tileServerUrl"
-  purpose="maps"
-  [showWithdraw]="true"
->
-  <a ocx-consent-info href="/privacy">Privacy policy</a>
-
-  <!-- Rendered only when consent exists. -->
-  <app-leaflet-map [tileUrl]="tileServerUrl" />
-</ocx-consent>
-```
-
-| |  Angular projected content is created in the host component’s view. If your projected content is an Angular component that performs side effects on creation (e.g. network requests in constructors/effects), you should still guard its **instantiation**. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-One simple pattern is to toggle an `*ngIf` (or `@if`) based on the `consentChanged` output:
-
-```html
-<ocx-consent
-  [url]="tileServerUrl"
-  purpose="maps"
-  (consentChanged)="mapConsentGranted = $event.hasConsent"
->
-  <app-leaflet-map *ngIf="mapConsentGranted" [tileUrl]="tileServerUrl" />
-</ocx-consent>
-```
-
-## [](#projection)Content projection
-
-The component supports two projection areas:
-
-* Default projection: the gated content that is only rendered after consent is present.
-* `[ocx-consent-info]`: optional informational content shown in the consent prompt (e.g. provider name, privacy policy link).
-
-## [](#inputs)Inputs
-
-__Table 1\. Consent inputs__
-| Input name   | Type                | Default               | Description                                                                                                 |
-| ------------ | ------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
-| url          | string              | \-                    | **Required.** Target URL that the gated content will contact (used for display and consent matching).       |
-| purpose      | string \| undefined | \-                    | Optional scope for consent (e.g. maps, analytics). When set, consent is stored/matched as <url>::<purpose>. |
-| titleKey     | string              | OCX\_CONSENT.TITLE    | Translation key for the consent title.                                                                      |
-| messageKey   | string              | OCX\_CONSENT.MESSAGE  | Translation key for the consent message (receives { url }).                                                 |
-| agreeKey     | string              | OCX\_CONSENT.AGREE    | Translation key for the agree button.                                                                       |
-| withdrawKey  | string              | OCX\_CONSENT.WITHDRAW | Translation key for the withdraw button.                                                                    |
-| showWithdraw | boolean             | false                 | When enabled, shows a withdraw button that removes the stored consent.                                      |
-
-## [](#outputs)Outputs
-
-__Table 2\. Consent outputs__
-| Output name    | Type                                          | Description                                     |
-| -------------- | --------------------------------------------- | ----------------------------------------------- |
-| consentChanged | [ConsentChangedEvent](#consent-changed-event) | Emits whenever consent is granted or withdrawn. |
-
-## [](#types)Types
-
-### [](#consent-changed-event)ConsentChangedEvent
-
-__Table 3\. ConsentChangedEvent__
-| Property   | Type    | Description                                         |
-| ---------- | ------- | --------------------------------------------------- |
-| url        | string  | Normalized URL that consent was evaluated for.      |
-| hasConsent | boolean | true when granted, false when withdrawn.            |
-| purpose?   | string  | Optional purpose scope echoed back to the consumer. |
-
-## [](#storage)Storage and matching
-
-Consent is stored in the browser using `localStorage`:
-
-* Key: `onecx-consent`
-* Format: JSON string array
-* Entries: either `<normalizedUrl>` or `<normalizedUrl>::<purpose>`
-
-URL normalization aims to avoid accidental mismatches:
-
-* Trims whitespace
-* Removes `#hash` and `?query`
-* Lowercases the hostname
-* Removes a trailing slash
-
-If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
-
 OneCX DataListGrid
 ====================
 ## [](#overview)Overview
@@ -19313,6 +19218,101 @@ GroupByCountDiagramComponentState interface
         activeDiagramType?: DiagramType
     }
 ```
+
+OneCX Consent
+====================
+## [](#overview)Overview
+
+The Consent component (`<ocx-consent>`) gates projected content behind explicit user consent.
+
+Typical GDPR/ePrivacy use cases include embedding third-party resources (maps, analytics, videos) where no network requests should happen before opt-in.
+
+## [](#usage)Usage
+
+Import the `AngularAcceleratorModule` and use the component in your template.
+
+```html
+<ocx-consent
+  [url]="tileServerUrl"
+  purpose="maps"
+  [showWithdraw]="true"
+>
+  <a ocx-consent-info href="/privacy">Privacy policy</a>
+
+  <!-- Rendered only when consent exists. -->
+  <app-leaflet-map [tileUrl]="tileServerUrl" />
+</ocx-consent>
+```
+
+| |  Angular projected content is created in the host component’s view. If your projected content is an Angular component that performs side effects on creation (e.g. network requests in constructors/effects), you should still guard its **instantiation**. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+One simple pattern is to toggle an `*ngIf` (or `@if`) based on the `consentChanged` output:
+
+```html
+<ocx-consent
+  [url]="tileServerUrl"
+  purpose="maps"
+  (consentChanged)="mapConsentGranted = $event.hasConsent"
+>
+  <app-leaflet-map *ngIf="mapConsentGranted" [tileUrl]="tileServerUrl" />
+</ocx-consent>
+```
+
+## [](#projection)Content projection
+
+The component supports two projection areas:
+
+* Default projection: the gated content that is only rendered after consent is present.
+* `[ocx-consent-info]`: optional informational content shown in the consent prompt (e.g. provider name, privacy policy link).
+
+## [](#inputs)Inputs
+
+__Table 1\. Consent inputs__
+| Input name   | Type                | Default               | Description                                                                                                 |
+| ------------ | ------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------- |
+| url          | string              | \-                    | **Required.** Target URL that the gated content will contact (used for display and consent matching).       |
+| purpose      | string \| undefined | \-                    | Optional scope for consent (e.g. maps, analytics). When set, consent is stored/matched as <url>::<purpose>. |
+| titleKey     | string              | OCX\_CONSENT.TITLE    | Translation key for the consent title.                                                                      |
+| messageKey   | string              | OCX\_CONSENT.MESSAGE  | Translation key for the consent message (receives { url }).                                                 |
+| agreeKey     | string              | OCX\_CONSENT.AGREE    | Translation key for the agree button.                                                                       |
+| withdrawKey  | string              | OCX\_CONSENT.WITHDRAW | Translation key for the withdraw button.                                                                    |
+| showWithdraw | boolean             | false                 | When enabled, shows a withdraw button that removes the stored consent.                                      |
+
+## [](#outputs)Outputs
+
+__Table 2\. Consent outputs__
+| Output name    | Type                                          | Description                                     |
+| -------------- | --------------------------------------------- | ----------------------------------------------- |
+| consentChanged | [ConsentChangedEvent](#consent-changed-event) | Emits whenever consent is granted or withdrawn. |
+
+## [](#types)Types
+
+### [](#consent-changed-event)ConsentChangedEvent
+
+__Table 3\. ConsentChangedEvent__
+| Property   | Type    | Description                                         |
+| ---------- | ------- | --------------------------------------------------- |
+| url        | string  | Normalized URL that consent was evaluated for.      |
+| hasConsent | boolean | true when granted, false when withdrawn.            |
+| purpose?   | string  | Optional purpose scope echoed back to the consumer. |
+
+## [](#storage)Storage and matching
+
+Consent is stored in the browser using `localStorage`:
+
+* Key: `onecx-consent`
+* Format: JSON string array
+* Entries: either `<normalizedUrl>` or `<normalizedUrl>::<purpose>`
+
+URL normalization aims to avoid accidental mismatches:
+
+* Trims whitespace
+* Removes `#hash` and `?query`
+* Lowercases the hostname
+* Removes a trailing slash
+
+If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
 
 OneCX PageHeader
 ====================
@@ -21270,6 +21270,16 @@ this.workspaceService.doesUrlExistFor('orders', 'orders-ui', 'order').subscribe(
 
 This example checks if a valid URL for Orders UI (UI component) of the Orders application to an order details endpoint can be constructed. If true, then Orders application is registered in the workspace and it has UI component with id `orders-ui` with configured endpoint called `order`.
 
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
+
 DataTableColumn
 ====================
 ## [](#data-table-column-properties-overview)DataTableColumn properties overview
@@ -21311,16 +21321,6 @@ FilterType enum
 | ------ | ------------------------------------------------------------------------ |
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
-
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
 
 @onecx/angular-utils/cdk
 ====================
@@ -21729,6 +21729,34 @@ const config = withModuleFederationPlugin({
 });
 ```
 
+undefined
+====================
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-19
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
+
 Adjust Standalone Mode
 ====================
 In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
@@ -21768,34 +21796,6 @@ export class AppModule {}
 npm uninstall --save @onecx/standalone-shell  
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
-
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-19
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Migrate OneCX App from Angular 18 to Angular 19
 ====================
@@ -22789,48 +22789,6 @@ The imports of the following services need to be changed from `@onecx/portal-int
 
 * `UserService`, `PortalMessageService`
 
-Update ConfigurationService Usage
-====================
-In OneCX v6, three methods of `ConfigurationService` have been updated to be asynchronous, returning `Promise` results instead of synchronous values.
-
-## [](#%5Fupdate%5Fthe%5Ffollowing%5Fmethods)Update the following methods
-
-* `getProperty(key)` → `await getProperty(key)`
-* `getConfig()` → `await getConfig()`
-* `setProperty(key, val)` → `await setProperty(key, val)`
-
-Guidelines
-
-* Update only methods of `ConfigurationService` imported from `@onecx/angular-integration-interface`.
-* If inside an observable: wrap the call with `from(…​)` and use `switchMap` or `mergeMap`.
-* Outside observables: use `await` in an `async` function; if `async` not allowed (e.g. `constructor`, `ngOnInit`), resolve the Promise with `.then(…​)`.
-* Add `try/catch` for error handling where synchronous code previously assumed success.
-* Update mocks to resolve promises:  
-   * Jest → `jest.spyOn(service, 'getProperty').mockResolvedValue('val');`  
-   * Jasmine → `spyOn(service, 'getConfig').and.returnValue(Promise.resolve(cfg));`
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-const theme = this.configService.getProperty(CONFIG_KEY.TKIT_PORTAL_DEFAULT_THEME);
-
-const config = this.configService.getConfig();
-
-this.configService.setProperty(CONFIG_KEY.APP_VERSION, '6.0.0');
-```
-
-After
-
-```typescript
-const theme = await this.configService.getProperty(CONFIG_KEY.TKIT_PORTAL_DEFAULT_THEME);
-
-const config = await this.configService.getConfig();
-
-await this.configService.setProperty(CONFIG_KEY.APP_VERSION, '6.0.0');
-```
-
 Update Component Imports
 ====================
 The following section covers component, service, and directive changes in OneCX v6\. Components have been deleted, reorganized across libraries or converted to remote components. The following updates can be applied before v6 migration.
@@ -23004,6 +22962,48 @@ To include the remote components in the application, deployment configuration an
      ]  
    }  
    ```
+
+Update ConfigurationService Usage
+====================
+In OneCX v6, three methods of `ConfigurationService` have been updated to be asynchronous, returning `Promise` results instead of synchronous values.
+
+## [](#%5Fupdate%5Fthe%5Ffollowing%5Fmethods)Update the following methods
+
+* `getProperty(key)` → `await getProperty(key)`
+* `getConfig()` → `await getConfig()`
+* `setProperty(key, val)` → `await setProperty(key, val)`
+
+Guidelines
+
+* Update only methods of `ConfigurationService` imported from `@onecx/angular-integration-interface`.
+* If inside an observable: wrap the call with `from(…​)` and use `switchMap` or `mergeMap`.
+* Outside observables: use `await` in an `async` function; if `async` not allowed (e.g. `constructor`, `ngOnInit`), resolve the Promise with `.then(…​)`.
+* Add `try/catch` for error handling where synchronous code previously assumed success.
+* Update mocks to resolve promises:  
+   * Jest → `jest.spyOn(service, 'getProperty').mockResolvedValue('val');`  
+   * Jasmine → `spyOn(service, 'getConfig').and.returnValue(Promise.resolve(cfg));`
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+const theme = this.configService.getProperty(CONFIG_KEY.TKIT_PORTAL_DEFAULT_THEME);
+
+const config = this.configService.getConfig();
+
+this.configService.setProperty(CONFIG_KEY.APP_VERSION, '6.0.0');
+```
+
+After
+
+```typescript
+const theme = await this.configService.getProperty(CONFIG_KEY.TKIT_PORTAL_DEFAULT_THEME);
+
+const config = await this.configService.getConfig();
+
+await this.configService.setProperty(CONFIG_KEY.APP_VERSION, '6.0.0');
+```
 
 Update FilterType Value
 ====================
@@ -35046,67 +35046,6 @@ If the response object matches the request object (i.e., all products and applic
      Note over Shell: Cache
 ```
 
-Shell V3
-====================
-## [](#summary)Summary
-
-OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
-
-Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
-
-## [](#upgrade-notes)Important Upgrade Notes
-
-With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
-
-It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
-
-| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#highlights)Highlights
-
-* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
-* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
-* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
-* Adds new shell capabilities including an About page and source maps support
-
-## [](#release-notes)Release Notes
-
-### [](#angular-21-support)Angular 21 support with shareScope
-
-Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
-
-### [](#layout-improvements)Shell layout and extensibility improvements
-
-The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
-
-### [](#about-page)About page
-
-Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
-
-### [](#source-maps-support)Source maps support
-
-Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
-
-### [](#efficiency-improvements)Efficiency improvements
-
-Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
-
-## [](#migration-checklist)Migration Checklist
-
-To ensure a smooth migration to Shell v3, consider the following checklist:
-
-* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
-* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
-* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
-
-## [](#references)References
-
-* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
-* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
-* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
-* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
-
 Shell layout
 ====================
 Shell v3 introduces a more structured layout model for OneCX Shell UI. The layout is organized around named slot groups and dedicated layout regions so that applications can integrate in a more predictable and structured way.
@@ -35170,6 +35109,67 @@ It is not recommended to style anything in the application using the shell layou
 * [Release](v3-release.html)
 * [Enable shell source maps](../enable-shell-source-maps.html)
 * [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html)
+
+Shell V3
+====================
+## [](#summary)Summary
+
+OneCX Shell UI 3.0.0 is a major platform release that introduces a new integration path for Angular 21 while continuing to support previously supported Angular application versions. It also advances the shell layout model with updated slot-group conventions, improves startup and runtime efficiency, and delivers enhancements for shell integration, responsiveness, and deployment support.
+
+Because this release includes platform-level and integration-related changes, it should be validated carefully in consumer environments, especially where custom slot configuration, microfrontend integration, or deployment-specific settings are in use.
+
+## [](#upgrade-notes)Important Upgrade Notes
+
+With the v3 release, all previously supported Angular application versions continue to be supported, and no immediate migration actions are required for Angular applications. No required configuration changes are needed.
+
+It is recommended to validate shell integration, configuration, and deployment behavior in a non-production environment before promoting to production and consider the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html). It contains relevant information for ensuring a smooth upgrade process for applications and environments.
+
+| |  This is a major release. Consumers should validate shell integration, configuration, and deployment behavior before promoting to production. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#highlights)Highlights
+
+* Introduces a new Angular 21 integration path while maintaining compatibility for previously supported applications
+* Enhances shell layout and extensibility with viewport restructuring and slot-group based layout conventions
+* Improves startup and runtime efficiency, including reduced message exchange between microfrontends
+* Adds new shell capabilities including an About page and source maps support
+
+## [](#release-notes)Release Notes
+
+### [](#angular-21-support)Angular 21 support with shareScope
+
+Shell v3 introduces changes to microfrontend integration to support Angular 21 applications using a dedicated module federation share scope. This allows Angular 21 applications to integrate with the shell while maintaining compatibility with previously supported Angular versions. For details on required share scopes and migration actions, see [What share scopes are needed](../../docs-guides-ui/ui-additional/share-scopes.html).
+
+### [](#layout-improvements)Shell layout and extensibility improvements
+
+The shell layout model has been enhanced with viewport restructuring and new slot-group based layout conventions. This provides improved flexibility and extensibility for application integration and layout configuration. For details on the new layout model and migration actions, see [V3 Shell Layout](v3-shell-layout.html) and [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html).
+
+### [](#about-page)About page
+
+Shell v3 introduces a new About page that provides information about the supported Angular versions. For more details, see [About Page](../../onecx-shell-ui/onecx-shell-ui-docs.html#primary-method-about-page).
+
+### [](#source-maps-support)Source maps support
+
+Shell v3 adds support for source maps, which can be enabled to facilitate debugging of integrated applications. For details on how to enable source maps, see [Enable Shell Source Maps](../enable-shell-source-maps.html).
+
+### [](#efficiency-improvements)Efficiency improvements
+
+Shell v3 includes various improvements to startup and runtime efficiency, including optimizations to reduce message exchange between microfrontends. These improvements can lead to faster load times and improved performance for integrated applications.
+
+## [](#migration-checklist)Migration Checklist
+
+To ensure a smooth migration to Shell v3, consider the following checklist:
+
+* Review the [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for detailed information on changes and migration actions.
+* Validate shell integration with applications and configuration in a non-production environment before promoting to production.
+* Validate application layout after migration, especially if using custom styling rules that may be affected by the new layout model.
+
+## [](#references)References
+
+* Release: <https://github.com/onecx/onecx-shell-ui/releases/tag/3.0.0>
+* Full changelog: <https://github.com/onecx/onecx-shell-ui/compare/2.4.0…​3.0.0>
+* Shell v3 migration guide: [Shell v3 Migration Guide](../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
+* OneCX UI libraries Angular 21 migration guide: <https://github.com/onecx/onecx-portal-ui-libs/blob/a2cbe83f338710f46d561e043c32c0dda6b1d2a4/docs/modules/onecx-portal-ui-libs/pages/migrations/angular-21/index.adoc>
 
 OneCX Shell Backend For Frontend
 ====================
