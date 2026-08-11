@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -7486,6 +7486,53 @@ export default function StyleRegistry({ children }) {
 
 This code listens for theme changes from the topic, generates a new preset, and applies it to PrimeReact, ensuring the UI updates dynamically according to the selected theme.
 
+undefined
+====================
+## [](#what-are-source-maps)What are source maps
+
+Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files, such as TypeScript, SCSS, or templates.
+
+They help developers debug applications more effectively because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to understand stack traces, inspect application behavior, and identify the root cause of issues.
+
+## [](#recommendation-for-source-map-usage)Recommendation for source map usage
+
+For consuming applications, source maps should usually be:
+
+* enabled in development
+* optionally enabled in test or staging environments
+* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
+
+## [](#how-to-enable-source-maps)How to enable source maps
+
+The exact configuration depends on how each application is built.
+
+For Angular applications, see the official Angular documentation:
+
+* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
+
+For Nx-based applications, see the official Nx documentation:
+
+* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
+
+## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
+
+It is recommended to also enable source maps in the shell during development, as this allows to debug both the shell and the integrated application together more effectively.
+
+Since packages are shared at runtime between the shell and applications, having source maps enabled in the shell can provide better insights into the shared dependencies and their interactions.
+
+That way its possible to avoid potential minification issues that can arise when the shell is built without source maps while the application is built with source maps.
+
+For more information on how to enable source maps in the shell, see [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html) guide.
+
+## [](#security-and-operations-note)Security and operations note
+
+| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
+| ----------------------------------------------------------------------------------------------------------------- |
+
+## [](#related-pages)Related pages
+
+* [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html)
+
 Configure TypeScript Path Aliases (tsconfig paths)
 ====================
 TypeScript path aliases ("tsconfig paths") are defined in the root `tsconfig.json` of a OneCX compatible UI App. Aliases shorten imports and improve readability.
@@ -7597,53 +7644,6 @@ Recommended practices:
 * Use an `@` prefix to make custom aliases explicit.
 * Group related aliases and remove unused entries periodically.
 * Avoid aliases for shared libraries consumed across multiple microfrontends. Module federation and bundlers can resolve them differently.
-
-undefined
-====================
-## [](#what-are-source-maps)What are source maps
-
-Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files, such as TypeScript, SCSS, or templates.
-
-They help developers debug applications more effectively because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to understand stack traces, inspect application behavior, and identify the root cause of issues.
-
-## [](#recommendation-for-source-map-usage)Recommendation for source map usage
-
-For consuming applications, source maps should usually be:
-
-* enabled in development
-* optionally enabled in test or staging environments
-* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
-
-## [](#how-to-enable-source-maps)How to enable source maps
-
-The exact configuration depends on how each application is built.
-
-For Angular applications, see the official Angular documentation:
-
-* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
-
-For Nx-based applications, see the official Nx documentation:
-
-* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
-
-## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
-
-It is recommended to also enable source maps in the shell during development, as this allows to debug both the shell and the integrated application together more effectively.
-
-Since packages are shared at runtime between the shell and applications, having source maps enabled in the shell can provide better insights into the shared dependencies and their interactions.
-
-That way its possible to avoid potential minification issues that can arise when the shell is built without source maps while the application is built with source maps.
-
-For more information on how to enable source maps in the shell, see [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html) guide.
-
-## [](#security-and-operations-note)Security and operations note
-
-| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
-| ----------------------------------------------------------------------------------------------------------------- |
-
-## [](#related-pages)Related pages
-
-* [Enable shell source maps](../../onecx-shell/enable-shell-source-maps.html)
 
 UI Additional Topics
 ====================
@@ -14563,25 +14563,6 @@ After adding the permissions into the local environment, you can use them within
 
 Figure 1\. Bookstore permissions within the Permission UI
 
-undefined
-====================
-### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
-
-The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/angular-generator:pre-commit-validation
-
-| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
-
-The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
-
-The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
-
 Create a Detail Page (React)
 ====================
 | |  This page documents the React detail generator.For Angular, see [Create a Detail Component](../generator/create-details.html). |
@@ -15071,6 +15052,25 @@ Generates details page, hook/store, and related UI components for a resource.
 A data-driven search page with criteria, results table, header actions and API integration.
 * [Create a React Page](create-react-page.html)  
 A minimal, ready-to-use page with header and content area.
+
+undefined
+====================
+### [](#%5Fset%5Fup%5Fpre%5Fcommit%5Fvalidation)Set up pre-commit-validation
+
+The fastest way to validate code changes for linting issues, conventional commits messages and potential secrets in the code is by using the OneCX generator.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/angular-generator:pre-commit-validation
+
+| |  Next, the CLI will ask if you want to enable validation checks with three questions: Lint-check, Conventional Commits message check and scanning for blacklisted words in the code. For each check, you can choose "yes" or "no". |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+If "yes" is selected, the CLI installs the necessary dependencies if not already present - husky (used for all checks), lint-staged for linting, commitlint for Conventional Commits check and detect-secrets for blacklist-scanning.
+
+The blacklist file used for the blacklist scanning should be in the users home directory (`~/blacklist.txt`).
+
+The required configuration files for the enabled validation checks will be generated and the enabled checks are automatically performed before the changes can be committed.
 
 undefined
 ====================
@@ -16687,26 +16687,6 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
-undefined
-====================
-### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
-
-The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
-
-**Placeholder**:
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../generator/glossary.html#feature).
-
-| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, you can modify all files to your needs.
-
 Configure Detail View (React)
 ====================
 After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
@@ -17863,6 +17843,26 @@ npm run test
 
 | |  Search your IDE for **ACTION S** to find every place that still needs adaptation before the tests reflect your real entity. |
 | ------------------------------------------------------------------------------------------------------------------------------ |
+
+undefined
+====================
+### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
+
+The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
+
+**Placeholder**:
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](../../generator/glossary.html#feature).
+
+| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, you can modify all files to your needs.
 
 OneCX Quarkus Extensions
 ====================
@@ -19211,21 +19211,6 @@ URL normalization aims to avoid accidental mismatches:
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
 
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
-
 OneCX GroupByCountDiagram
 ====================
 ## [](#overview)Overview
@@ -19314,104 +19299,20 @@ GroupByCountDiagramComponentState interface
     }
 ```
 
-OneCX PageHeader
+OneCX DataListGrid
 ====================
 ## [](#overview)Overview
 
-This document aims to showcase how to use the PageHeader component.
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
 
-This component should be used for creating a header for the pages. Please, visit the storybook page for the [PageHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
 
-## [](#customization)Customization
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
 
-The PageHeader component allows to customize its content:
+* `list` role on the container element
+* `listitem` role on each item element
 
-* control header title, subtitle and figure
-* display page details
-* display action buttons and menu items
-
-To find out how to work with PageHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the PageHeader component interface, please access further documentation.
-
-## [](#inputs)Inputs
-
-__Table 1\. PageHeader inputs__
-| Input name               | Type                                        | Default | Description                                                                                                                                                                                    |   |    |    |                                      |
-| ------------------------ | ------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - | -- | -- | ------------------------------------ |
-| header                   | string                                      | \-      | Header title.                                                                                                                                                                                  |   |    |    |                                      |
-| loading                  | boolean                                     | false   | If component is in loading state. Set to true to display component in the loading state.                                                                                                       |   |    |    |                                      |
-| showFigure               | boolean                                     | true    | If header figure should be visible. Set to false to hide the figure.                                                                                                                           |   |    |    |                                      |
-| figureImage              | string                                      | \-      | Image URL to be displayed in the header figure.                                                                                                                                                |   |    |    |                                      |
-| subheader                | string                                      | \-      | Header subtitle.                                                                                                                                                                               |   |    |    |                                      |
-| actions                  | [Action](#action)\[\]                       | \-      | Array of actions available in the header in form of a button or a menu item.                                                                                                                   |   |    |    |                                      |
-| objectDetails            | [ObjectDetailItem](#object-detail-item)\[\] | \-      | Array of detail items to be displayed in the header.                                                                                                                                           |   |    |    |                                      |
-| showBreadcrumbs          | boolean                                     | true    | If breadcrumbs should be visible.                                                                                                                                                              |   |    |    |                                      |
-| manualBreadcrumbs        | boolean                                     | false   | If breadcrumbs should be set manually. By default BreadcrumbService will generate breadcrumbs based on the router state. Set to true and set breadcrumbs for module routes to use manual mode. |   |    |    |                                      |
-| enableGridView           | boolean                                     | \-      | If grid view should be enabled. Set to false to use column view. Set to true to use grid view.                                                                                                 |   |    |    |                                      |
-| gridLayoutDesktopColumns | 1 \| 2                                      | 3       | 4                                                                                                                                                                                              | 6 | 12 | \- | The amount of columns for grid view. |
-| figureBackground         | boolean                                     | true    | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
-| disableDefaultActions    | boolean                                     | false   | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
-
-## [](#outputs)Outputs
-
-__Table 2\. PageHeader outputs__
-| Output name | Type | Description |
-| ----------- | ---- | ----------- |
-| save        | any  | Deprecated. |
-
-## [](#types)Types
-
-### [](#action)Action
-
-Action type is used to create:
-
-* action buttons in the header (use `show: 'always'`)
-* action menu item in the `more actions` button in the header (use `show: 'asOverflow'`)
-
-__Table 3\. Action interface__
-| Property            | Type                    | Description                                                                                                                                                                                                |
-| ------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| id?                 | string                  | Identifier of the action button or menu item.                                                                                                                                                              |
-| label?              | string                  | Action button or menu item text.                                                                                                                                                                           |
-| labelKey?           | string                  | Translation key for action button or menu item text. Has higher priority than label.                                                                                                                       |
-| icon?               | string                  | Icon of the action button or menu item .                                                                                                                                                                   |
-| permission?         | string                  | Permission for the action. If user does not have this permission, the action will not be shown.                                                                                                            |
-| title?              | string                  | Action button or menu item tooltip text.                                                                                                                                                                   |
-| titleKey?           | string                  | Translation key for action button or menu item tooltip text.                                                                                                                                               |
-| ariaLabel?          | string                  | Text for the aria label of the action button. Used for actions with show: 'always' property.                                                                                                               |
-| ariaLabelKey?       | string                  | Translation key for the aria label of the action button. Used for actions with show: 'always' property. Has higher priority than ariaLabel.                                                                |
-| actionCallback?     | (): void                | Callback to be used when the button is clicked or the menu item is chosen.                                                                                                                                 |
-| loading?            | boolean                 | If action button should be in a loading state.                                                                                                                                                             |
-| disabled?           | boolean                 | If action button or menu item should be disabled.                                                                                                                                                          |
-| disabledTooltip?    | string                  | Tooltip for the disabled action button.                                                                                                                                                                    |
-| disabledTooltipKey? | string                  | Translation key for the tooltip of the disabled action button. Has higher priority than disabledTooltipKey.                                                                                                |
-| show?               | 'always' \|'asOverflow' | Action button display control. Use 'always' to display button in the header. Use 'asOverflow' to add a menu item to the more actions menu button in the header.                                            |
-| conditional?        | boolean                 | If action should be visible on condition resolved in showCondition property.                                                                                                                               |
-| showCondition?      | boolean                 | If conditional: true is set, this value determines if the action is visible. Note, this property will not work with dynamic values. Please, replace the passed Action if you wish to update the condition. |
-| btnClass?           | string                  | Deprecated.                                                                                                                                                                                                |
-
-### [](#object-detail-item)ObjectDetailItem
-
-ObjectDetailItem is used to define the detail item to be displayed for the page in the header. The detail item has a label and can have a value as well as action button.
-
-__Table 4\. ObjectDetailItem interface__
-| Property                    | Type      | Description                                                                                |
-| --------------------------- | --------- | ------------------------------------------------------------------------------------------ |
-| \`label                     | string    | Text for the detail label. Use labelPipe to transform the label e.g., using TranslatePipe. |
-| \`value?                    | string    | Text for the detail value. Use valuePipe to transform the value e.g., using TranslatePipe. |
-| \`labelTooltip?             | string    | Text for the detail label tooltip.                                                         |
-| \`valueTooltip?             | string    | Text for the detail value tooltip.                                                         |
-| \`icon?                     | PrimeIcon | Icon displayed before the detail value.                                                    |
-| \`iconStyleClass?           | string    | Style of the icon element.                                                                 |
-| \`labelPipe?                | Type<any> | Pipe used to transform the detail label provided via label.                                |
-| \`valuePipe?                | Type<any> | Pipe used to transform the detail value provided via value.                                |
-| \`valuePipeArgs?            | string    | Arguments for the Pipe provided via valuePipe, used for transforming the detail value.     |
-| \`valueCssClass?            | string    | String containing css classes to be used for displaying the detail value.                  |
-| \`actionItemIcon?           | PrimeIcon | Icon for the detail item action button.                                                    |
-| \`actionItemCallback?       | () ⇒ void | Callback to be used when the detail item action button is clicked.                         |
-| \`actionItemTooltip?        | string    | Text for the detail action button tooltip.                                                 |
-| \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
-| \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
-| \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX SearchHeader
 ====================
@@ -19532,6 +19433,105 @@ __Table 4\. SearchConfigData interface__
 | fieldValues         | { \[key: string\]: string } | Data values to display.                                            |
 | displayedColumnsIds | string\[\]                  | List of columns to display.                                        |
 | viewMode            | 'basic' \| 'advanced'       | The viewMode for displaying input fields as 'basic' or 'advanced'. |
+
+OneCX PageHeader
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to use the PageHeader component.
+
+This component should be used for creating a header for the pages. Please, visit the storybook page for the [PageHeader component](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out if the component is suitable for the desired use-case.
+
+## [](#customization)Customization
+
+The PageHeader component allows to customize its content:
+
+* control header title, subtitle and figure
+* display page details
+* display action buttons and menu items
+
+To find out how to work with PageHeader component, please visit the [storybook page](https://main--65f7f64d4506c9f2dfe59383.chromatic.com/?path=/docs/components-pageheadercomponent--docs) and interact with the examples to find out the required features. For more in-depth information on the PageHeader component interface, please access further documentation.
+
+## [](#inputs)Inputs
+
+__Table 1\. PageHeader inputs__
+| Input name               | Type                                        | Default | Description                                                                                                                                                                                    |   |    |    |                                      |
+| ------------------------ | ------------------------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | - | -- | -- | ------------------------------------ |
+| header                   | string                                      | \-      | Header title.                                                                                                                                                                                  |   |    |    |                                      |
+| loading                  | boolean                                     | false   | If component is in loading state. Set to true to display component in the loading state.                                                                                                       |   |    |    |                                      |
+| showFigure               | boolean                                     | true    | If header figure should be visible. Set to false to hide the figure.                                                                                                                           |   |    |    |                                      |
+| figureImage              | string                                      | \-      | Image URL to be displayed in the header figure.                                                                                                                                                |   |    |    |                                      |
+| subheader                | string                                      | \-      | Header subtitle.                                                                                                                                                                               |   |    |    |                                      |
+| actions                  | [Action](#action)\[\]                       | \-      | Array of actions available in the header in form of a button or a menu item.                                                                                                                   |   |    |    |                                      |
+| objectDetails            | [ObjectDetailItem](#object-detail-item)\[\] | \-      | Array of detail items to be displayed in the header.                                                                                                                                           |   |    |    |                                      |
+| showBreadcrumbs          | boolean                                     | true    | If breadcrumbs should be visible.                                                                                                                                                              |   |    |    |                                      |
+| manualBreadcrumbs        | boolean                                     | false   | If breadcrumbs should be set manually. By default BreadcrumbService will generate breadcrumbs based on the router state. Set to true and set breadcrumbs for module routes to use manual mode. |   |    |    |                                      |
+| enableGridView           | boolean                                     | \-      | If grid view should be enabled. Set to false to use column view. Set to true to use grid view.                                                                                                 |   |    |    |                                      |
+| gridLayoutDesktopColumns | 1 \| 2                                      | 3       | 4                                                                                                                                                                                              | 6 | 12 | \- | The amount of columns for grid view. |
+| figureBackground         | boolean                                     | true    | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
+| disableDefaultActions    | boolean                                     | false   | Deprecated.                                                                                                                                                                                    |   |    |    |                                      |
+
+## [](#outputs)Outputs
+
+__Table 2\. PageHeader outputs__
+| Output name | Type | Description |
+| ----------- | ---- | ----------- |
+| save        | any  | Deprecated. |
+
+## [](#types)Types
+
+### [](#action)Action
+
+Action type is used to create:
+
+* action buttons in the header (use `show: 'always'`)
+* action menu item in the `more actions` button in the header (use `show: 'asOverflow'`)
+
+__Table 3\. Action interface__
+| Property            | Type                    | Description                                                                                                                                                                                                |
+| ------------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| id?                 | string                  | Identifier of the action button or menu item.                                                                                                                                                              |
+| label?              | string                  | Action button or menu item text.                                                                                                                                                                           |
+| labelKey?           | string                  | Translation key for action button or menu item text. Has higher priority than label.                                                                                                                       |
+| icon?               | string                  | Icon of the action button or menu item .                                                                                                                                                                   |
+| permission?         | string                  | Permission for the action. If user does not have this permission, the action will not be shown.                                                                                                            |
+| title?              | string                  | Action button or menu item tooltip text.                                                                                                                                                                   |
+| titleKey?           | string                  | Translation key for action button or menu item tooltip text.                                                                                                                                               |
+| ariaLabel?          | string                  | Text for the aria label of the action button. Used for actions with show: 'always' property.                                                                                                               |
+| ariaLabelKey?       | string                  | Translation key for the aria label of the action button. Used for actions with show: 'always' property. Has higher priority than ariaLabel.                                                                |
+| actionCallback?     | (): void                | Callback to be used when the button is clicked or the menu item is chosen.                                                                                                                                 |
+| loading?            | boolean                 | If action button should be in a loading state.                                                                                                                                                             |
+| disabled?           | boolean                 | If action button or menu item should be disabled.                                                                                                                                                          |
+| disabledTooltip?    | string                  | Tooltip for the disabled action button.                                                                                                                                                                    |
+| disabledTooltipKey? | string                  | Translation key for the tooltip of the disabled action button. Has higher priority than disabledTooltipKey.                                                                                                |
+| show?               | 'always' \|'asOverflow' | Action button display control. Use 'always' to display button in the header. Use 'asOverflow' to add a menu item to the more actions menu button in the header.                                            |
+| conditional?        | boolean                 | If action should be visible on condition resolved in showCondition property.                                                                                                                               |
+| showCondition?      | boolean                 | If conditional: true is set, this value determines if the action is visible. Note, this property will not work with dynamic values. Please, replace the passed Action if you wish to update the condition. |
+| btnClass?           | string                  | Deprecated.                                                                                                                                                                                                |
+
+### [](#object-detail-item)ObjectDetailItem
+
+ObjectDetailItem is used to define the detail item to be displayed for the page in the header. The detail item has a label and can have a value as well as action button.
+
+__Table 4\. ObjectDetailItem interface__
+| Property                    | Type      | Description                                                                                |
+| --------------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| \`label                     | string    | Text for the detail label. Use labelPipe to transform the label e.g., using TranslatePipe. |
+| \`value?                    | string    | Text for the detail value. Use valuePipe to transform the value e.g., using TranslatePipe. |
+| \`labelTooltip?             | string    | Text for the detail label tooltip.                                                         |
+| \`valueTooltip?             | string    | Text for the detail value tooltip.                                                         |
+| \`icon?                     | PrimeIcon | Icon displayed before the detail value.                                                    |
+| \`iconStyleClass?           | string    | Style of the icon element.                                                                 |
+| \`labelPipe?                | Type<any> | Pipe used to transform the detail label provided via label.                                |
+| \`valuePipe?                | Type<any> | Pipe used to transform the detail value provided via value.                                |
+| \`valuePipeArgs?            | string    | Arguments for the Pipe provided via valuePipe, used for transforming the detail value.     |
+| \`valueCssClass?            | string    | String containing css classes to be used for displaying the detail value.                  |
+| \`actionItemIcon?           | PrimeIcon | Icon for the detail item action button.                                                    |
+| \`actionItemCallback?       | () ⇒ void | Callback to be used when the detail item action button is clicked.                         |
+| \`actionItemTooltip?        | string    | Text for the detail action button tooltip.                                                 |
+| \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
+| \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
+| \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
 
 Library: @onecx/angular-integration-interface
 ====================
@@ -22596,64 +22596,6 @@ __Table 2\. Output Events__
 | --------------------- | --------------------- | ------------------------------------------------------------------- |
 | resultEmitter         | resultEmitter         | Emits the type of button clicked (e.g. primary, secondary, custom). |
 
-Replace BASE_URL injection token
-====================
-In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
-
-## [](#%5Fupdate%5Fimports)Update imports
-
-* For each remote component replace BASE\_URL import from `@onecx/angular-remote-components` with `REMOTE_COMPONENT_CONFIG` import from `@onecx/angular-utils`
-* For each remote component update import `REMOTE_COMPONENT_CONFIG` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
-* For each remote component update import for `RemoteComponentConfig` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
-
-## [](#%5Fupdate%5Fcomponent%5Fcode)Update component code
-
-* Replace `BASE_URL` in component’s providers array to `REMOTE_COMPONENT_CONFIG`
-* Replace `BASE_URL` in component’s constructor injection to `REMOTE_COMPONENT_CONFIG`
-* Replace `BASE_URL` type `ReplaySubject<string>` to `REMOTE_COMPONENT_CONFIG` type `ReplaySubject<RemoteComponentConfig>`
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-import { BASE_URL } from "@onecx/angular-remote-components";
-
-@Component({
-  providers: [
-    {
-      provide: BASE_URL,
-      useValue: new ReplaySubject<string>(1)
-    }
-  ]
-})
-export class Example {
-  constructor(
-    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>
-  )
-}
-```
-
-After
-
-```typescript
-import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from "@onecx/angular-utils";
-
-@Component({
-  providers: [
-    {
-      provide: REMOTE_COMPONENT_CONFIG,
-      useValue: new ReplaySubject<RemoteComponentConfig>(1)
-    }
-  ]
-})
-export class Example {
-  constructor(
-    @Inject(REMOTE_COMPONENT_CONFIG) private readonly remoteComponentConfig: ReplaySubject<RemoteComponentConfig>
-  )
-}
-```
-
 Replace SearchCriteriaComponent
 ====================
 In OneCX v6, Replace **SearchCriteriaComponent** with **SearchHeaderComponent**. SearcghHeaderComponent can accept search templates and provides options to add toolbar content with alignment.
@@ -22767,6 +22709,64 @@ __Table 2\. Output Events__
 | search                  | searched              | Emits on search action. Provides nothing                                      |
 | reset                   | resetted              | Emits on reset action. Provides nothing                                       |
 | advancedViewToggle      | viewModeChanged       | Emits on view mode change action. Provides the new view mode Example: 'basic' |
+
+Replace BASE_URL injection token
+====================
+In OneCX v6, `BASE_URL` injection token has been removed and replaced by `REMOTE_COMPONENT_CONFIG`. Additionally the type of injection token has changed from `string` to `RemoteComponentConfig` for `REMOTE_COMPONENT_CONFIG` token. `RemoteComponentConfig` type contains the base url.
+
+## [](#%5Fupdate%5Fimports)Update imports
+
+* For each remote component replace BASE\_URL import from `@onecx/angular-remote-components` with `REMOTE_COMPONENT_CONFIG` import from `@onecx/angular-utils`
+* For each remote component update import `REMOTE_COMPONENT_CONFIG` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
+* For each remote component update import for `RemoteComponentConfig` from `@onecx/angular-remote-components` to `@onecx/angular-utils`
+
+## [](#%5Fupdate%5Fcomponent%5Fcode)Update component code
+
+* Replace `BASE_URL` in component’s providers array to `REMOTE_COMPONENT_CONFIG`
+* Replace `BASE_URL` in component’s constructor injection to `REMOTE_COMPONENT_CONFIG`
+* Replace `BASE_URL` type `ReplaySubject<string>` to `REMOTE_COMPONENT_CONFIG` type `ReplaySubject<RemoteComponentConfig>`
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+import { BASE_URL } from "@onecx/angular-remote-components";
+
+@Component({
+  providers: [
+    {
+      provide: BASE_URL,
+      useValue: new ReplaySubject<string>(1)
+    }
+  ]
+})
+export class Example {
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>
+  )
+}
+```
+
+After
+
+```typescript
+import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from "@onecx/angular-utils";
+
+@Component({
+  providers: [
+    {
+      provide: REMOTE_COMPONENT_CONFIG,
+      useValue: new ReplaySubject<RemoteComponentConfig>(1)
+    }
+  ]
+})
+export class Example {
+  constructor(
+    @Inject(REMOTE_COMPONENT_CONFIG) private readonly remoteComponentConfig: ReplaySubject<RemoteComponentConfig>
+  )
+}
+```
 
 Update Component Imports Post Migration
 ====================
@@ -24215,6 +24215,41 @@ import { EventsTopic } from '@onecx/integration-interface'
 
 No action is needed. Treat this as awareness-only and continue with migration steps.
 
+Split shell and apps authentication
+====================
+In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
+
+This split separates shell-specific authentication logic from regular application token-based authentication.
+
+| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+The following symbols are no longer exported from `@onecx/angular-auth`:
+
+* `AuthServiceWrapper`
+* `provideAuthService`
+* `KeycloakAuthService`
+* `DisabledAuthService`
+* `AuthService`
+
+In v8 these implementation APIs are provided by `@onecx/shell-auth`.
+
+## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
+
+1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
+2. Uninstall `keycloak-js` dependency.  
+```bash  
+npm uninstall keycloak-js  
+```
+
+## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
+
+1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
+2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
+3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
+
 Migrate OneCX App from Angular 20 to Angular 21
 ====================
 ## [](#overview)Overview
@@ -24332,41 +24367,6 @@ import { EventsTopic } from '@onecx/integration-interface'
 const eventsTopic = new EventsTopic()
 eventsTopic.publish({ type: 'authentication#logoutButtonClicked' })
 ```
-
-Split shell and apps authentication
-====================
-In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
-
-This split separates shell-specific authentication logic from regular application token-based authentication.
-
-| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-The following symbols are no longer exported from `@onecx/angular-auth`:
-
-* `AuthServiceWrapper`
-* `provideAuthService`
-* `KeycloakAuthService`
-* `DisabledAuthService`
-* `AuthService`
-
-In v8 these implementation APIs are provided by `@onecx/shell-auth`.
-
-## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
-
-1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
-2. Uninstall `keycloak-js` dependency.  
-```bash  
-npm uninstall keycloak-js  
-```
-
-## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
-
-1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
-2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
-3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
 
 Upgrade NX Application to Angular 21
 ====================
