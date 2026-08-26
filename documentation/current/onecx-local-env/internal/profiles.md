@@ -1,0 +1,27 @@
+# Docker Compose Profiles in OneCX Local Environment
+
+[Docker Compose Profiles](https://docs.docker.com/compose/how-tos/profiles/) allow you to define different sets of services and configurations. This is particularly useful, where you might want to run only a subset of services for specific scenarios.
+
+However, this concept has its limitations. While it is well suited for starting subsets of services, it is not equally suitable for terminating these subsets.
+
+## [](#used-compose-profiles)Used Compose Profiles
+
+The OneCX local environment uses the following Docker Compose profiles, which are defined in the **compose.yml** file of version 2.
+
+base
+
+The **base** profile includes the essential services required to run the OneCX Local Environment.
+
+It is useful for scenarios where you want to run a minimal setup without additional features or services.
+
+all
+
+The **all** profile includes almost all available services in the OneCX Local Environment.  
+Excepted are services that may require additional resources or are not commonly used in standard development scenarios.
+
+This profile is ideal for comprehensive testing or development scenarios where you need access to all common features and services provided by OneCX.
+
+data-import
+
+The **data-import** profile is a specific one that includes services required for importing data into the OneCX Local Environment.  
+This profile is useful when you need to set up or refresh the environment with specific datasets without starting all services.

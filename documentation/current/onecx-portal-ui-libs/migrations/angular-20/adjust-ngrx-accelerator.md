@@ -1,0 +1,31 @@
+# Adjust ngrx-accelerator library utilities
+
+Several store connector utilities have been moved from the `ngrx-accelerator` library to `ngrx-integration-interface`. The following utilities were moved:
+
+* `OneCxActions` constant
+* `oneCxReducer` constant
+* `OneCxSelectors` type
+* `getOneCxSelectors` function
+* `createOneCxSelector` function
+* `LocationState` type
+* `OneCxState` interface
+* `NavigatedEventStoreConnectorService` class
+* `provideNavigatedEventStoreConnector` provider function
+* `PermissionsStoreConnectorService` class
+* `providePermissionsStoreConnector` provider function
+
+Update the imports for the utilities listed above to reference `ngrx‑integration‑interface` instead of `ngrx‑accelerator`.
+
+**Example**:
+
+Before
+
+```typescript
+import { OneCxActions } from 'ngrx-accelerator';
+```
+
+After
+
+```typescript
+import { OneCxActions } from 'ngrx-integration-interface';
+```

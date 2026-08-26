@@ -1,0 +1,107 @@
+# OneCX Platform
+
+## [](#overview)Overview
+
+The **OneCX Smart Factory Platform** is an innovative open-source solution designed to build and personalize digital workspace solutions for enterprises. It enhances enterprise agility and fosters collaboration across multiple teams and organizations. The platform is built on three main pillars: the Enterprise Application Store, Workspace Management, and the Shell.
+
+The **OneCX Smart Factory Platform** addresses the need for a unified digital workspace in today’s fast-paced business environment. By leveraging cloud-native applications and a MACH architecture (Microservices, API-first, Cloud-native, and Headless), it allows businesses to adapt quickly to changing market conditions, accelerating time-to-market and enabling rapid adaptation of business processes. The platform supports the modernization of legacy systems through an agile and evolutionary architecture, allowing gradual transitions without the need for a disruptive overhaul.
+
+### [](#background-and-challenges)Background & Challenges
+
+In recent years we have seen that many companies and their partners are relocating their corporate IT to the **cloud**.
+
+Companies see the following advantages in a public **cloud strategy**:
+
+* **Scalability** \- the ability to scale on demand
+* **Time-to-Market** \- it is expected, that cloudification, **Microservice Architecture** and DevOps will speed up, thus accelerating the delivery of new services. Instead of delivering in Months/Years-time the expectation is to deliver in Days/Weeks.
+* **Automation** in all areas
+
+Companies are adopting ways of working and changing their organizational structure to support an **agile architecture** “that supports the active, evolutionary design and architecture of a system. This approach embraces the DevOps mindset and allows the architecture of a system to continuously evolve over time while meeting the needs of current users.” © Scaled Agile, Inc
+
+![agile architecture](_images/agile_architecture.png) 
+
+Especially in large programs, multiple teams work separately to deliver different microservices-based applications to ensure a great digital customer experience across all channels and stages of the customer lifecycle without overhead and delays.
+
+![ci cd](_images/ci_cd.png) 
+
+OneCX Platform’s essential principles are designed to foster innovation, efficiency, and sustainability, ensuring a seamless and user-centric experience.
+
+* **Agile Architecture**: Enables multiple teams to work independently on different solutions or products, reducing time to market and providing a competitive advantage.
+* **Container-First Approach**: Utilizes Kubernetes-native applications combined with a MACH architecture for quick adaptation to market changes, accelerating time-to-market and new feature delivery.
+* **Full-Stack Solution Management**: Manages frontend, backend-for-frontend (BFF), and backend services, ensuring seamless integration and consistent performance.
+* **Building Block-like Workspace Configuration**: Encourages the use of reusable backend and frontend components, making it easy to assemble and reconfigure solutions.
+* **User-Centric Approach**: Focuses on delivering intuitive and engaging user experiences, incorporating user feedback and usability testing.
+* **Mobile-First Design**: Prioritizes mobile optimization for enhanced accessibility and usability.
+* **Developer’s Joy**: Provides comprehensive documentation, intuitive APIs, and robust tools for a productive development experience.
+* **Efficiency and Automation**: Enhances operational efficiency through automation, integrating DevOps practices for continuous delivery.
+* **Sustainability**: Emphasizes eco-friendly development practices, ensuring long-term viability and relevance.
+
+## [](#onecx-core-pillars)OneCX Core Pillars
+
+![onecx pillars](_images/onecx_pillars.png) 
+
+### [](#enterprise-application-store)Enterprise Application Store
+
+A repository for custom-built and third-party software solutions, offering out-of-the-box accelerator solutions and enterprise custom-built solutions. It functions like a marketstore for discovering and integrating third-party applications and services.
+
+![application store](_images/application_store.png) 
+
+### [](#workspace-management)Workspace Management
+
+Facilitates the creation of workspaces tailored to different personas or user roles, ensuring relevant tools and services are accessible to the right users. Configures menu items and workspace features to enhance security and usability.
+
+![workspace](_images/workspace.png) 
+
+### [](#portal-shell)Portal Shell
+
+Provides a unified interface and orchestration layer, ensuring a consistent look and feel across all integrated solutions. Coordinates the interaction between various Microfrontends (MFEs) for seamless integration and functionality.
+
+![shell](_images/shell.png) 
+
+### [](#onecx-core-features-or-solutions)OneCX Core Features or Solutions
+
+![features](_images/features.png) 
+
+The picture illustrates the core features of the OneCX solutions
+
+* **Enterprise Application Store**
+* **Workspace Management**
+* **Portal Shell**
+* **Tenant Management**: Handles multiple tenants within the platform.
+* **Roles & Permission Management**
+* **Welcome Page**: Provides a customizable landing page.
+* **Personalization User Profile Management**: Manages user profiles and preferences.
+* **Announcements Management**: Allows for independent push notifications.
+* **Help Management**
+* **Theme Management**
+* **Favorites/Bookmark Management**: Allows users to manage their favorite applications and tools.
+* **System Parameter Management**: Manages system parameters for consistent configurations
+* **IDM Integration**: Integrates identity management solutions like Keycloak and OpenID.
+* …
+
+## [](#initiators-contributors-and-partners)Initiators, Contributors & Partners
+
+OneCX is an integral part of the tkit.org open-source project, established in 2004, which includes both technical and business accelerators. The entire accelerator stack has been redesigned with a modern, MACH-compatible architecture. All supporting business features are consolidated in a default admin workspace, providing operational transparency and support features.
+
+The project was initiated by Dr. Stefan Tausendpfund and Trian Kirtzakis, who currently co-lead as CTOs. Key contributors include Milan Horvath, Jan-Gerrit Schettler-Köhler, Andrej Petras, Matus Majchrak and Henry Täschner, among others.
+
+We also thank our partners, Samir Dorhmi, Stephan Weber, and Roland Schier, for their excellent feedback, which has been instrumental in delivering high-quality solutions.
+
+## [](#oss-and-apache-license)OSS and Apache License
+
+The OneCX SmartFactory Platform is open-source software (OSS), which means its source code is freely available for anyone to use, modify, and distribute.
+
+The use of OneCX is granted under the terms of the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt).
+
+The Apache License 2.0 allows you to:
+
+* Use the software for any purpose.
+* Distribute the software.
+* Modify the software and distribute your modifications.
+* Sublicense the software under different terms.
+
+However, it also requires that:
+
+* You include a copy of the license in any distribution.
+* You provide clear attribution to the original authors.
+* You do not use the trade names, trademarks, service marks, or product names of the original authors without permission.

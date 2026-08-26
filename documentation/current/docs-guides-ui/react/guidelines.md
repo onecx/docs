@@ -1,0 +1,155 @@
+# React Guidelines
+
+* **Component Structure**: Organize your components in a modular fashion, separating presentational and container components. Use functional components with hooks for state management and side effects.
+* **State Management**: Utilize state management libraries like Redux or Context API to manage global state. Ensure that state changes are predictable and traceable.
+* **Styling**: Follow the OneCX theming guidelines to maintain a consistent look and feel across applications. Use CSS-in-JS libraries or CSS modules for component-specific styles.
+* **Routing**: Implement routing using libraries like React Router. Ensure that routes are defined clearly and support lazy loading for performance optimization.
+* **Testing**: Write unit tests for components and integration tests for application flows using testing libraries like Jest and React Testing Library.
+* **Performance Optimization**: Use techniques like code splitting, memoization, and lazy loading to enhance application performance.
+* **Accessibility**: Ensure that your application adheres to accessibility standards (WCAG) to provide an inclusive experience for all users.
+* **Documentation**: Maintain comprehensive documentation for your components and application architecture to facilitate collaboration and future maintenance.
+* **Version Control**: Follow best practices for version control, including meaningful commit messages and branching strategies.
+* **Code Quality**: Adhere to coding standards and use linters like ESLint to maintain code quality and consistency across the codebase.
+
+## [](#onecx-libraries)OneCX libraries
+
+Use the libraries depending on how much control you need:
+
+* **Selective usage**: If you want only specific OneCX functionality, use contexts/hooks from `@onecx/react-integration-interface` and compose just what you need.
+* **All-in-one wiring**: If you want the full OneCX setup, use `@onecx/react-utils` and its HOCs (`withApp`, `withRemote`). They wire the standard providers and helpers for you.
+
+`withApp`/`withRemote` include:
+
+* `AppStateProvider`
+* `ConfigurationProvider`
+* `UserProvider`
+* routing provider (`SyncedRouterProvider`)
+* translation sync (`TranslationBridge`)
+
+## [](#getting-started)Getting started with a React app
+
+1. Generate a Vite app (React + TS).
+2. Configure Module Federation and static asset copying in `vite.config.ts`.
+3. Add `bootstrap.ts` as the webcomponent entrypoint.
+4. Configure `App.tsx` with `withApp` and load styles in `styles.css`.
+
+Vite configuration (key elements):
+
+* `@module-federation/vite` with `exposes` pointing to `./src/bootstrap.ts`.
+* `base` set to the MFE path (e.g. `/mfe/<app-name>/`).
+* `viteStaticCopy` copying `src/assets/styles.css` and `src/assets/env.json`.
+* `react()` as the React plugin.
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import { federation } from "@module-federation/vite";
+import { viteStaticCopy } from "vite-plugin-static-copy";
+import path from "path";
+
+export default defineConfig(({ mode }) => ({
+  base: mode === "production" ? "/mfe/<app-name>/" : "/",
+  plugins: [
+    viteStaticCopy({
+      targets: [
+        { src: path.resolve(__dirname, "./src/assets/styles.css"), dest: "" },
+        { src: path.resolve(__dirname, "./src/assets/env.json"), dest: "assets" },
+      ],
+    }),
+    federation({
+      name: "<app-name>-ui",
+      filename: "remoteEntry.js",
+      exposes: {
+        "./<RemoteModule>": "./src/bootstrap.ts",
+      },
+    }),
+    react(),
+  ],
+}));
+```
+
+`bootstrap.ts`:
+
+* should call `createViteAppWebComponent(App, "<entrypoint-name>")`.
+* is the entrypoint exported by Module Federation.
+
+```ts
+import { createViteAppWebComponent } from "@onecx/react-webcomponents";
+import App from "./App";
+
+createViteAppWebComponent(App, "<app-name>-ui-entrypoint");
+```
+
+`App.tsx`:
+
+* uses `withApp(AppRouter, { PRODUCT_NAME, REMOTES_NAME })`.
+* initializes the OneCX configuration and standard providers.
+
+```tsx
+import { withApp } from "@onecx/react-utils";
+import AppRouter from "./router";
+
+export default withApp(AppRouter, {
+  PRODUCT_NAME: "<app-name>",
+  REMOTES_NAME: "<app-name>-ui",
+});
+```
+
+Routing with `useAppHref`:
+
+Use `useAppHref` to resolve the base URL for your MFE so routes stay aligned with the host shell. It avoids hardcoding the base path and keeps navigation working when the shell mounts the app under a different prefix. The best practice is to guard rendering until `href` is available and then prefix all routes with it.
+
+```tsx
+import { Route, Routes } from "react-router";
+import { useAppHref } from "@onecx/react-webcomponents";
+
+const AppRoutes = () => {
+  const { href } = useAppHref();
+
+  if (!href) {
+    return null;
+  }
+
+  return (
+    <Routes>
+      <Route path={`${href}/`} element={<Overview />} />
+      <Route path={`${href}/detail/:id`} element={<Detail />} />
+    </Routes>
+  );
+};
+```
+
+`styles.css` (in `src/assets/styles.css`):
+
+* imports PrimeReact and PrimeIcons.
+* imports `primeBaseTheme.scss` from `@onecx/react-utils` to keep PrimeReact styles aligned with OneCX theming.
+* ensure the app uses `ThemeProvider` (from `@onecx/react-integration-interface`) or the full provider set via `withApp`/`withRemote` so theme updates are synchronized.
+
+```css
+@import "primereact/resources/primereact.min.css";
+@import "primeicons/primeicons.css";
+@import "@onecx/react-utils/src/lib/primeBaseTheme.scss";
+```
+
+## [](#testing)Testing
+
+* Write Unit Tests and Component Tests.  
+   * Prefer Unit Tests over Component Tests.
+* Manually test with shell and in the standalone mode.
+* Tests should run in the build pipeline.
+
+## [](#code-quality)Code quality
+
+Committed code must have a certain quality. The following guidelines must be considered:
+
+* Do not commit commented out code.  
+   * Comments should only be used to:  
+         * Document the **Why of the code** and **not** the **What**.  
+         * Create documentation for the autocompletion mechanism.
+* Do not commit debug outputs.  
+   * `console.log()` message should be used to inform about error or problem and to give some information of the application state e.g. "Configuration loaded with values xyz"
+* Remove unused imports
+* Format the code  
+   * Run `npm run format`  
+   * If you need to format a specific file, you can use:  
+         * `nx format:write –files **_filepath_**`

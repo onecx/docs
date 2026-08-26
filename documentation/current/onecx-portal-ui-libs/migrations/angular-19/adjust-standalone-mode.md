@@ -1,0 +1,39 @@
+# Adjust Standalone Mode
+
+In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
+
+Replace `<ocx-portal-viewport>` from '@onecx/portal-integration-angular' with `<ocx-standalone-shell-viewport>` from `@onecx/angular-standalone-shell`.
+
+Starting with v6, standalone applications must register their providers using `provideStandaloneProviders()`.
+
+## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update Imports and Providers
+
+* Install `@onecx/angular-standalone-shell` if not already installed  
+```bash  
+npm install @onecx/angular-standalone-shell  
+```
+* Replace `<ocx-portal-viewport>` tag with `<ocx-standalone-shell-viewport>`.
+* Update all imports from `@onecx/standalone-shell` to `@onecx/angular-standalone-shell`
+* Import `StandaloneShellModule` from `@onecx/angular-standalone-shell` and register `provideStandaloneProviders()` in the standalone module providers  
+Example  
+```typescript  
+import {  
+  StandaloneShellModule,  
+  provideStandaloneProviders  
+} from '@onecx/angular-standalone-shell';  
+@NgModule({  
+  imports: [StandaloneShellModule],  
+  providers: [  
+    provideStandaloneProviders()  
+  ]  
+})  
+export class AppModule {}  
+```
+
+## [](#%5Funinstall%5Fdeprecated%5Fpackage)Uninstall Deprecated Package
+
+* Uninstall the deprecated package  
+```bash  
+npm uninstall --save @onecx/standalone-shell  
+```
+* Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`

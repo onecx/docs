@@ -1,0 +1,102 @@
+# @onecx/react-webcomponents
+
+## [](#overview)Overview
+
+`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `createViteAppWebComponent`
+* `useAppHref`
+* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
+* `withSyncedRouter`
+
+## [](#vite)Vite
+
+The `createViteAppWebComponent` function is a utility that converts a React component or React App into a custom web component. This allows React components to be used in environments that do not natively support React, such as vanilla JavaScript projects or frameworks that work with standard web components. Relies on the browser’s custom elements API for registering and using web components.
+
+The function leverages the `@r2wc/react-to-web-component` library to facilitate the conversion and registration of the web component.
+
+```js
+const createViteAppWebComponent = (
+  app: React.ComponentType,
+  elementName: string
+) => {
+  // Implementation
+};
+```
+
+* app: A React component to be converted into a web component.
+* elementName: The name of the custom element to be registered (e.g. my-custom-element).
+
+Example for React component
+
+```js
+import React from 'react';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+// Define a simple React component
+const MyReactComponent = () => {
+  return <div>Hello, World!</div>;
+};
+
+// Convert the React component into a web component and register it
+createViteAppWebComponent(MyReactComponent, 'my-custom-element');
+
+// Now, you can use the custom element in your HTML:
+// <my-custom-element></my-custom-element>
+```
+
+Example for Vite App
+
+```js
+import App from './app';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+createViteAppWebComponent(App, 'my-custom-app');
+```
+
+where
+
+```js
+const AppRouter = () => {
+  const { href } = useAppHref();
+  return (
+    <Router>
+      <Routes>
+        <Route path={href} element={<Home />} />
+        <Route path={href + '/about'} element={<About />} />
+      </Routes>
+    </Router>
+  );
+};
+
+export function App() {
+  return (
+      <AppStateProvider>
+        <ConfigurationProvider>
+          <ThemeProvider>
+            <UserProvider>
+              <AppRouter />
+              <Components />
+            </UserProvider>
+          </ThemeProvider>
+        </ConfigurationProvider>
+      </AppStateProvider>
+  );
+}
+export default App;
+```
+
+## [](#routing-utils)Routing Utils
+
+The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
+
+The library also provides routing integration helpers:
+
+* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
+* `SyncedLocationContext` exposes the current location state.
+* `useSyncedLocation` reads the synced location state from context.
+* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.

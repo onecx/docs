@@ -1,0 +1,10 @@
+# Module Federation Dependency Sharing in OneCX
+
+**Shell** and **preloaders** share packages in **module federation**. Depending on the preloader or application, all required packages should be shared. These could include:
+
+* technology packages (like @angular/\*)
+* OneCX packages
+* rxjs
+* component library packages etc.
+
+For more details, please refer to [Dependency sharing with module federation](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/).

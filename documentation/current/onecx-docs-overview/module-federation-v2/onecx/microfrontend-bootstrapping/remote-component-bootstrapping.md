@@ -1,0 +1,181 @@
+# Remote Component Bootstrapping and Configuration
+
+The following requirements need to be fulfilled when exposing Remote Components using the Webcomponent method:
+
+1. Webpack configuration needs to expose the **main.ts** file of the Remote Component.
+2. The **main.ts** file of the Remote Component needs to bootstrap the component asynchronously.
+3. Component bootstrap  
+   1. has to cover [Angular issues](../../concepts/webcomponents/expose-content-as-webcomponent.html#angular%5Fissues) (for Angular-based Remote Components only).  
+   2. needs to register the component as a Custom Element in the Custom Elements Registry.  
+   3. needs to adapt routing so Shell registers routing happening within the Remote Component.
+4. Component class needs to use the Remote Component initialization mechanism.
+
+Below is an example of setting up a Remote Component in Angular using the Webcomponent expose method. Each file’s content is going to be explained in detail, with important context information for technologies other than those presented.
+
+webpack.config.js
+
+```typescript
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleComponent': './src/app/remotes/example/example.component.main.ts'
+  },
+  ...
+})
+```
+
+Webpack configuration is exposing an **example.component.main.ts** file.
+
+src/app/remotes/example/example.component.main.ts
+
+```typescript
+import('./example.component.bootstrap').catch((err) => console.error(err))
+```
+
+The **example.component.main.ts** file is importing (asynchronously) the **example.component.bootstrap.ts** file.
+
+src/app/remotes/example/example.component.bootstrap.ts
+
+```typescript
+import {
+  HttpClient,
+  provideHttpClient,
+  withInterceptorsFromDi,
+} from '@angular/common/http';
+import {
+  APP_INITIALIZER,
+  importProvidersFrom
+} from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
+import {
+  createRemoteComponentTranslateLoader,
+  UserService
+} from '@onecx/portal-integration-angular';
+import { environment } from 'src/environments/environment';
+import { ExampleComponent } from './example.component';
+import {
+  BASE_URL,
+  provideTranslateServiceForRoot,
+} from '@onecx/angular-remote-components';
+import { TranslateLoader } from '@ngx-translate/core';
+import { ReplaySubject } from 'rxjs';
+
+function userProfileInitializer(userService: UserService) {
+  return async () => {
+    await userService.isInitialized;
+  };
+}
+
+bootstrapRemoteComponent(
+  ExampleComponent,
+  'example-remote-component',
+  environment.production,
+  [
+    provideHttpClient(withInterceptorsFromDi()),
+    {
+      provide: BASE_URL,
+      useValue: new ReplaySubject<string>(1),
+    },
+    provideTranslateServiceForRoot({
+      isolate: true,
+      loader: {
+        provide: TranslateLoader,
+        useFactory: createRemoteComponentTranslateLoader,
+        deps: [HttpClient, BASE_URL],
+      },
+    }),
+    importProvidersFrom(
+      AngularAuthModule,
+      BrowserModule,
+      BrowserAnimationsModule,
+    ),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: userProfileInitializer,
+      deps: [UserService],
+      multi: true,
+    },
+  ]
+)
+```
+
+The **example.component.bootstrap.ts** file is bootstrapping the Remote Component using [@onecx/angular-webcomponents](../angular-webcomponents.html#onecx-angular-webcomponents) library to ensure that [Angular ngZone and platform are shared](../../concepts/webcomponents/expose-content-as-webcomponent.html#angular%5Fissues) (Angular requirement only). It also connects the Shell router with the Remote Component’s router (if such exists). The last argument is an array of providers required for the component to work properly. A detailed description of this file can be found in the [summary](remote-component-deep-dive.html#remote-component-example-deep-dive).
+
+src/app/remotes/example/example.component.ts
+
+```typescript
+import { CommonModule, Location } from '@angular/common';
+import { Component, Inject, Input } from '@angular/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import {
+  UserService
+} from '@onecx/angular-integration-interface';
+import {
+  AngularRemoteComponentsModule,
+  BASE_URL,
+  ocxRemoteComponent,
+  ocxRemoteWebcomponent,
+  RemoteComponentConfig,
+} from '@onecx/angular-remote-components';
+import {
+  PortalCoreModule
+} from '@onecx/portal-integration-angular';
+import { ReplaySubject } from 'rxjs';
+import { environment } from 'src/environments/environment'
+
+@NgModule({
+  imports: [
+    PortalCoreModule.forMicroFrontend()
+  ]
+})
+export class SharedModule {}
+
+@Component({
+  standalone: true,
+  imports: [
+    AngularAuthModule,
+    AngularRemoteComponentsModule,
+    CommonModule,
+    SharedModule,
+    PortalCoreModule,
+    TranslateModule,
+  ],
+  selector: 'example-comp',
+  template: `<h>Hello from Remote Component</h>`,
+})
+export class ExampleComponent
+  implements ocxRemoteComponent, ocxRemoteWebcomponent
+{
+  permissions: string[] = [];
+
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
+    private readonly userService: UserService,
+    private readonly translateService: TranslateService,
+    private readonly exampleService: ExampleAPIService
+  ) {
+    this.translateService.use(this.userService.lang$.getValue());
+  }
+
+  @Input() set ocxRemoteComponentConfig(config: RemoteComponentConfig) {
+    this.ocxInitRemoteComponent(config);
+  }
+
+  ocxInitRemoteComponent(config: RemoteComponentConfig): void {
+    this.baseUrl.next(config.baseUrl);
+    this.permissions = config.permissions;
+    this.exampleService.configuration = new Configuration({
+      basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
+    })
+  }
+}
+```
+
+__Table 1\. Navigation__
+| [← Previous: Microfrontend bootstrapping](index.html) | [Next: Remote Component Example Deep Dive →](remote-component-deep-dive.html) |
+| ----------------------------------------------------- | ----------------------------------------------------------------------------- |

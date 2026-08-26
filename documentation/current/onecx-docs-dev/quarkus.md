@@ -1,0 +1,22 @@
+# Quarkus
+
+This documentation module covers how Quarkus is utilized in OneCX, including core concepts, extensions, best practices, and integration points.
+
+## [](#key-concepts)Key Concepts
+
+* **Supersonic Subatomic Java**: Quarkus is designed to be lightweight and fast, making it ideal for containerized environments.
+* **Developer Experience**: Features like live reload and streamlined configuration enhance developer productivity.
+* **Native Compilation**: Quarkus supports compiling Java applications to native binaries using GraalVM, reducing startup time and memory footprint.
+* **Extensions**: Quarkus has a rich ecosystem of extensions that provide integrations with databases, messaging systems, and cloud services.
+
+## [](#onecx-quarkus-extensions)OneCX Quarkus Extensions
+
+OneCX provides a set of custom [Quarkus Extensions](../onecx-quarkus-extensions/index.html) that encapsulate common functionality needed across microservices:
+
+* **onecx-core**: Base extension with shared utilities and configurations.
+* **onecx-permissions**: Manages role-based access control and permission checks.
+* **onecx-tenant**: Handles multi-tenancy concerns, including tenant resolution and context propagation.
+* **onecx-parameters**: Facilitates configuration management and parameter injection.
+* **onecx-openapi-generator**: Automates OpenAPI specification generation for RESTful services
+* **onecx-validator**: Provides validation utilities for request and response payloads.
+* **onecx-operator**: Supports Kubernetes operator patterns for managing application lifecycle.

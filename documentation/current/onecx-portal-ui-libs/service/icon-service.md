@@ -1,0 +1,116 @@
+# OneCX IconService
+
+This service provides a convenient way to request icons by name and get a CSS class to apply in templates. It is available via `@onecx/angular-integration-interface` and coordinates icon loading through the integration topic system.
+
+## [](#overview)Overview
+
+This document explains how to:
+
+* Request an icon and receive a CSS class for use in templates
+* Await icon availability with an async API
+* Choose the desired rendering style (`IconClassType`)
+* Understand the icon loading flow and cache semantics
+* Topics Used [IconTopic](../libraries/integration-interface.html#icon-topic)
+
+## [](#usage)Usage
+
+Follow these steps to use the `IconService`:
+
+1. Inject the `IconService` into your component.  
+```typescript  
+import { inject } from '@angular/core'  
+import { IconService } from '@onecx/angular-integration-interface'  
+class MyComponent {  
+  private readonly iconService = inject(IconService)  
+}  
+```
+2. Request an icon:  
+   * **Synchronous**: Returns a CSS class immediately while the icon assets are loaded asynchronously in the background.  
+   Ideal when:  
+         * The icon is not critical for initial layout  
+         * It can pop in shortly after rendering  
+         * You want fast template binding with no await  
+         ```typescript  
+         homeIcon: string = '';  
+         async ngOnInit() {  
+           homeIcon = this.iconService.requestIcon('mdi:home', 'svg')  
+         }  
+         ```  
+   * **Asynchronous**: Await the icon; resolves to a class string when available or `null` if missing. The method returns a Promise and resolves only when the icon asset is available (or `null` if missing).  
+   Ideal when:  
+         * The icon must render immediately with no flicker  
+         * Rendering or layout logic depends on the icon  
+         * You need to know whether the icon actually exists  
+         ```typescript  
+         accountIcon: string = '';  
+         async ngOnInit() {  
+           const icon = await this.iconService.requestIconAsync('mdi:account', 'svg')  
+           if (icon) {  
+             this.accountIcon = icon  
+           }  
+         }  
+         ```  
+   * **Asynchronous with fallback class**: Await icon loading but always receive a class string when the fallback is provided.  
+   Ideal when:  
+         * The UI must always render an icon class  
+         * Missing icons should degrade gracefully to a default icon  
+         ```typescript  
+         accountIcon: string = '';  
+         async ngOnInit() {  
+           this.accountIcon = await this.iconService.requestIconAsync(  
+             'mdi:account',  
+             'svg',  
+             'pi pi-question-circle'  
+           )  
+         }  
+         ```
+3. Apply the icon classes in the template.  
+```html  
+<span [class]="homeIcon"></span>  
+<span [class]="accountIcon"></span>  
+```
+
+## [](#api)API
+
+| Name             | Signature                                                                   | Description                                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| requestIcon      | (name: string, type?: IconClassType): string                                | Requests an icon and returns a CSS class name to apply. Triggers loading if the icon is not cached.                                  |
+| requestIconAsync | (name: string, type?: IconClassType): Promise<string \| null>               | Requests an icon and resolves when the icon becomes available. Returns null if the icon cannot be found and no fallback is provided. |
+| requestIconAsync | (name: string, type: IconClassType, fallbackClass: string): Promise<string> | Requests an icon and resolves when the icon becomes available. Returns fallbackClass if the icon cannot be found.                    |
+
+__Table 1\. Icon Class Types (Rendering styles)__
+| Type                        | Behavior                                                                          |
+| --------------------------- | --------------------------------------------------------------------------------- |
+| svg                         | Applies an inline mask based on the SVG and uses currentColor for fill; size 1em. |
+| background                  | Sets the icon as a background-image on the element; size 1em.                     |
+| background-before (default) | Inserts the icon via ::before pseudo-element; container stays inline-flex.        |
+
+| |  Use requestIcon for immediate class assignment and progressive rendering. Use requestIconAsync when you must guarantee icon availability before showing UI, and provide fallbackClass when you need a guaranteed class string. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#flow)Loading Flow and Cache
+
+The icon system uses a global cache and topics for coordination:
+
+* Global cache: `window.onecxIcons: Record<string, IconCache | null | undefined>`  
+   * `undefined` → requested, not yet loaded  
+   * `null` → not found  
+   * `IconCache` → available (contains SVG body and metadata)
+* Requests publish `IconRequested` via [IconTopic](../libraries/integration-interface.html#icon-topic); the Shell listens, loads missing icons, injects CSS rules, then publishes `IconsReceived`.
+* Class names are generated as `onecx-theme-icon-<type>-<normalized-name>`.  
+Example  
+```typescript  
+const className = this.iconService.requestIcon('mdi:account', 'background-before')  
+// yields e.g. "onecx-theme-icon-background-before-mdi-account"  
+```
+
+## [](#topics)Topics and Models
+
+| |  See [Icon Topic](../libraries/integration-interface.html#icon-topic) for platform-level details and message flow. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+| IconTopic     | Publishes IconRequested and IconsReceived messages.                                                       |
+| ------------- | --------------------------------------------------------------------------------------------------------- |
+| IconRequested | { type: 'IconRequested', name: string } → emitted when an icon is requested and not present in the cache. |
+| IconsReceived | { type: 'IconsReceived' } → emitted when the Shell completes icon injection.                              |
+| IconCache     | { name, type, body, parent? } → holds the SVG body and metadata for a resolved icon.                      |

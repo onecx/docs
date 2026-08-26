@@ -1,0 +1,69 @@
+# AppConfigService and environment variables (runtime configuration)
+
+## [](#app-config-service-configure-env-json)Configure `env.json`
+
+`AppConfigService` loads runtime configuration from `{baseUrl}/assets/env.json`.`env.json` must be served exactly from that path relative to the MFE `baseUrl`, or runtime configuration cannot be loaded.
+
+`src/assets/env.json` is created in the application. The file must contain a JSON object with string key/value pairs.
+
+Example `src/assets/env.json`
+
+```json
+{
+  "API_URL": "${API_URL}",
+  "FEATURE_ENABLED": "${FEATURE_ENABLED}"
+}
+```
+
+Placeholders may be replaced during deployment.
+
+## [](#app-config-service-access-variables)Access variables
+
+Values are available after `AppConfigService.init(baseUrl)` completes.
+
+```ts
+import { APP_INITIALIZER, NgModule } from '@angular/core';
+import { AppConfigService } from '@onecx/angular-integration-interface';
+
+export function initializeAppConfig(appConfig: AppConfigService) {
+  return () => appConfig.init('/my-app');
+}
+
+@NgModule({
+  providers: [
+    AppConfigService,
+    {
+      provide: APP_INITIALIZER,
+      useFactory: initializeAppConfig,
+      multi: true,
+      deps: [AppConfigService],
+    },
+  ],
+})
+export class AppModule {}
+```
+
+After initialization, components can read config values directly.
+
+```ts
+import { Component } from '@angular/core';
+import { AppConfigService } from '@onecx/angular-integration-interface';
+
+@Component({
+  selector: 'my-remote',
+  template: `...`,
+})
+export class MyRemoteComponent {
+  constructor(private readonly appConfig: AppConfigService) {}
+
+  ngOnInit() {
+    const apiUrl = this.appConfig.getProperty('API_URL');
+    const allValues = this.appConfig.getConfig();
+  }
+}
+```
+
+Common access patterns:
+
+* `appConfigService.getProperty('SOME_KEY')`
+* `appConfigService.getConfig()`

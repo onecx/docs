@@ -1,0 +1,35 @@
+# Required Package Updates
+
+If the following packages are used in your project, update them to ensure compatibility with Angular 20:
+
+| Package                               | Required Version | Notes                                                            |
+| ------------------------------------- | ---------------- | ---------------------------------------------------------------- |
+| @onecx/\*                             | ^7.x.y           | Update to the latest 7.x.y version available.                    |
+| @ngrx/\*                              | ^20.x.y          | Update to the latest Angular 20 compatible version.              |
+| @ngx-translate/core                   | ^17.0.0          | Updated for Angular 20 compatibility                             |
+| @ngx-translate/http-loader            | ^17.0.0          | Compatible with @ngx-translate/core v17                          |
+| @primeng                              | ^20.3.0          | Updated for Angular 20 compatibility                             |
+| @primeng/themes                       | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngrx-store-localstorage               | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| zod                                   | ^4.0.0           | Updated for Angular 20 and @onecx/ngrx-accelerator compatibility |
+| @angular-architects/module-federation | ^20.0.0          | Updated for Angular 20 compatibility                             |
+| ngx-build-plus                        | ^20.0.0          | Angular 20 compatible version                                    |
+
+## [](#installation-commands)Installation Commands
+
+Run this command to update the supporting packages:
+
+```bash
+npm install @ngx-translate/core@^17.0.0 \
+  @ngx-translate/http-loader@^17.0.0 \
+  primeng@^20.3.0 \
+  primeicons@^7.0.0 \
+  primeflex@^4.0.0 \
+  @primeng/themes@^20.0.0 \
+  ngrx-store-localstorage@^20.0.0 \
+  ngx-build-plus@^20.0.0 \
+
+npm install @ngrx/<package-name>@^20
+
+npm install @onecx/<package-name>@^7
+```

@@ -1,0 +1,17 @@
+# Leverage Angular Guards
+
+In v7, Angular 20–based applications can fully use Angular’s built‑in guards. OneCx supports the following guard types:
+
+* `canActivate`
+* `canDeactivate`
+* `canActivateChild`
+
+When configuring guards in your routes, make sure that you do **not** use deprecated string‑based guards or any non‑function values. These will be **filtered out automatically** and therefore ignored by the routing system.
+
+String guard example (deprecated)
+
+```typescript
+...
+canActivate: ['canActivateName']  // ❌ deprecated string guard
+...
+```

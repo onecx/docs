@@ -1,0 +1,99 @@
+# Migrate to v2
+
+| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+This guide highlights the key differences between OneCX Local Environment [v1](v1.html) and the current version, and explains how you can adapt your setup.
+
+## [](#general-changes)General Changes
+
+The v2 edition of OneCX Local Environment includes several improvements and new features compared to v1\. Some of the most significant changes include:
+
+* **Docker Compose project name**: The project name used in Docker Compose has been changed from `<current-directory>` to **onecx-local-env**. This affects the naming of networks, volumes and other Docker resources created by the compose file.
+* **Network rename**: The default network used by the services has been renamed from **example** to **onecx**.
+* **Service startup behavior**: In v1, some core services started automatically when running `docker compose up -d`, while additional services could be started using the two existing profiles: `all` and `parameters`. In v2, the system is fully profile-based, meaning that nothing starts by default when you run `docker compose up -d`. You must explicitly specify at least one profile to start the services. This allows for more fine-grained control over which services run.
+* **Script improvements**: All shell scripts have been improved to provide more functionality and better error handling. For example, the import script now includes options to specify which data to import, the edition of OneCX, secure authentication, tenant-specific imports, verbosity and skipping container checks. This allows for more flexibility and customization when importing data.
+* **Reorganized ENV files**: All environment variables are now located within the standard `./.env` file in the root of the version directory, instead of being scattered across different files.
+* **Security improvements**: Security can be optionally enabled on startup and during import. Security is now enabled by default for tenant-specific imports, and the import script automatically handles authentication and token retrieval for these imports. This means that once Docker services have been started with the security option enabled, all subsequent actions require an authenticated user. For example, an import operation must then be started with the `-s` option to succeed. This enhances the security of the environment and ensures that only authorized users can perform certain actions.
+
+## [](#network-rename)Network Rename
+
+v1
+
+The network that all services connected to was named **example**.
+
+v2
+
+In current version, the services use the **onecx** network within the compose file.  
+However, when the compose file is executed, Docker creates a network with the name format `<project_name>_default`. With **onecx** the complete network name is **onecx-local-env\_onecx**.  
+
+## [](#service-startup)Service Startup
+
+v1
+
+* Some core services started automatically when running: `docker compose up -d`
+* Additional services could be started using the two existing profiles: `all` and `parameters`.
+* This approach gave developers very little control over which apps were started, making it hard to, for example, run only a small subset of apps and one OneCX product.
+
+v2
+
+The system supports the compose profiles **all** and **base** (which includes all core services).  
+
+* **Nothing** starts by default when you run: `docker compose up -d`
+* You must explicitly specify at least one profile, for example:  
+Starting core services via compose profile `base`:  
+```bash  
+docker compose --profile base up -d  
+```
+
+| |  It is recommended to use the [Start Script](../scripts/start.html) for starting the environment, which handles profile selection and other options in a more user-friendly way.For details how to start OneCX in general see [Running Onecx](../run-onecx.html). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#data-import)Data Import
+
+v1
+
+The data import script had the sole purpose of sending data to services to trigger the import.  
+This caused issues if containers were not running, unhealthy, or still starting up.
+
+v2
+
+The import script now provides options to manage container states during the import process. By default, the script now:
+
+* Starts all required services.
+* Waits for them to become healthy and operational.
+* Imports the data.  
+If you want to manage container states manually, you can use the **\-x** option to skip checking running Docker services. This ensures the script does not start or stop any containers, allowing you to manage them manually.  
+Optionally you can also specify which data to import (**\-d**), enable secure authentication (**\-s**), specify tenant (**\-t**) for tenant-specific imports, and enable verbose output (**\-v**) for more details during the import process.  
+See [Import OneCX Data](../scripts/import.html) for more details on the available options and how to use the import script.
+
+## [](#env-files-and-variables)ENV Files and Variables
+
+v1
+
+Environment variables were located in multiple files in the root directory of the project, such as `.env`, `common.env`, `svc.env` and `bff.env`. This made it difficult to keep track of which variables were used for which version and services.
+
+v2
+
+All common project-related environment variables are now located in the standard compose environment file. This allows for better organization and scoped environment variables per edition.  
+Within the compose file of the edition, only the specific environment variables for each service are defined, either directly or via the **env\_file** directive.  
+At the beginning of the compose file (compose.yaml) are sections that define specific sets of variables for use in BFF or SVC services, with or without multi-tenancy:
+
+* **bff\_environment** ⇒ environment variables for BFF services
+* **svc\_single\_tenancy** ⇒ environment variables for SVC services **without** multi-tenancy
+* **svc\_multi\_tenancy** ⇒ environment variables for SVC services with **multi-tenancy**  
+This allows for better organization and easier management of environment variables, as well as clearer visibility of which variables are used for which services and editions. Use these variable when possible instead of defining new ones to ensure consistency across the compose file and services.
+
+Example of using environment variables in the compose file:
+
+```yaml
+services:
+  onecx-example-svc:
+    image: example-image:latest
+    container_name: onecx-example-svc
+    environment:
+      <<: *svc_multi_tenancy
+```
+
+| |  After reading all sections of this document you should be able to make all necessary adjustments to migrate from v1 to v2 of the OneCX Local Environment.Please make familiar with the current state of the OneCX Local Environment before proceeding. There are also functionality **to extend the environment** with custom services, see [Extend OneCX](../extend/extend.html) for more details. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

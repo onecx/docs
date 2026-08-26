@@ -1,0 +1,177 @@
+# @onecx/react-remote-components
+
+## [](#overview)Overview
+
+`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
+
+## [](#data-sources)Data Sources
+
+The library listens to portal topics for remote components and permissions:
+
+* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
+* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `SlotComponent`
+* `SlotProvider`, `useSlot`
+* `PermissionProvider`, `usePermission`
+* `withSlot`
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+## [](#contexts-hooks)Contexts and Hooks
+
+When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
+
+```tsx
+<PermissionProvider>
+  <SlotProvider>
+    <YourApp />
+  </SlotProvider>
+</PermissionProvider>
+```
+
+`useSlot` and `usePermission` throw an error when used outside their respective providers.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
+
+Additional props:
+
+* `inputs`: object passed to the remote component as inputs/properties
+* `outputs`: callbacks bound to the remote component as outputs
+* `skeleton`: placeholder rendered while components are loading
+
+```tsx
+<SlotComponent
+  name="vite-example"
+  inputs={{ title: 'Remote title' }}
+  outputs={{ onSelect: (value) => console.log(value) }}
+  skeleton={<div>Loading...</div>}
+/>
+```
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.

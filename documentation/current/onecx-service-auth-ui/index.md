@@ -1,0 +1,3 @@
+# OneCX Service Custom Auth UI
+
+OneCX Service Custom Auth refers to the process of replacing the default authentication mechanism of OneCX.

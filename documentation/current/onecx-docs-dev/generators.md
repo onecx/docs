@@ -1,0 +1,23 @@
+# OneCX Generators
+
+## [](#overview)Overview
+
+OneCX Generators are command-line tools designed to streamline the creation of OneCX applications and services. They provide scaffolding for various project types, ensuring consistency with OneCX architecture and best practices. By using these generators, developers can quickly set up new projects with the necessary configurations, dependencies, and boilerplate code.
+
+## [](#key-features)Key Features
+
+* Application Scaffolding: Generate boilerplate code for OneCX microfrontend applications, backend services, and shared libraries.
+* Consistent Structure: Enforce a standardized project structure across all OneCX projects.
+* Integration with OneCX Tools: Seamlessly integrate with OneCX development tools and CI/CD pipelines.
+* Customizable Templates: Allow customization of generated code templates to fit specific project needs.
+
+## [](#getting-started)Getting Started
+
+To use OneCX Generators, follow these steps: …​
+
+## [](#best-practices)Best Practices
+
+* Use Generators for New Projects: Always use OneCX Generators when starting new projects to ensure consistency.
+* Customize Templates as Needed: Modify the default templates to better suit your project’s requirements.
+* Keep Generators Updated: Regularly update the OneCX CLI tool to benefit from the latest features and improvements.
+* Review Generated Code: Always review the generated code to understand its structure and make any necessary adjustments.

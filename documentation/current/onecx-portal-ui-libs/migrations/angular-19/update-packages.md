@@ -1,0 +1,36 @@
+# Required Package Updates
+
+If the following packages are used in your project, update them to ensure compatibility with Angular 19:
+
+| Package                    | Required Version | Notes                                               |
+| -------------------------- | ---------------- | --------------------------------------------------- |
+| @onecx/\*                  | ^6.x.y           | Update to the latest 6.x.y version available.       |
+| @ngrx/\*                   | ^19.x.y          | Update to the latest Angular 19 compatible version. |
+| primeng                    | ^19.0.0          | Updated for Angular 19 compatibility                |
+| primeicons                 | ^7.0.0           | Updated for Angular 19 compatibility                |
+| primeflex                  | ^4.0.0           | Updated for Angular 19 compatibility                |
+| @ngx-translate/core        | ^16.0.0          | Updated for Angular 19 compatibility                |
+| @ngx-translate/http-loader | ^8.0.0           | Compatible with @ngx-translate/core v16             |
+| ngrx-store-localstorage    | ^19.0.0          | Updated for Angular 19 compatibility                |
+| ngx-build-plus             | ^19.0.0          | Angular 19 compatible version                       |
+
+## [](#installation-commands)Installation Commands
+
+Run this command to update the supporting packages:
+
+```bash
+npm install @ngx-translate/core@^16.0.0 \
+  @ngx-translate/http-loader@^8.0.0 \
+  primeng@^19.0.0 \
+  primeicons@^7.0.0 \
+  primeflex@^4.0.0 \
+  ngrx-store-localstorage@^19.0.0 \
+  ngx-build-plus@^19.0.0 \
+
+npm install @ngrx/<package-name>@^19
+
+npm install @onecx/<package-name>@^6
+```
+
+| |  Do not add keycloak-js to your package.json dependencies. |
+| ------------------------------------------------------------ |

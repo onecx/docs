@@ -1,0 +1,111 @@
+# OneCX Document Management UI
+
+## [](#%5Fwhat%5Fis%5Fdocument%5Fmanagement)What is Document Management
+
+Document management refers to the systematic process of capturing, organizing, storing, and retrieving documents within an organization. It involves the efficient handling of digital documents, ensuring secure access, version control, collaboration based on TM-Forum standard[TMF 667](https://github.com/tmforum-apis/TMF667%5FDocument).
+
+With OneCX Document Management Software, you can streamline your document management workflows, reduce manual efforts, and enhance productivity. Whether it’s managing contracts, invoices, legal documents, or any other form of digital content, OneCX Document Management provides a centralized and user-friendly solution for effectively managing your documents.
+
+## [](#%5Foverview)Overview
+
+OneCX Document Management is a comprehensive solution for managing documents in a user-friendly and efficient manner. It is a solution that consists of three main components which are explained in more detail in the general documentation. Please refer to the following [Documentation](../onecx-document-management/index.html) to learn more.
+
+The user interface (UI) component is designed to provide an intuitive and user-friendly experience for managing documents in the cloud-native environment built with Quarkus.
+
+## [](#%5Fgetting%5Fstarted)Getting Started
+
+To start developing the OneCX Document Management User Interface, you need to set up your local development environment. It’s recommended that you use WSL as the runtime for your application, as shown in the figure below. If you are using a different runtime, please check that you meet the requirements below.
+
+### [](#%5Fprerequisites)Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+* Java Development Kit (JDK) version 17
+* Maven build tool
+* Git
+* Docker + Docker Compose (Windows Subsystem for Linux (WSL) recommended)
+* NodeJS
+
+### [](#%5Fclone%5Fthe%5Frepository)Clone the Repository
+
+Start by cloning the required repositories to your local machine using the following command:
+
+```bash
+git clone https://github.com/onecx-apps/onecx-document-management-ui.git
+git clone https://github.com/onecx-apps/document-management-dev.git
+```
+
+The repository `onecx-document-management-ui` contains the source code of the document management user interface. The repository`document-management-dev` contains the necessary OneCX platform dependencies and the docker-compose script required to run the OneCX Document-Management-User-Interface on your local machine.
+
+### [](#%5Fupdate%5Flocal%5Fdns%5Fresolution)Update local DNS resolution
+
+Assuming you are using WSL, updating the local host file for local development allows you to map domain names to specific IP addresses, making it easier to test and debug applications using custom domain names instead of IP addresses. To enable multiple services on the same port, we use traefik as a reverse proxy. A running traefik container is therefore essential for your local setup to route your traffic to the appropriate Docker containers based on hostnames.
+
+**It is recommended that the WSL host file and the Windows host file are aligned. Unless you have disabled this behaviour, the WSL host file will be automatically generated from the Windows host file when WSL is restarted.**
+
+#### [](#%5Fupdate%5Fwindows%5Fhost%5Ffile)Update Windows host file
+
+Open the file `C:\Windows\System32\drivers\etc\hosts` in your favorite editor and add the following entries:
+
+```bash
+127.0.0.1       pgadmin
+127.0.0.1       postgresdb
+127.0.0.1       keycloak-app
+127.0.0.1       traefik
+127.0.0.1       tkit-portal-app
+127.0.0.1       tkit-portal-server
+127.0.0.1       apm
+127.0.0.1       wiremock
+127.0.0.1       minio
+127.0.0.1       onecx-document-management-ui
+127.0.0.1       onecx-document-management-bff
+127.0.0.1       onecx-document-management-svc
+```
+
+#### [](#%5Fupdate%5Fwsl%5Fhost%5Ffile)Update WSL host file
+
+If needed, update the file `\etc\hosts` in `your` favorite linux editor and add the same entries like above.
+
+### [](#%5Fstarting%5Fonecx%5Fdependencies)Starting OneCX dependencies
+
+In a local development environment, Docker Compose is used to define and manage multiple containers as a single application stack. It enables developers to easily start, stop, and configure all the necessary services and dependencies required by OneCX Document Management using a simple configuration file.
+
+```bash
+cd document-management-dev
+docker compose up -d traefik postgresdb pgadmin keycloak-app tkit-portal-server minio apm
+```
+
+* `traefik`: Traefik is an ingress controller for Kubernetes deployments that enables dynamic traffic routing and load balancing based on defined rules and configurations.
+* `postgresdb`: PostgreSQL is an open-source relational database management system. It is used as persistence layer for storing and managing data in OneCX Document Management, providing reliability and scalability.
+* `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database.
+* `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
+* `tkit-portal-server`: This micro-service is responsible mostly for handling the logic of portals and their meunitems and user data and settings.
+* `minio`: We use MinIO as a facade or abstraction layer to decouple our applications from the underlying cloud storage provider, providing greater flexibility and allowing us to seamlessly switch between different providers without changing our application code. It acts as a unified interface, enabling us to interact with various cloud storage systems using the standardized Amazon S3 API.
+* `apm`: In this backend, user permissions are stored in a structured manner and an endpoint is provided to import permissions via CSV files. Each application can be assigned a set of roles and permissions, managed through an association table in the APM database. Roles are assigned in the Keycloak admin console and are retrieved from tokens, while strings defined in APM are used to grant access to specific components or views on the frontend.
+
+### [](#%5Fstarting%5Fthe%5Fonecx%5Fdocument%5Fmanagement%5Fuser%5Finterface)Starting the OneCX Document Management User Interface
+
+Navigate to the project directory and build the application using NPM:
+
+```bash
+cd onecx-document-management-ui
+npm install --force
+```
+
+Note: If you face any issues while npm install, try deleting the node\_module folder and package-lock.json from the project.
+
+Start the user interface:
+
+```bash
+cd onecx-document-management-ui
+npm start
+```
+
+### [](#%5Fstopping%5Fonecx%5Fdependencies)Stopping OneCX dependencies
+
+The `docker compose stop` command is used to stop the containers defined in a Docker Compose file. It gracefully stops the running containers by sending a stop signal, allowing them to perform any necessary cleanup tasks before shutting down.
+
+```bash
+cd onecx-document-management-dev
+docker compose stop
+```

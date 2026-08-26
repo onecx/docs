@@ -1,0 +1,38 @@
+# OneCX Architecture Overview
+
+This chapter gives an overview of the fundamental architecture of OneCX.
+
+## [](#core-architecture-principles)Core Architecture Principles
+
+The OneCX platform is built upon several core architectural principles that ensure scalability, flexibility, and maintainability:
+
+* **Microservices- and microfrontend-based architecture**: The platform is composed of independent services that can be developed, deployed, and scaled independently.
+* **Backend for frontend (BFF)**: OneCX proposes and uses the backend for frontend pattern for communication between frontend and backend.
+* **API-first design**: RESTful APIs are used for communication between the frontend and backend, as well as between microservices.
+* **Containerization and CI/CD**: Services are containerized using Docker, and the project uses GitHub Actions for continuous integration and continuous deployment.
+* **Cloud-native architecture**: Services are designed to be deployed in cloud environments with Kubernetes for orchestration, ensuring easy scaling and high availability.
+
+## [](#applications)Applications
+
+To reduce testing and deployment complexity OneCX uses a concept called **application**.
+
+* An **application** is a versioned bundle of frontends (typically: 1), BFFs (typically: 1), backend services (optional, typically one or many).  
+The frontend parts of an **application** are called **apps**.
+* An **application** contains all system parts of a specific subdomain (e.g. user management).
+
+![OneCX Application Bundle](../_images/onecx-application-bundle.png) 
+
+Figure 1\. OneCX Application Bundle example, versioned
+
+## [](#workspaces)Workspaces
+
+In OneCX a workspace is a set of settings for a portal for a subset of the users or for a special purpose, e.g. there could be a workspace focusing on administrating the system or one focusing on sales. The number of workspaces in the system is not limited.
+
+A workspace contains the following settings:
+
+* Basic properties like Name, Description, Logo, Base URL etc.
+* Theme relationship
+* Role definitions
+* Menu structure for navigation including role assignments
+* Application registrations as selected from the pool of available applications
+* Slot configurations for Remote Components

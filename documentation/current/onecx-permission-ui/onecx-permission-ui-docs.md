@@ -1,0 +1,67 @@
+# undefined
+
+## [](#%5Fwhat%5Fis%5Fpermission%5Fmanagement)What is Permission Management?
+
+OneCX Permission Management refers to the systematic process of capturing, organizing, storing, and retrieving Permissions and Roles.
+
+## [](#%5Foverview)Overview
+
+OneCX Permission Management is a comprehensive solution for managing Permissions and Roles for OneCX products in a user-friendly and efficient manner. In this document we are only referring to the user interface (UI) of OneCX Permission Management.
+
+The UI for this Permission component is designed to provide an intuitive and user-friendly experience for managing Permissions and Roles in the cloud-native environment built with Quarkus.
+
+## [](#%5Fgetting%5Fstarted)Getting Started
+
+To start developing the OneCX Permission User Interface, you need to set up your local development environment. It’s recommended that you use WSL as the runtime for your application, as shown in the figure below. If you are using a different runtime, please check that you meet the requirements below.
+
+### [](#%5Fprerequisites)Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+* Java Development Kit (JDK) version 17
+* Maven build tool
+* Git
+* Docker + Docker Compose
+* Windows Subsystem for Linux (WSL) - recommended
+* NodeJS
+
+### [](#%5Fclone%5Fthe%5Frepository)Clone the Repository
+
+Start by cloning the required repositories to your local machine using the following command:
+
+```bash
+git clone https://github.com/onecx/onecx-permission-ui.git
+git clone https://github.com/onecx/permission-dev.git
+```
+
+The repository `onecx-permission` contains the source code of the OneCX Permission product. The repository `onecx-permission-ui` contains the source code of the OneCX Permission user interface as part of the product.
+
+### [](#%5Fupdate%5Flocal%5Fdns%5Fresolution)Update local DNS resolution
+
+Assuming you are using WSL, updating the local host file for local development allows you to map domain names to specific IP addresses, making it easier to test and debug applications using custom domain names instead of IP addresses. To enable multiple services on the same port, we use traefik as a reverse proxy. A running traefik container is therefore essential for your local setup to route your traffic to the appropriate Docker containers based on hostnames.
+
+**It is recommended that the WSL host file and the Windows host file are aligned. Unless you have disabled this behaviour, the WSL host file will be automatically generated from the Windows host file when WSL is restarted.**
+
+#### [](#%5Fupdate%5Fwindows%5Fhost%5Ffile)Update Windows host file
+
+Open the file `C:\Windows\System32\drivers\etc\hosts` in your favorite editor and add the following entries:
+
+```bash
+127.0.0.1       onecx-permission-ui
+127.0.0.1       onecx-permission-bff
+127.0.0.1       onecx-permission-svc
+```
+
+#### [](#%5Fupdate%5Fwsl%5Fhost%5Ffile)Update WSL host file
+
+If needed, update the file `\etc\hosts` in `your` favorite linux editor and add the same entries like above.
+
+### [](#%5Fstarting%5Fonecx%5Fdependencies)Starting OneCX dependencies
+
+In a local development environment, Docker Compose is used to define and manage multiple containers as a single application stack. It enables developers to easily start, stop, and configure all the necessary services and dependencies required by OneCX Permission Management using a simple configuration file.
+
+```bash
+mkdir onecx-permission
+cd onecx-permission
+docker compose up -d traefik postgresdb pgadmin keycloak-app
+```

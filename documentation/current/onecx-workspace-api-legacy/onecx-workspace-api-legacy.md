@@ -1,0 +1,12 @@
+# undefined
+
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                                                                                     | Type    | Default             |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------------------- |
+| [onecx.workspace.api.legacy.workspaces."workspaces".name](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-workspaces-workspaces-name) Mapping workspace configuration. Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_WORKSPACES\_\_WORKSPACES\_\_NAME      | string  | required            |
+| [onecx.workspace.api.legacy.workspaces."workspaces".rename](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-workspaces-workspaces-rename) Rename workspace configuration. Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_WORKSPACES\_\_WORKSPACES\_\_RENAME | string  | required            |
+| [onecx.workspace.api.legacy.token.access.roles.path](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-token-access-roles-path) access token roles path Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_TOKEN\_ACCESS\_ROLES\_PATH                             | string  | realm\_access/roles |
+| [onecx.workspace.api.legacy.token.id.roles](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-token-id-roles) access token roles path Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_TOKEN\_ID\_ROLES                                                         | string  | realm\_roles        |
+| [onecx.workspace.api.legacy.shell-mapping.enabled](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-shell-mapping-enabled) Enable or disable shell mapping Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_SHELL\_MAPPING\_ENABLED                            | boolean | false               |
+| [onecx.workspace.api.legacy.shell-mapping.prefix](#onecx-workspace-api-legacy%5Fonecx-workspace-api-legacy-shell-mapping-prefix) Prefix to be used for paths Environment variable: ONECX\_WORKSPACE\_API\_LEGACY\_SHELL\_MAPPING\_PREFIX                                   | string  | /ui/                |

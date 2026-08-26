@@ -1,0 +1,57 @@
+# Stop local OneCX
+
+The **stop-onecx.sh** script is used to stop the OneCX Local Environment. It can be run from the root directory of the **onecx-local-env** repository. Here the command for stopping the essential services without removing data:
+
+```bash
+./stop-onecx.sh
+```
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
+
+\-c
+
+Cleans up all volumes associated with the OneCX Local Environment when stopping the services. This will remove all data stored in the volumes, so use this option with caution. (Default: disabled)
+
+Deletion only occurs if the service shutdown was completely successful, meaning no services are still running. This prevents data loss in case of problems during shutdown. This is the case, for example, if **all** OneCX services have been started, but only the **base** profile is stopped.
+
+\-e
+
+The edition of OneCX to stop. This must match the edition that was used to start the environment. Supported editions are:
+
+* `v2` (Default).
+* `v1`
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-p <profile-name>
+
+The profile to use when stopping the environment. This must match the profile that was used to start the environment. The supported profiles are:
+
+* `base` (Default)
+* `all`
+
+## [](#examples)Examples
+
+### [](#stop-base-and-cleanup)Stop base and Cleanup
+
+The Docker services **essential** for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
+
+```bash
+./stop-onecx.sh -c
+```
+
+![script stop onecx.sh cleanup](../_images/scripts/script_stop-onecx.sh_cleanup.png) 
+
+Figure 1\. Successful stopping with cleanup
+
+### [](#stop-all-and-cleanup)Stop ALL and Cleanup
+
+**All** Docker services for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
+
+```bash
+./stop-onecx.sh -p all -c
+```

@@ -1,0 +1,173 @@
+# Update Component Imports
+
+The following section covers component, service, and directive changes in OneCX v6\. Components have been deleted, reorganized across libraries or converted to remote components. The following updates can be applied before v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+### [](#%5F1%5Fupdate%5Fimport%5Ffrom%5Fonecxportal%5Fintegration%5Fangular%5Fto%5Fonecxangular%5Faccelerator)1\. Update import from @onecx/portal-integration-angular to @onecx/angular-accelerator
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `ColumnGroupSelectionComponent`, `CustomGroupColumnSelectorComponent`
+* `DataLayoutSelectionComponent`, `DataListGridComponent`, `DataListGridSortingComponent`
+* `DataTableComponent`, `DataViewComponent`, `DiagramComponent`
+* `FilterViewComponent`, `GroupByCountDiagramComponent`, `InteractiveDataViewComponent`
+* `LifecycleComponent`, `PageHeaderComponent`, `SearchHeaderComponent`
+* `AdvancedDirective`, `IfBreakpointDirective`
+* `IfPermissionDirective`, `SrcDirective`, `TooltipOnOverflowDirective`
+
+### [](#%5F2%5Fupdate%5Fimport%5Ffrom%5Fonecxportal%5Fintegration%5Fangular%5Fto%5Fonecxangular%5Futils)2\. Update import from @onecx/portal-integration-angular to @onecx/angular-utils
+
+The imports of the following components need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-utils`:
+
+* `PortalPageComponent`
+* `PortalApiConfiguration`
+
+### [](#%5F3%5Fupdate%5Fimport%5Ffrom%5Fonecxportal%5Fintegration%5Fangular%5Fto%5Fonecxshell%5Fcore)3\. Update import from @onecx/portal-integration-angular to @onecx/shell-core
+
+The imports of the following components need to be changed from `@onecx/portal-integration-angular` to `@onecx/shell-core`:
+
+* `PortalFooterComponent`
+* `HeaderComponent`
+* `PortalViewportComponent`
+
+| |  Install @onecx/shell-core if these components are imported. npm install @onecx/shell-core |
+| -------------------------------------------------------------------------------------------- |
+
+### [](#%5F4%5Fupdate%5Fimport%5Ffrom%5Fonecxangular%5Faccelerator%5Fto%5Fonecxangular%5Futils)4\. Update import from @onecx/angular-accelerator to @onecx/angular-utils
+
+The following utils, services and directives were removed from `@onecx/angular-accelerator` and need to be imported from `@onecx/angular-utils` now:
+
+* `HasPermissionChecker`
+* `HAS_PERMISSION_CHECKER` (injection token)
+* `AlwaysGrantPermissionChecker`
+* `TranslationCacheService`
+* `CachingTranslateLoader`
+* `TranslateCombinedLoader`
+
+## [](#completely-removed)Components/Services Removed Without Replacement
+
+The following components and services have been completely removed from libs v6, meaning their imports should be deleted and any usage removed:
+
+### [](#%5F1%5Fremove%5Ffrom%5Fonecxangular%5Faccelerator)1\. Remove from @onecx/angular-accelerator
+
+* `DataLoadingErrorComponent` (ocx-data-loading-error)
+
+### [](#%5F2%5Fremove%5Ffrom%5Fonecxangular%5Fintegration%5Finterface)2\. Remove from @onecx/angular-integration-interface
+
+* `IAuthService`
+* `AUTH_SERVICE` (injection token)
+
+### [](#%5F3%5Fremove%5Ffrom%5Fonecxportal%5Fintegration%5Fangular)3\. Remove from @onecx/portal-integration-angular
+
+* `HelpPageAPIService`
+* `UserProfileAPIService`
+* `AppInlineProfileComponent`
+* `AnnouncementsApiService`
+
+## [](#replaced-components-same-library)Replaced Components and Functions in the Same Library
+
+Some components and functions have been replaced by new equivalents within the same library. Update your imports and usage as follows:
+
+### [](#%5F1%5Fupdate%5Fimport%5Ffrom%5Fonecxangular%5Fintegration%5Finterface)1\. Update import from @onecx/angular-integration-interface
+
+* Replace `provideAppServiceMock` with `provideAppStateServiceMock`
+
+### [](#%5F2%5Fupdate%5Fimports%5Ffrom%5Fonecxngrx%5Faccelerator%5Fand%5Freplace%5Fusages)2\. Update imports from @onecx/ngrx-accelerator and replace usages
+
+* Replace all imports and usages of `filterForOnlyQueryParamsChanged` with `filterOutOnlyQueryParamsChanged`
+* Replace all imports and usages of `filterForQueryParamsChanged` with `filterOutQueryParamsHaveNotChanged`
+
+## [](#remote-components)Components now Available as Remote Components
+
+The following components and services have been converted to remote components and are now part of separate OneCX applications. Their imports from `@onecx/portal-integration-angular` need to be removed and the remote components configured as shown below.
+
+### [](#%5Fonecx%5Fhelp%5Fui)onecx-help-ui
+
+* `HelpItemEditorComponent`
+* `NoHelpItemComponent` (part of `OneCXShowHelpComponent`)
+
+### [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
+
+* `AnnouncementBannerComponent` (name in onecx-announcement-ui: `OneCXAnnouncementBannerComponent`)
+
+### [](#%5Fonecx%5Fworkspace%5Fui)onecx-workspace-ui
+
+* `PortalMenuComponent` (name in onecx-workspace-ui: `OneCXVerticalMainMenuComponent`)
+* `PortalMenuHorizontalComponent` (name in onecx-workspace-ui: `OneCXHorizontalMainMenuComponent`)
+* `UserAvatarComponent` (name in onecx-workspace-ui: `OneCXUserAvatarMenuComponent`)
+
+Example for including OneCXAnnouncementBannerComponent remote component 
+
+This example shows how to display an announcement banner from announcement management in your application by creating a slot and configuring the remote component to be placed inside.
+
+To include the remote components in the application, deployment configuration and code changes are required.
+
+* Application Code Changes:  
+   1. Update your application’s Helm chart:  
+   values.yaml  
+   ```yaml  
+   slot:  
+     enabled: true  
+     specs:  
+       your-app-announcement-banner:  
+         name: 'your-app-announcement-banner'  
+         description: 'Displays announcements'  
+   ```  
+   2. Import the remote components module:  
+   your-app.module.ts  
+   ```typescript  
+   import { AngularRemoteComponentsModule } from '@onecx/angular-remote-components';  
+   @NgModule({  
+     imports: [AngularRemoteComponentsModule]  
+   })  
+   ```  
+   3. Use slot in template where the Announcement Banner component was previously used:  
+   your-component.html  
+   ```html  
+   <ocx-slot name="your-app-announcement-banner"></ocx-slot>  
+   ```  
+   4. Check slot availability (optional):  
+   your-component.ts  
+   ```typescript  
+   export class YourComponent {  
+     isSlotAvailable$: Observable<boolean>;  
+     constructor(private slotService: SlotService) {  
+       this.isSlotAvailable$ = this.slotService.isSomeComponentDefinedForSlot('your-app-announcement-banner');  
+     }  
+   }  
+   ```
+* Deployment Environment Configuration (onecx-local-env):  
+   1. Slot definition in product store:  
+   onecx-data/product-store/slots/<your-app>.json  
+   ```json  
+   {  
+     "appId": "your-app",  
+     "slots": [  
+       {  
+         "name": "your-app-announcement-banner",  
+         "description": "Displays announcements",  
+         "deprecated": false,  
+         "undeployed": false  
+       }  
+     ]  
+   }  
+   ```  
+   2. Component mapping in workspace:  
+   onecx-data/workspace  
+   ```json  
+   {  
+     "slots": [  
+       {  
+         "name": "your-app-announcement-banner",  
+         "components": [  
+           {  
+             "productName": "onecx-announcement",  
+             "appId": "onecx-announcement-ui",  
+             "name": "./OneCXAnnouncementBannerComponent"  
+           }  
+         ]  
+       }  
+     ]  
+   }  
+   ```

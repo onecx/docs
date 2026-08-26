@@ -1,0 +1,16 @@
+# Module Federation in OneCX
+
+## [](#overview)Overview
+
+Module Federation is a webpack feature that enables the dynamic loading of separately built and deployed JavaScript applications. In the context of OneCX, it allows different OneCX applications (microfrontends) to be developed, built, and deployed independently while still being able to share code and dependencies at runtime. This documentation section covers the implementation details of Module Federation within the OneCX platform, including configuration, best practices, and integration points.
+
+This section of the documentation aims to explain some of the technical implementation details of OneCX platform. The goal of this section is to understand some of the requirements for Applications meant to be integrated with OneCX platform by providing the details about certain solutions and technologies used.
+
+## [](#references)References
+
+For detailed explanation of OneCX platform technical implementation details, please refer to the following content:
+
+* [Microfrontend Content Loading](microfrontend-content-loading.html)  
+   * [Web Components](webcomponents.html)
+* [Microfrontend Webpack Configuration](webpack.html)
+* [Microfrontend Bootstrapping](bootstrapping.html)

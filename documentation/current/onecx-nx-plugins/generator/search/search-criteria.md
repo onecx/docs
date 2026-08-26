@@ -1,0 +1,304 @@
+# Configure Search Criteria
+
+After generating the base of the search page, you can configure search criteria to allow users to filter existing data. It is necessary to add such criteria to both the user interface and the backend services to ensure proper data processing.
+
+Steps to add Search Criteria
+
+1. Adjust the OpenAPI specification to include new search criteria in the search request schema.
+2. Update the TypeScript schema to represent the search criteria.
+3. Modify the HTML of the search component to include input fields for the new criteria.
+4. Add necessary translations for the input fields.
+
+| |  The search criteria added here are used as part of the URL parameters when making requests to the backend service. Ensure that the criteria names are URL-friendly and do not contain special characters that could interfere with URL encoding.Examplarily, a search criteria named bookTitle will be used in the URL as ?bookTitle=value. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#action-s1)ACTION S1
+
+Add Criteria to Search Request
+
+The `Search<Feature>Request` component in the OpenAPI YAML file must be adapted by adding the desired search criteria as properties.  
+More details in [NgRx Search Criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html).
+
+### Template: Generated Search Criteria
+
+| Directory | <root-of-ui-app>/src/assets/api |
+| --------- | ------------------------------- |
+| File      | openapi-bff.yaml                |
+
+ACTION S1 in `openapi-bff.yaml` 
+
+```yaml
+    Search<Resource>Request:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+          format: int32
+          default: 0
+          description: 'The number of the page.'
+        pageSize:
+          type: integer
+          format: int32
+          default: 100
+          maximum: 1000
+          description: 'The size of the page.'
+        changeMe:
+          type: string
+          maximum: 255
+          description: To be replaced by actual search criteria properties
+        # "ACTION S1: Add search criteria properties"
+```
+
+Where **changeMe** is here the example search criteria to be replaced.
+
+---
+
+### Example: SearchBookRequest in OpenAPI
+
+| Directory | bookstore/src/assets/api |
+| --------- | ------------------------ |
+| File      | openapi-bff.yaml         |
+
+Example: Adjustments in `openapi-bff.yaml` 
+
+```yaml
+    SearchBookRequest:
+      type: object
+      properties:
+        pageNumber:
+          type: integer
+          format: int32
+          default: 0
+          description: The number of the page
+        pageSize:
+          type: integer
+          format: int32
+          default: 100
+          maximum: 1000
+          description: The size of the page.
+        bookTitle:
+          type: string
+          maximum: 255
+        # "ACTION S1: Add search criteria properties"
+```
+
+Where **bookTitle** is a search criteria.
+
+| |  After adding the new criteria to the OpenAPI specification, you need to regenerate the API client code to reflect these changes in your application.Make sure to run the following command to regenerate the API client based on the modified OpenAPI spec. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Generate the API client code
+
+```bash
+npm run apigen
+```
+
+## [](#action-s2)ACTION S2
+
+Add Search Criteria in TypeScript Schema
+
+The criteria you added in "Action S1" now have to be added to the TypeScript schema. Assure the keys and types match the ones you defined in the OpenAPI specification.  
+More details in [NgRx Search Criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#parameters).
+
+### Template: Generated Criteria
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.parameters.ts                            |
+
+Adjust in `<resource>-search.parameters.ts` 
+
+```javascript
+export const <resource>SearchCriteriasSchema = z.object({
+  changeMe: z.string().optional(),
+  // ACTION S2: Define members for the <resource>SearchCriteriasSchema here
+} satisfies Partial<Record<keyof SearchCustomerManagementRequest, ZodTypeAny>>);
+```
+
+Where **changeMe** is an placeholder for an additional search criteria.
+
+---
+
+### Example: SearchBookRequest in TypeScript
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.parameters.ts                |
+
+Example: Adjustments in `book-search.parameters.ts` 
+
+```javascript
+export const bookSearchCriteriasSchema = z.object({
+  bookTitle: z.string().optional()
+  // ACTION S2: Define members for the bookSearchCriteriasSchema here
+} satisfies Partial<Record<keyof SearchBookRequest, ZodTypeAny>>);
+```
+
+Where **bookTitle** is the criteria added to the `SearchBookRequest`.
+
+## [](#action-s3)ACTION S3
+
+Add search criteria in HTML
+
+To make the search criteria usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.  
+More details in [Search Criteria HTML](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#html) and [Example input fields](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#examples-for-different-input-fields).
+
+### Template: Generated Search Criteria in HTML
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-<search> |
+| --------- | ------------------------------------------------------------ |
+| File      | <resource>-search.component.html                             |
+
+Adust Form in `<resource>-search.component.html` 
+
+```html
+    <form [formGroup]="bookSearchFormGroup">
+      <div class="grid mt-0 p-fluid">
+        <div class="col-12 md:col-3">
+          <p-floatlabel variant="on">
+            <!-- ACTION S3: Change this search criteria -->
+            <input
+              pInputText
+              id="bookstore_book_search_criteria_change_me"
+              type="text"
+              class="w-18rem"
+              formControlName="changeMe"
+              [pTooltip]="'BOOK_SEARCH.CRITERIA.CHANGE_ME.TOOLTIP' | translate"
+              tooltipPosition="top"
+              tooltipEvent="hover"
+              role="main"
+              [attr.aria-label]="'BOOK_SEARCH.CRITERIA.CHANGE_ME.ARIA_LABEL' | translate"
+            />
+            <label for="bookstore_book_search_criteria_change_me" class="white-space-nowrap">
+              {{ 'BOOK_SEARCH.CRITERIA.CHANGE_ME.LABEL' | translate }}
+            </label>
+          </p-floatlabel>
+        </div>
+        <!-- ACTION S3: Specify search criteria here -->
+      </div>
+    </form>
+```
+
+Where **changeMe** is a placeholder for an additional search criteria added to the `Search<Feature>Request`.
+
+---
+
+### Example: Search Criteria in HTML
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.html               |
+
+Example: Form in `book-search.component.html` 
+
+```html
+    <form [formGroup]="bookSearchFormGroup">
+      <div class="grid mt-0 p-fluid">
+        <div class="col-12 md:col-3">
+          <p-floatlabel variant="on">
+            <!-- ACTION S3: Change this search criteria -->
+            <input
+              pInputText
+              id="bookstore_book_search_criteria_book_title"
+              type="text"
+              class="w-18rem"
+              formControlName="bookTitle"
+              [pTooltip]="'BOOK_SEARCH.CRITERIA.BOOK_TITLE.TOOLTIP' | translate"
+              tooltipPosition="top"
+              tooltipEvent="hover"
+              role="main"
+              [attr.aria-label]="'BOOK_SEARCH.CRITERIA.BOOK_TITLE.ARIA_LABEL' | translate"
+            />
+            <label for="bookstore_book_search_criteria_book_title" class="white-space-nowrap">
+              {{ 'BOOK_SEARCH.CRITERIA.BOOK_TITLE.LABEL' | translate }}
+            </label>
+          </p-floatlabel>
+        </div>
+        <!-- ACTION S3: Specify search criteria here -->
+      </div>
+    </form>
+```
+
+Where **bookTitle** is the criteria added to the `SearchBookRequest`.
+
+## [](#action-s4)ACTION S4
+
+Add Translations
+
+Ensure that all input field labels have the necessary translations added.  
+More details in [Multi-Language](../../../docs-guides-ui/angular/translation/multi-language.html).
+
+### Template: Generated Translations
+
+| Directory | <root-of-ui-app>/src/assets/i18n |
+| --------- | -------------------------------- |
+| Files     | en.json / de.json                |
+
+Adust translations in `en.json` 
+
+```json
+  "BOOK_SEARCH": {
+    "CHANGE_ME": "ACTION S4: Adjust translation keys for search header",
+    "HEADER": "Item Search",
+    "SUB_HEADER": "Searching and displaying of items",
+    ...
+    "CRITERIA": {
+      "INPUT_FIELDS": "ACTION S4: Adjust translation keys for input fields",
+      "CHANGE_ME": {
+        "LABEL": "Change Me",
+        "ARIA_LABEL": "Change Me",
+        "TOOLTIP": "Change Me"
+      }
+    }
+  }
+```
+
+Where **CHANGE\_ME** is a placeholder for a search criteria.
+
+---
+
+### Example: Book Search Translations
+
+| Directory | bookstore/src/assets/i18n |
+| --------- | ------------------------- |
+| Files     | en.json / de.json         |
+
+Example: Translations in `en.json` 
+
+```json
+  "BOOK_SEARCH": {
+    "HEADER": "Book Search",
+    "SUB_HEADER": "Searching and displaying of Books",
+    ...
+    "CRITERIA": {
+      "INPUT_FIELDS": "ACTION S4: Adjust translation keys for input fields",
+      "BOOK_TITLE": {
+        "LABEL": "Title",
+        "ARIA_LABEL": "Title",
+        "TOOLTIP": "Book title"
+      }
+    }
+    ...
+  }
+```
+
+Where **BOOK\_TITLE** is the criteria added to the `SearchBookRequest`.
+
+Example: Translations in `de.json` 
+
+```json
+  "BOOK_SEARCH": {
+    "HEADER": "Büchersuche",
+    "SUB_HEADER": "Suchen und Anzeigen von Büchern",
+    ...
+    "CRITERIA": {
+      "INPUT_FIELDS": "ACTION S4: Adjust translation keys for input fields",
+      "BOOK_TITLE": {
+        "LABEL": "Titel",
+        "ARIA_LABEL": "Buchtitel",
+        "TOOLTIP": "Buchtitel"
+      }
+    }
+    ...
+  }
+```

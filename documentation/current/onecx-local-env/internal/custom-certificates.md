@@ -1,0 +1,132 @@
+# Adding Custom Certificates for Java Applications in Docker
+
+The use of custom certificates solves issues with Java applications running inside Docker containers that need to communicate over HTTPS with services using non-standard or self-signed certificates.
+
+## [](#why-is-this-about)Why is this about?
+
+When running Java applications inside Docker containers, HTTPS connections often fail with errors like:
+
+Excerpt from Docker logs of the affected Java service
+
+```text
+PKIX path building failed: unable to find valid certification path to requested target
+```
+
+### [](#common-use-cases)Common Use Cases
+
+Corporate TLS Interception
+
+Tools like Zscaler or internal proxies re-sign certificates with a corporate CA.
+
+Self-Signed Certificates
+
+Internal services using self-signed certs.
+
+Private PKI
+
+Enterprise environments with custom root or intermediate CAs.
+
+### [](#problems-that-arise)Problems that arise
+
+* Outbound HTTPS calls fail (e.g., REST APIs, OAuth, external services).
+* Java throws any TLS/SSL exception e.g. `SunCertPathBuilderException`.
+
+## [](#add-custom-certificates)Add Custom Certificates
+
+To resolve these issues, you need to add the required certificate to a Java Truststore used by your Java applications running inside Docker containers.
+
+### [](#1-get-the-certificate)1\. Get the Certificate
+
+Identify and export the necessary certificate from the target HTTPS service.  
+Open the HTTPS website (where the error occurs) in your browser (here exemplarily Chrome).
+
+Click the icon left on URL, then
+
+1. Click on **Connection is secure**
+2. Click on **Certificate is valid**
+3. Navigate to **Details** tab  
+   1. Select the certificate with the target URL in **Certificate Hierarchy**  
+   2. Click on **Export** and save as Base-64 encoded `.crt` file.
+
+| |  Alternatively, you can export the certificate using command line tools like openssl or curl or use system-specific certificate management tools to export root and intermediate CAs. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Use the steps above to export all necessary certificates (root and intermediate CAs) that are required to establish a valid trust chain to the target HTTPS service.
+
+Place the exported files in the **certs** folder inside of **onecx-local-env**
+
+```text
+certs/
+  ├── YourCertificate.crt
+  └── YourCertificate2.crt
+```
+
+### [](#2-create-a-java-truststore)2\. Create a Java Truststore
+
+Use the provided setup script to create or update a truststore with all your certificates. The script automatically imports all `.crt` and `.pem` files from the specified directory. In some cases, you will prompt to enter the root password for cleanup of existing entries.
+
+Setup Truststore with password "trustjava"
+
+```bash
+./setup-truststore.sh
+```
+
+Result: Truststore location
+
+```none
+certs/truststore.jks
+```
+
+### [](#3-verify-the-truststore-contents)3\. Verify the Truststore Contents
+
+Optionally, you can check the contents of the truststore by listing all the certificates it contains using the following command:
+
+Verify Truststore Contents
+
+```bash
+keytool -list -keystore ./certs/truststore.jks -storepass trustjava
+```
+
+Expected output showing all imported certificates with their aliases.
+
+![script setup truststore.sh content](../_images/scripts/script_setup-truststore.sh_content.png) 
+
+Figure 1\. Example Output with certificate for ollama.one-cx.org
+
+### [](#4-use-truststore-in-ai-service)4\. Use Truststore in AI Service
+
+Update your Docker Compose file to mount the truststore and configure Java to use it on the relevant services.
+
+For Default JVM Applications
+
+```yaml
+services:
+  onecx-ai-provider-svc:
+    image: ${ONECX_AI_PROVIDER_SVC}
+    volumes:
+      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
+    environment:
+      JAVA_TOOL_OPTIONS: >-
+        -Djavax.net.ssl.trustStore=/opt/certs/truststore.jks
+        -Djavax.net.ssl.trustStorePassword=trustjava
+        -Djavax.net.ssl.trustStoreType=JKS
+```
+
+For GraalVM Native Image Applications
+
+```yaml
+services:
+  onecx-ai-provider-svc:
+    image: ${ONECX_AI_PROVIDER_SVC}
+    volumes:
+      - ./certs/truststore.jks:/opt/certs/truststore.jks:ro
+    entrypoint: ["/work/application"]
+    command:
+    - "-Djavax.net.ssl.trustStore=/opt/certs/truststore.jks"
+    - "-Djavax.net.ssl.trustStorePassword=trustjava"
+    - "-Djavax.net.ssl.trustStoreType=JKS"
+```
+
+### [](#5-restart-and-verify)5\. Restart and Verify
+
+Verify the SSL/TLS connection works by triggering an HTTPS call and confirming no `PKIX path building failed` or any other TLS/SSL error appears.

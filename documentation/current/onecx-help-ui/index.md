@@ -1,0 +1,81 @@
+# undefined
+
+## [](#%5Fonecx%5Fhelp%5Fui)onecx-help-ui
+
+## [](#%5Fonecx%5Fhelp%5Fui%5F2)OneCX Help UI
+
+![OneCX Help UI](https://github.com/onecx-apps/onecx-help-ui/actions/workflows/build.yml/badge.svg)
+
+### [](#%5Fwhat%5Fis%5Fhelp%5Fmanagement)What is Help Management?
+
+OneCX Help Management refers to the systematic process of capturing, organizing, storing, and retrieving help items.
+
+### [](#%5Foverview)Overview
+
+OneCX Help is a comprehensive solution for managing Help items for OneCX products in a user-friendly and efficient manner. In this document we are only referring to the OneCX Help User Interface (UI) of OneCX Help Management.
+
+The UI for this Help management component is designed to provide an intuitive and user-friendly experience for managing Help items in the cloud-native environment built with Quarkus.
+
+### [](#%5Fgetting%5Fstarted)Getting Started
+
+To start developing the OneCX Help UI, you need to set up your local development environment. It’s recommended that you use WSL as the runtime for your application, as shown in the figure below. If you are using a different runtime, please check that you meet the requirements below.
+
+#### [](#%5Fprerequisites)Prerequisites
+
+Before you begin, ensure you have the following installed:
+
+* Java Development Kit (JDK) version 17
+* Maven build tool
+* Git
+* Docker + Docker Compose
+* Windows Subsystem for Linux (WSL) - recommended
+* NodeJS
+
+#### [](#%5Fclone%5Fthe%5Frepository)Clone the Repository
+
+Start by cloning the required repositories to your local machine using the following command:
+
+```bash
+git clone https://github.com/onecx/onecx-help-ui.git
+git clone https://github.com/onecx/help-dev.git
+```
+
+The repository `onecx-help` contains the source code of the OneCX Help product. The repository `onecx-help-ui` contains the source code of the OneCX Help UI as part of the product.
+
+#### [](#%5Fupdate%5Flocal%5Fdns%5Fresolution)Update local DNS resolution
+
+Assuming you are using WSL, updating the local host file for local development allows you to map domain names to specific IP addresses, making it easier to test and debug applications using custom domain names instead of IP addresses. To enable multiple services on the same port, we use traefik as a reverse proxy. A running traefik container is therefore essential for your local setup to route your traffic to the appropriate Docker containers based on hostnames.
+
+**It is recommended that the WSL host file and the Windows host file are aligned. Unless you have disabled this behaviour, the WSL host file will be automatically generated from the Windows host file when WSL is restarted.**
+
+##### [](#%5Fupdate%5Fwindows%5Fhost%5Ffile)Update Windows host file
+
+Open the file `C:\Windows\System32\drivers\etc\hosts` in your favorite editor and add the following entries:
+
+```bash
+127.0.0.1       postgresdb
+127.0.0.1       keycloak-app
+127.0.0.1       traefik
+127.0.0.1       onecx-help-ui
+127.0.0.1       onecx-help-bff
+127.0.0.1       onecx-help-svc
+```
+
+##### [](#%5Fupdate%5Fwsl%5Fhost%5Ffile)Update WSL host file
+
+If needed, update the file `\etc\hosts` in `your` favorite linux editor and add the same entries like above.
+
+#### [](#%5Fstarting%5Fonecx%5Fdependencies)Starting OneCX dependencies
+
+In a local development environment, Docker Compose is used to define and manage multiple containers as a single application stack. It enables developers to easily start, stop, and configure all the necessary services and dependencies required by OneCX Help Management using a simple configuration file.
+
+```bash
+mkdir onecx-help
+cd onecx-help
+docker compose up -d traefik postgresdb pgadmin keycloak-app
+```
+
+* `traefik`: Traefik is an ingress controller for Kubernetes deployments that enables dynamic traffic routing and load balancing based on defined rules and configurations.
+* `postgresdb`: PostgreSQL is an open-source relational database management system. It is used as persistence layer for storing and managing data of OneCX products, providing reliability and scalability.
+* `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
+* `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.

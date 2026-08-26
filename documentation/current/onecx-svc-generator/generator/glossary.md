@@ -1,0 +1,18 @@
+# Glossary
+
+A collection of essential terms and concepts in the context of the **OneCX SVC Generator**.
+
+## [](#backend-svc)Backend Service (SVC)
+
+A Backend Service is a microservice application responsible for handling business logic, data management, and integration within the OneCX platform. It is typically generated using the OneCX App Generator and built on modern frameworks such as Quarkus. Within the OneCX ecosystem, a Backend Service acts as the **backend layer** that processes requests from UI Apps and other services. It exposes REST APIs, manages persistence, and implements domain-specific logic. A service can function independently or as part of a larger microservices architecture, communicating with other components to deliver complete business capabilities.
+
+## [](#resource)Entity / Resource
+
+An **entity** (**resource**) is a representation of a real-world object or concept that is relevant to the application’s domain. It typically corresponds to a data model that defines the structure and properties of the entity, as well as the operations that can be performed on it.  
+The name is usually equal to [<Feature> ](#feature).  
+The **entity/resource** is used in various places, e.g. for search results, details view, create and update requests. As it is shared, be cautious while making changes to it. If the **entity/resource** differs for different use cases, you can define multiple **entity/resources** in the [<Entity Schema> ](#entity-schema) and adjust the endpoints accordingly.
+
+## [](#entity-schema)Entity Schema
+
+An entity schema defines the structure of an **entity/resource**, including its properties and their types. It is used to ensure that the data for the entity is consistent and follows a defined format. The schema definition follows the OpenAPI specification. This is the basis for processing feature data, e.g., for searching, displaying, and modifying it.  
+At OneCX, we explicitly follow an **API-first approach**. In practice, this means that the [OpenAPI Specification](https://spec.openapis.org/oas/) file is created first, in which entities and the paths for requests/responses are described. The **OpenAPI** file serves as the basis for the implementation of the backend services and the frontend components.

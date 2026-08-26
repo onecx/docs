@@ -1,0 +1,61 @@
+# OneCX Docs: Writing Style
+
+This document outlines the preferred writing style for OneCX documentation to ensure clarity, consistency, and professionalism across all content.
+
+## [](#general-principles)General Principles
+
+* Write for the target audience, considering their technical background and needs.
+* Be direct and actionable; prefer imperative voice.
+* Structure content logically with clear headings.
+* Keep headings consistent (`==`, `===`) and limit nesting to 3–4 levels.
+* Use bullets and description lists for procedures and options.
+* Add screenshots for critical steps and outcomes.
+* Avoid duplication by using partials and includes.
+* Keep labels short, be focsused and avoid unnecessary words.
+* Each line in lists should start with a capital letter and end without a period, unless it is a complete sentence.
+* Language  
+   * Do not use colloquial language or slang.  
+   e.g. do not use cookbook terms like "whip up" or "cook".  
+   We do not write cookbooks and recipes but technical documentation.  
+   * Use active voice and present tense.  
+   * Prefer simple words over complex ones.  
+   e.g. use "use" instead of "utilize".  
+   * Write in a clear and concise manner; avoid unnecessary words.  
+   * Avoid jargon unless necessary; explain technical terms when first introduced.  
+   * Use technical terms consistently as per the reference implementation.
+* Text Emphasis  
+   * Use emphasis sparingly to highlight **important** terms.  
+   * Do not use more than one text emphasis per word (e.g. _italic_ or **bold**).
+
+## [](#terminology)Terminology
+
+* Use official product names consistently (e.g. OneCX, OneCX Local Environment).
+* Define acronyms on first use (e.g. BPMN - Business Process Model and Notation).
+* Use consistent terminology for features and components across all documentation.
+* Avoid internal jargon; prefer terms that are widely understood by the target audience.
+
+## [](#tone-and-voice)Tone and Voice
+
+* Maintain a professional and approachable tone.
+* Be encouraging and supportive, especially in troubleshooting sections.
+* Avoid humor or sarcasm, as it may not translate well across cultures.
+* Focus on user tasks and outcomes rather than internal processes.
+
+## [](#examples)Examples
+
+* Provide realistic and runnable examples where possible.
+* Ensure examples are up-to-date with the latest software versions.
+* Avoid including sensitive information (e.g. passwords, API keys) in examples.
+* Use consistent formatting for code snippets and commands.  
+   * Use fenced code blocks with language hints (e.g. `source,js`).  
+   * Minimize boilerplate code; focus on relevant parts.
+
+## [](#review-and-feedback)Review and Feedback
+
+* Encourage peer reviews to ensure clarity and accuracy.
+* Incorporate user feedback to improve documentation quality over time.
+
+## [](#reference)Reference
+
+The **reference implementation** is the documentation of [OneCX Local Environment](../onecx-local-env/index.html).  
+Follow the idea of structure, used [AsciiDoc](https://docs.asciidoctor.org/asciidoc/latest/) features, navigation and conventions.

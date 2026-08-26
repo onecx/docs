@@ -1,0 +1,3 @@
+# OneCX Shell Integration
+
+This section covers topics related to shell integration, including migration guides for different shell versions and best practices for integrating with the OneCX Shell.
