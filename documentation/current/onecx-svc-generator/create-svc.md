@@ -4,7 +4,7 @@ What is a Backend Service?
 
 A Backend Service is a microservice application responsible for handling business logic, data management, and integration within the OneCX platform. It is typically generated using the OneCX App Generator and built on modern frameworks such as Quarkus. Within the OneCX ecosystem, a Backend Service acts as the **backend layer** that processes requests from UI Apps and other services. It exposes REST APIs, manages persistence, and implements domain-specific logic. A service can function independently or as part of a larger microservices architecture, communicating with other components to deliver complete business capabilities.
 
-more details about SVC you can find in the link below:<https://onecx.github.io/docs/documentation/current/docs-guides-quarkus/quarkus-svc.html>
+More details about SVC you can find in the xref:onecx\_quarkus\_guide\_ref
 
 | |  The backend created with the OneCX SVC Generator has just the basic structure. You will need to further develop and customize the application to meet your specific requirements and business logic. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -53,11 +53,11 @@ java -jar onecx-svc-generator.jar create-svc \
 | \--build true     | Builds the generated service project after generation by running Maven in the generated project directory. If you want to build it manually, you can omit this flag and run mvn clean package or mvn clean install inside the generated directory.                                                                                                                                                    |
 | \--liquibase-diff | Generates the Liquibase changelog by running the Maven db-diff profile and importing the generated diff result into the service changelog structure. If omitted, the generator creates Liquibase changelog files from its templates.                                                                                                                                                                  |
 
-![start generating with autobuild](../_images/start_generating_with_autobuild.png) 
+![start generating with autobuild](_images/start_generating_with_autobuild.png) 
 
 Figure 1\. Excerpt of the build start output
 
-![result generating with autobuild](../_images/result_generating_with_autobuild.png) 
+![result generating with autobuild](_images/result_generating_with_autobuild.png) 
 
 Figure 2\. Excerpt of the build result output
 

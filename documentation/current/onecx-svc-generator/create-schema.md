@@ -15,7 +15,7 @@ Second step of generating a backend service is run the generator with `create-sc
 
 ```bash
 java -jar onecx-svc-generator.jar add-entity \
-  --project ../onecx-demo-svc \
+  --project onecx-demo-svc \
   --package org.tkit.onecx.demo \
   --entity Product \
   --fields name:String,price:BigDecimal \
@@ -27,8 +27,8 @@ where root flag is used to specify if the entity is root entity, which means tha
 For non-root entities, you can specify the parent entity using the `--parent` flag.  
 
 ```bash
-java -jar onecx-svc-generator/generator/target/onecx-svc-generator-1.0.0-runner.jar add-entity \
-  --project ../onecx-demo-svc \
+java -jar onecx-svc-generator.jar add-entity \
+  --project onecx-demo-svc \
   --package org.tkit.onecx.demo \
   --entity ProductItem \
   --fields quantity:Integer,position:Integer \
@@ -43,9 +43,9 @@ Second way is to define the entity in a model.yaml file and run the generator wi
 
 ```bash
 java -jar onecx-svc-generator.jar batch-model \
-  --project ../onecx-demo-svc \
+  --project onecx-demo-svc \
   --package org.tkit.onecx.demo \
-  --model ../onecx-demo-svc/examples/model.yaml \
+  --model onecx-demo-svc/examples/model.yaml \
   --build true
 ```
 
