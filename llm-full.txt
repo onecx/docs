@@ -6489,296 +6489,6 @@ In OneCX toast messages display is handled via [PortalMessageService](../../onec
 
 Details about the usage can be found in the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html).
 
-Application Bootstrapping
-====================
-## [](#overview)Overview
-
-Bootstrapping a Microfrontend involves configuring the initial setup so it can run independently and integrate with the shell application. This includes directory structure, dependencies, and build configuration.
-
-This document explains how to bootstrap Microfrontend content correctly. The requirements differ based on content type and expose method.
-
-## [](#microfrontend-content-bootstrapping-explained)Microfrontend Content Bootstrapping
-
-Content loading is triggered by route changes **for modules** or Slot Component display **for Remote Components**. The content is loaded via the remote entry file configured in Webpack.
-
-### [](#content-exposed-using-angular-method)Angular Method (Not Recommended)
-
-| |  Using the Angular expose method limits the platform to a single framework version. All Microfrontends must use the same Angular version. |
-| ------------------------------------------------------------------------------------------------------------------------------------------- |
-
-**Requirements:**
-
-* Webpack must expose the module/component file directly (not **main.ts**)
-* The **main.ts** file must bootstrap asynchronously
-
-Example **main.ts**:
-
-```typescript
-import('./bootstrap').catch(err => console.error(err));
-```
-
-Example **bootstrap.ts**:
-
-```typescript
-import { AppModule } from './app/app.module';
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { enableProdMode } from '@angular/core';
-import { environment } from './environments/environment';
-
-if (environment.production) {
-  enableProdMode();
-}
-
-platformBrowserDynamic().bootstrapModule(AppModule)
-  .catch(err => console.error(err));
-```
-
-### [](#content-exposed-using-webcomponent-method)Webcomponent Method (Recommended)
-
-This method uses Web Components **Custom Elements** to register content, allowing multiple frameworks and versions.
-
-#### [](#module-bootstrapping-and-configuration)Module Bootstrapping
-
-**Requirements:**
-
-1. Webpack exposes **main.ts**
-2. **main.ts** bootstraps asynchronously
-3. Module handles common angular issues with module federation
-4. Module must:  
-   * Register an entry point as a Custom Element  
-   * Adapt routing for Shell integration  
-   * Configure services for correct resource URLs
-
-**Example Setup:**
-
-webpack.config.js
-
-```typescript
-const config = withModuleFederationPlugin({
-  name: 'example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ExampleModule': './src/main.ts'
-  },
-})
-```
-
-src/main.ts
-
-```typescript
-import('./bootstrap').catch((err) => console.error(err))
-```
-
-src/bootstrap.ts
-
-```typescript
-import { bootstrapModule } from '@onecx/angular-webcomponents'
-import { environment } from './environments/environment'
-import { ExampleModule } from './app/module'
-
-bootstrapModule(ExampleModule, 'microfrontend', environment.production)
-```
-
-The **bootstrap.ts** file uses `@onecx/angular-webcomponents` to bootstrap the module and handle common Angular issues with module federation.
-
-#### [](#create-a-module-with-dobootstrap-and-createappentrypoint)Create a Module with DoBootstrap and CreateAppEntrypoint
-
-`createAppEntrypoint` registers `AppEntrypointComponent` as `<example-webcomponent>`.
-
-src/app/module.ts
-
-```typescript
-import { createAppEntrypoint } from '@onecx/angular-webcomponents'
-export class ExampleModule implements DoBootstrap {
-    constructor(private readonly injector: Injector) {}
-
-    ngDoBootstrap(): void {
-        createAppEntrypoint(AppEntrypointComponent, 'example-webcomponent', this.injector)
-    }
-}
-```
-
-#### [](#adding-initializerouter-provider)Adding initializeRouter Provider
-
-The `initializeRouter` function is configured in the providers.
-
-```typescript
-// In Module
-import { initializeRouter, startsWith } from '@onecx/angular-webcomponents'
-@NgModule({
-providers: [
-        // other providers
-        {
-            provide: APP_INITIALIZER,
-            useFactory: initializeRouter,
-            multi: true,
-            deps: [Router, AppStateService]
-        }
-    ]
-})
-```
-
-#### [](#routes-are-defined-using-matcher-and-startswith)Routes are defined using matcher and startsWith
-
-Router configuration contains `startsWith` and `matcher` to ensure correct routing context.
-
-```typescript
-// Routes configuration
-export const routes: Routes = [
-  {
-    matcher: startsWith(''),
-    loadChildren: () => import('./feature/feature.module').then((mod) => mod.FeatureModule)
-  },
-  {
-    matcher: startsWith('tracking'),
-    loadChildren: () => import('./tracking/tracking.module').then((mod) => mod.TrackingModule)
-  }
-]
-```
-
-| |  When **startsWith** is used with **initializeRouter**, it removes already used parts from the URL, allowing the app to route only within its context instead of the shell’s context. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Configuration
-
-Services use `PortalApiConfiguration` to construct correct URLs based on **CurrentMfeTopic**, ensuring calls go to the right resources (e.g., `deployment_url/mfe/example/bff/search`).
-
-#### [](#remote-component-bootstrapping-and-configuration)Remote Component Bootstrapping
-
-**Requirements:**
-
-1. Webpack exposes **main.ts**
-2. **main.ts** bootstraps asynchronously
-3. Bootstrap handles **Angular issues** (Angular only) and registers Custom Element
-4. Component uses Remote Component initialization mechanism
-
-**Example Setup:**
-
-webpack.config.js
-
-```typescript
-const config = withModuleFederationPlugin({
-  name: 'example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ExampleComponent': './src/app/remotes/example/example.component.main.ts'
-  },
-})
-```
-
-src/app/remotes/example/example.component.main.ts
-
-```typescript
-import('./example.component.bootstrap').catch((err) => console.error(err))
-```
-
-src/app/remotes/example/example.component.bootstrap.ts 
-
-```typescript
-import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
-import { APP_INITIALIZER, importProvidersFrom } from '@angular/core';
-import { BrowserModule } from '@angular/platform-browser';
-import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
-import { AngularAuthModule } from '@onecx/angular-auth';
-import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
-import { UserService } from '@onecx/portal-integration-angular';
-import { ExampleComponent } from './example.component';
-import { BASE_URL, provideTranslateServiceForRoot } from '@onecx/angular-remote-components';
-
-bootstrapRemoteComponent(
-  ExampleComponent,
-  'example-remote-component',
-  environment.production,
-  [
-    provideHttpClient(withInterceptorsFromDi()),
-    { provide: BASE_URL, useValue: new ReplaySubject<string>(1) },
-    provideTranslateServiceForRoot({ isolate: true }),
-    importProvidersFrom(AngularAuthModule, BrowserModule, BrowserAnimationsModule),
-    {
-      provide: APP_INITIALIZER,
-      useFactory: (userService: UserService) => () => userService.isInitialized,
-      deps: [UserService],
-      multi: true,
-    },
-  ]
-)
-```
-
-bootstrapRemoteComponent creates an Angular application with the specified providers, connects to the Shell router, and registers the Custom Element.
-
-src/app/remotes/example/example.component.ts 
-
-```typescript
-import { Component, Inject, Input } from '@angular/core';
-import { TranslateModule, TranslateService } from '@ngx-translate/core';
-import { AngularAuthModule } from '@onecx/angular-auth';
-import { UserService } from '@onecx/angular-integration-interface';
-import {
-  AngularRemoteComponentsModule,
-  BASE_URL,
-  ocxRemoteComponent,
-  ocxRemoteWebcomponent,
-  RemoteComponentConfig,
-} from '@onecx/angular-remote-components';
-import { PortalCoreModule } from '@onecx/portal-integration-angular';
-import { ReplaySubject } from 'rxjs';
-
-@Component({
-  standalone: true,
-  imports: [
-    AngularAuthModule,
-    AngularRemoteComponentsModule,
-    PortalCoreModule,
-    TranslateModule,
-  ],
-  selector: 'example-comp',
-  template: `<h1>Hello from Remote Component</h1>`,
-})
-export class ExampleComponent implements ocxRemoteComponent, ocxRemoteWebcomponent {
-  permissions: string[] = [];
-
-  constructor(
-    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
-    private readonly userService: UserService,
-    private readonly translateService: TranslateService,
-    private readonly exampleService: ExampleAPIService
-  ) {
-    this.translateService.use(this.userService.lang$.getValue());
-  }
-
-  @Input() set ocxRemoteComponentConfig(config: RemoteComponentConfig) {
-    this.ocxInitRemoteComponent(config);
-  }
-
-  ocxInitRemoteComponent(config: RemoteComponentConfig): void {
-    this.baseUrl.next(config.baseUrl);
-    this.permissions = config.permissions;
-    this.exampleService.configuration = new Configuration({
-      basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
-    })
-  }
-}
-```
-
-**Key Component Features:**
-
-Component Initialization
-
-The component implements `ocxRemoteWebcomponent` (required) and `ocxRemoteComponent` (optional). When `ocxRemoteComponentConfig` is set by the Slot Component, it should:
-
-* Update `BASE_URL`
-* Update permissions
-* Update service base URLs
-
-RemoteComponentConfig Structure
-
-| Property    | Type       | Description                                       |
-| ----------- | ---------- | ------------------------------------------------- |
-| appId       | string     | Microfrontend unique identifier                   |
-| productName | string     | Application name                                  |
-| permissions | string\[\] | User permissions                                  |
-| baseUrl     | string     | URL for accessing content, e.g., '/mfe/mfe\_name' |
-
 Module Federation in OneCX
 ====================
 **Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
@@ -6808,22 +6518,22 @@ In OneCX, **Module Federation** is used to load microfrontends, expose reusable 
 Following are important concepts where module federation is involved:
 
 __Table 2\. Features__
-| Name                                                            | Description                                           |
-| --------------------------------------------------------------- | ----------------------------------------------------- |
-| [Preloaders](mf-preloaders.html)                                | Preloaders register Module Federation share scopes    |
-| [Shell router](mf-shell-router.html)                            | Shell router - dynamic content loading                |
-| [Dependency Sharing](mf-dependancy-sharing.html)                | Build-time and runtime negotiation of shared packages |
-| [Slot components](mf-slot-components.html)                      | Load remote modules or components in slots            |
-| [Custom Authentication Service](mf-authentication-service.html) | Implementation of a custom authentication service     |
+| Name                                             | Description                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| [Preloaders](mf-preloaders.html)                 | Preloaders register Module Federation share scopes    |
+| [Dependency Sharing](mf-dependancy-sharing.html) | Build-time and runtime negotiation of shared packages |
+| [Slot components](mf-slot-components.html)       | Load remote modules or components in slots            |
 
 ## [](#onecx-recommendations)OneCX Recommendations
 
 The following documents describe how to configure and use Module Federation in OneCX.
 
-| Name                                                             | Description                                                                |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends             |
-| [Application bootstrapping](application-bootstrapping.html)      | Describes how to bootstrap microfrontends content to use module federation |
+| Name                                                             | Description                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends |
+
+| |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -6832,19 +6542,6 @@ undefined
 In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
 
 This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
-
-undefined
-====================
-## [](#mf-authentication-service-wrapper)Custom Authentication service
-
-Custom authentication service can be configured and provided. It can be achieved by setting AUTH\_SERVICE and AUTH\_SERVICE\_CUSTOM\_URL in enviroment configuration.
-
-**Module federation** is used to load implementation of custom authentication factory which can handle authentication and authorization of the application.
-
-## [](#%5Fconfiguration%5Fin%5Fenvironment)Configuration in Environment:
-
-* `AUTH_SERVICE` \- Set this to 'custom' to enable custom authentication service
-* `AUTH_SERVICE_CUSTOM_URL` \- URL to load custom authentication service factory via **module federation**. The module federation remote should expose a factory function that returns an implementation of the **authentication service factory**.
 
 Module Federation Dependency Sharing in OneCX
 ====================
@@ -6877,80 +6574,6 @@ graph LR
   scheduleLoad --> loadPreloaders[Load Preloaders via Module Federation]
   loadPreloaders --> bootstrap[Bootstrap Application]
 ```
-
-Use of Module Federation in Shell router
-====================
-**Shell Router** is the center for dynamic micro frontend loading. **Module federation** is used in **Shell Router** to:
-
-* Configure routes to use **Module federation**
-* Load application modules via **Module federation**
-
-## [](#%5Froute%5Fdefinitions%5Fto%5Fapplication%5Froutes%5Ftransformation)Route Definitions to Application Routes Transformation
-
-The workspace configuration contains route definitions for applications. The shell router transforms these backend route configurations into Angular application routes:
-
-* Receives route configuration from **workspace configuration** (backend definition)
-* Converts each BFF route into an Angular lazy-loaded route
-* Configures the loading mechanism using **Module Federation** and path resolution
-* Merges routes with static Shell routes
-
-## [](#%5Foverview)Overview
-
-### [](#%5Fon%5Froute%5Fconfiguration)On route configuration
-
-```mermaid
-graph LR
-  bffConfig[BFF Route Configuration] --> routeConfiguration[Convert to Route Config]
-  routeConfiguration --> configureMfePath[Configure MFE path and loading mechanism]
-  configureMfePath --> applicationRoutes[Application Routes]
-  applicationRoutes --> mergeStatic[Merge with Static Routes]
-  mergeStatic --> allRoutes[All Routes]
-```
-
-### [](#%5Fon%5Froute%5Factivation)On route activation
-
-```mermaid
-graph LR
-  routeActivation[Route Activated] --> lazyLoading[Lazy loading triggered]
-  lazyLoading --> triggerRemote[Load MFE via Module Federation]
-  triggerRemote --> decideMfeType[Decide MFE Type]
-  decideMfeType --> negotiate[Negotiate versions]
-  negotiate --> render[Render MFE]
-```
-
-## [](#%5Fshell%5Froutes%5Fafter%5Ftransformation)Shell Routes After Transformation
-
-After transformation, the Shell Router contains two types of routes:
-
-* **Static routes** \- These are predefined routes in the Shell application, such as **error pages or the about page**.
-* **Application routes** \- These routes are generated by converting backend route configurations into Angular lazy-loaded routes.
-
-These routes are merged to create the final list of routes.
-
-## [](#%5Fhow%5Fshell%5Frouter%5Fworks%5Fwith%5Fmodule%5Ffederation)How **Shell Router** works with **Module Federation**?
-
-Following steps are performed in **Shell Router** to achieve dynamic loading of micro frontends using **Module Federation**:
-
-### [](#%5Frouter%5Fconfiguration%5Fphase)Router Configuration Phase
-
-**Shell router** converts router configuration received from **workspace configuration** into **application route configuration**:
-
-* Parse the workspace router configuration
-* For each route, configure:  
-   * Path matcher  
-   * Micro frontend type  
-   * Lazy-loading callback using **module federation** to load the app on match
-* Merge static Shell routes with application routes
-
-### [](#%5Frouter%5Factivation%5Fphase)Router Activation Phase
-
-When a route is activated, the dynamic loading of a micro frontend is triggered:
-
-* **Route activation** triggers lazy loading of the configured MFE
-* **Module Federation** loads the remote micro frontend
-* **[Negotiate versions](mf-dependancy-sharing.html)** based on current state of federation instance and shared dependencies
-* **Decide MFE rendering method** based on MFE type configuration (see [Types of Microfrontends](types-of-microfrontends.html))
-* **Render** the loaded Microfrontend using the appropriate method
 
 undefined
 ====================
@@ -7649,64 +7272,9 @@ UI Additional Topics
 ====================
 This section covers additional topics related to OneCX UI application development. These topics provide guidance and best practices for handling common challenges and advanced scenarios, ensuring that applications are maintainable, scalable, and consistent with OneCX standards.
 
-undefined
+Module Federation and Share Scopes
 ====================
-## [](#module-federation-and-share-scopes)Module federation and share scopes
-
-Module federation allows applications to share dependencies at runtime, but it requires a consistent configuration of shared modules and their versions.
-
-Share scopes are a way to group shared dependencies under a specific name. Every application can specify the following in relation to share scopes:
-
-* which share scope it should be loaded into
-* for each shared dependency, which scope it belongs to
-
-## [](#setting-loading-share-scope)Setting loading share scope
-
-For every application, the share scope it should be loaded into is determined by the `shareScope` property in the deployment configuration of the app via helm. It can be put for the whole application or for individual microfrontends. This information is used by the shell during remote loading.
-
-Example of share scope configuration:
-
-```yaml
-app:
-    operator:
-        microfrontend:
-            spec:
-                shareScope: 'angular_21' # this app should be loaded into the 'angular_21' share scope
-            spec:
-                my-mfe:
-                    shareScope: 'angular_21' # this mfe should be shared within the 'angular_21' share scope
-```
-
-## [](#setting-shared-dependencies-share-scope)Setting shared dependencies' share scope
-
-On the application side, each shared dependency can be assigned to a share scope in the module federation configuration. This is done by adding the `shareScope` property to the shared dependency declaration.
-
-Example of shared dependency share scope configuration:
-
-```typescript
-shared: {
-    '@angular/core': {
-        shareScope: 'angular_21' // this dependency belongs to the 'angular_21' share scope
-        // other properties
-    },
-    '@onecx/accelerator': {
-        shareScope: 'angular_21' // this dependency belongs to the 'angular_21' share scope
-    }
-}
-```
-
-Depending on the build tool and module federation plugin used by the application, the exact configuration syntax may differ, but the concept of assigning shared dependencies to a share scope remains the same.
-
-## [](#onecx-shere-scopes)OneCX share scopes
-
-The OneCX shell operates with the following share scopes:
-
-* `angular_X` \- where X represents the Angular version, e.g., `angular_21` for Angular 21 applications and their dependencies
-* `default` \- scope for all applications integrated with older shell versions and their dependencies
-
-For Angular applications above Angular 21, the shell expects them to be loaded into the `angular_X` share scope corresponding to their Angular version. For applications integrated with older shell versions, the expected share scope is `default`. If no scope is specified for an application, it will be loaded into the `default` share scope by default.
-
-For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
+Remote package sharing and share scopes are part of Required Setup. See [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html).
 
 NgRX
 ====================
@@ -9784,6 +9352,243 @@ The library also provides routing integration helpers:
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
+Configure Authentication
+====================
+Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
+
+## [](#angular-applications)Angular Applications
+
+Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s bootstrap providers. It registers an HTTP interceptor that automatically attaches the required authentication headers to outgoing requests.
+
+## [](#react-applications)React Applications
+
+React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
+
+Configure Remote Package Sharing
+====================
+Module Federation allows applications to share dependencies at runtime, but it requires a consistent configuration of shared modules and their versions. This is mandatory Module Federation configuration — without it, remote loading is broken, not merely degraded.
+
+Configuring remote package sharing has two parts: assigning a **share scope** (see below) and, for each shared dependency, its own share scope assignment.
+
+## [](#share-scopes)Share Scopes
+
+Share scopes are a way to group shared dependencies under a specific name, and every application must specify which share scope it should be loaded into.
+
+Every application can specify the following in relation to share scopes:
+
+* Which share scope it should be loaded into.
+* For each shared dependency, which scope it belongs to.
+
+### [](#setting-loading-share-scope)Setting Loading Share Scope
+
+For every application, the share scope it should be loaded into is determined by the `shareScope` property in the deployment configuration of the app via Helm. It can be set for the whole application or for individual microfrontends. This information is used by the shell during remote loading.
+
+Example share scope configuration
+
+```yaml
+app:
+    operator:
+        microfrontend:
+            spec:
+                shareScope: 'angular_21' # this app should be loaded into the 'angular_21' share scope
+            spec:
+                my-mfe:
+                    shareScope: 'angular_21' # this mfe should be shared within the 'angular_21' share scope
+```
+
+### [](#setting-shared-dependencies-share-scope)Setting Shared Dependencies' Share Scope
+
+On the application side, each shared dependency can be assigned to a share scope in the Module Federation configuration, by adding the `shareScope` property to the shared dependency declaration.
+
+Example shared dependency share scope configuration
+
+```typescript
+shared: {
+    '@angular/core': {
+        shareScope: 'angular_21' // this dependency belongs to the 'angular_21' share scope
+        // other properties
+    },
+    '@onecx/angular-webcomponents': {
+        shareScope: 'angular_21' // this dependency belongs to the 'angular_21' share scope
+    }
+}
+```
+
+Depending on the build tool and Module Federation plugin used by the application, the exact configuration syntax may differ, but the concept of assigning shared dependencies to a share scope remains the same.
+
+## [](#which-packages-to-share)Which Packages to Share
+
+The shared package list must include every framework and OneCX package that participates in runtime dependency sharing.
+
+| Package group                       | Packages                                                                                                                            |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| Angular                             | @angular/\*                                                                                                                         |
+| PrimeNG                             | primeng, primeicons                                                                                                                 |
+| NgRx                                | @ngrx/\*                                                                                                                            |
+| OneCX                               | @onecx/\*                                                                                                                           |
+| Conditional Angular utility sharing | Share @onecx/angular-utils explicitly when the application uses @onecx/angular-accelerator or @onecx/angular-integration-interface. |
+
+Use the caret (`^`) range for shared package versions in `package.json`, except `rxjs`, which should use tilde (`~`). See [Package Sharing Convention](platform-package-compatibility.html#package-sharing-convention) for the versioning rule.
+
+## [](#automatic-package-sharing)Automatic Package Sharing
+
+Use `getOneCXSharedLibraryConfig` from `@onecx/build-utils` instead of hand-writing the shared package map. It generates shared entries for OneCX-related libraries and assigns the correct `shareScope` based on the application’s Angular or React version.
+
+```typescript
+import { withModuleFederationPlugin } from '@module-federation/enhanced/webpack'
+import { getOneCXSharedLibraryConfig } from '@onecx/build-utils'
+import { dependencies } from './package.json'
+
+const shared = getOneCXSharedLibraryConfig(dependencies, true)
+
+const config = withModuleFederationPlugin({
+  // name, filename, exposes, etc.
+  shared,
+})
+
+export default config
+```
+
+## [](#onecx-share-scopes)OneCX Share Scopes
+
+The OneCX shell operates with the following share scopes:
+
+* `angular_X` — where X represents the Angular version, e.g. `angular_21` for Angular 21 applications and their dependencies.
+* `default` — scope for all applications integrated with older shell versions and their dependencies.
+
+For Angular 21 and newer applications, the shell expects them to be loaded into the `angular_X` share scope corresponding to their Angular version. For applications integrated with older shell versions, the expected share scope is `default`. If no scope is specified for an application, it is loaded into the `default` share scope by default.
+
+For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
+
+Expose a Remote Module
+====================
+Every application integrated with OneCX must expose itself to the shell via Module Federation, so the shell can dynamically load it at runtime. This page covers the requirements and setup steps for both Angular and React applications.
+
+## [](#overview)Overview
+
+Content loading is triggered by route changes (for modules) or Slot Component display (for remote components). The content is loaded via Module Federation configuration exposed by the application. The recommended setup uses `@module-federation/enhanced` and exposes `mf-manifest.json`; `remoteEntry.js` is still supported when the shell configuration points directly to it. See [Platform & Package Compatibility Requirements](platform-package-compatibility.html) for the full compatibility baseline.
+
+`mf-manifest.json` contains metadata about the exposed modules and their dependencies and enables better integration and compatibility with the shell. See [Exposing mf-manifest.json file](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html#mf-manifest) for details.
+
+## [](#angular-applications)Angular Applications
+
+### [](#angular-webcomponent-method)Webcomponent Method (Recommended)
+
+This method uses Web Components **Custom Elements** to register content, allowing multiple frameworks and Angular versions to coexist in the shell. It is the recommended approach; the alternative "Angular expose method" (exposing an `NgModule` directly) limits the whole platform to a single Angular version and is not recommended.
+
+There are two ways to expose an Angular application depending on what needs to be loaded by the shell:
+
+* [Module Approach](expose-remote-module/module-approach.html) — expose a full Angular module, loaded on route activation.
+* [Component Approach](expose-remote-module/component-approach.html) — expose a single component, loaded by a Slot Component.
+
+## [](#react-applications)React Applications
+
+React applications are turned into a Custom Element and exposed the same way, using `@onecx/react-webcomponents`.
+
+### [](#react-vite-webcomponent)Converting a React App into a Web Component
+
+The `createViteAppWebComponent` function converts a React component or React app into a custom web component, relying on the browser’s Custom Elements API and the `@r2wc/react-to-web-component` library.
+
+```js
+const createViteAppWebComponent = (
+  app: React.ComponentType,
+  elementName: string
+) => {
+  // Implementation
+};
+```
+
+* `app`: the React component to convert into a web component.
+* `elementName`: the name of the custom element to register (e.g. `my-custom-element`).
+
+Example for a Vite App
+
+```js
+import App from './app';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+createViteAppWebComponent(App, 'my-custom-app');
+```
+
+Expose the resulting entry point through the Module Federation configuration:
+
+```js
+const config = withModuleFederationPlugin({
+  name: 'example-react-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleApp': './src/main.tsx'
+  },
+})
+```
+
+See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
+
+Required Setup
+====================
+Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
+
+This tier applies to both paths of building a OneCX UI:
+
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
+* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
+
+| |  If a step isn’t listed here, it belongs to a different tier. A Recommended tier (steps an app **should** complete to behave correctly, not just to run) and an Optional tier (steps an app **may** adopt with no correctness impact if skipped) are planned alongside this Required tier as part of the same three-tier Setup structure. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#required-setup-pages)Pages
+
+* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
+* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
+   * [Module Approach](expose-remote-module/module-approach.html)  
+   * [Component Approach](expose-remote-module/component-approach.html)
+* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
+* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
+
+Platform &amp; Package Compatibility Requirements
+====================
+Before an application can be loaded by the OneCX shell, it must satisfy a baseline of platform and package compatibility constraints.
+
+## [](#angular-version-compatibility)Angular Version Compatibility
+
+The application’s Angular version must be equal to or lower than the version used by the shell (or, for shell-loaded technology preloaders, the respective preloader).
+
+* Check the shell version and ensure the app uses an equal or lower Angular version. See [Shell Version Information](../../../onecx-shell-ui/onecx-shell-ui-docs.html#shell-version-information) for how to check the shell’s supported version.
+
+__Table 1\. Compatible package versions for Angular 18 (libs version 5.x)__
+| Package             | Compatible Versions |
+| ------------------- | ------------------- |
+| @ngx-translate/core | ^15.0.0             |
+| ngx-build-plus      | ^18.0.0             |
+| primeng             | ^17.18.0            |
+
+__Table 2\. Compatible package versions for Angular 19 (libs version 6.x)__
+| Package             | Compatible Versions |
+| ------------------- | ------------------- |
+| @ngx-translate/core | ^16.0.0             |
+| ngx-build-plus      | ^19.0.0             |
+| primeng             | ^19.0.0             |
+
+__Table 3\. Compatible package versions for Angular 20 (libs version 7.x)__
+| Package             | Compatible Versions |
+| ------------------- | ------------------- |
+| @ngx-translate/core | ^17.0.0             |
+| ngx-build-plus      | ^20.0.0             |
+| primeng             | ^20.3.0             |
+
+__Table 4\. Compatible package versions for Angular 21 (libs version 8.x)__
+| Package             | Compatible Versions |
+| ------------------- | ------------------- |
+| @ngx-translate/core | ^17.0.0             |
+| ngx-build-plus      | ^21.0.0             |
+| primeng             | ^21.0.0             |
+
+## [](#package-sharing-convention)Package Sharing Convention
+
+Use the caret (`^`) range for all shared package versions in `package.json`, except `rxjs`, which should use tilde (`~`).
+
+See [Configure Remote Package Sharing](configure-remote-package-sharing.html) for the list of packages that must be shared and the recommended utility for applying OneCX sharing settings.
+
 AppConfigService and environment variables (runtime configuration)
 ====================
 ## [](#app-config-service-configure-env-json)Configure `env.json`
@@ -10359,6 +10164,254 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [Dropdown input field](dropdown.html)
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
+
+Component Approach
+====================
+This page covers exposing a single Angular component as a Remote Component webcomponent, bootstrapped via `@onecx/angular-webcomponents`.
+
+## [](#angular-component-bootstrap-files)Bootstrap Files
+
+Webpack exposes the component’s bootstrap file as the Module Federation entry point. The bootstrap file bootstraps asynchronously by dynamically importing the component’s bootstrap module, which uses `bootstrapRemoteComponent()` from `@onecx/angular-webcomponents` to bootstrap the component while handling common Angular issues with Module Federation (Remote Component router connection, NgZone sharing, and platform sharing) and registers it as a Custom Element.
+
+webpack.config.js
+
+```typescript
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleComponent': './src/app/remotes/example/example.component.main.ts'
+  },
+})
+```
+
+src/app/remotes/example/example.component.main.ts
+
+```typescript
+import('./example.component.bootstrap').catch((err) => console.error(err))
+```
+
+src/app/remotes/example/example.component.bootstrap.ts 
+
+```typescript
+import { provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
+import { APP_INITIALIZER, importProvidersFrom } from '@angular/core';
+import { BrowserModule } from '@angular/platform-browser';
+import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
+import { AngularAuthModule } from '@onecx/angular-auth';
+import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
+import { UserService } from '@onecx/angular-integration-interface';
+import { ExampleComponent } from './example.component';
+import { BASE_URL, provideTranslateServiceForRoot } from '@onecx/angular-remote-components';
+
+bootstrapRemoteComponent(
+  ExampleComponent,
+  'example-remote-component',
+  environment.production,
+  [
+    provideHttpClient(withInterceptorsFromDi()),
+    { provide: BASE_URL, useValue: new ReplaySubject<string>(1) },
+    provideTranslateServiceForRoot({ isolate: true }),
+    importProvidersFrom(AngularAuthModule, BrowserModule, BrowserAnimationsModule),
+    {
+      provide: APP_INITIALIZER,
+      useFactory: (userService: UserService) => () => userService.isInitialized,
+      deps: [UserService],
+      multi: true,
+    },
+  ]
+)
+```
+
+## [](#angular-remote-component-definition)Defining the Remote Component
+
+src/app/remotes/example/example.component.ts 
+
+```typescript
+import { Component, Inject, Input } from '@angular/core';
+import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { UserService } from '@onecx/angular-integration-interface';
+import {
+  AngularRemoteComponentsModule,
+  BASE_URL,
+  ocxRemoteComponent,
+  ocxRemoteWebcomponent,
+  RemoteComponentConfig,
+} from '@onecx/angular-remote-components';
+import { ReplaySubject } from 'rxjs';
+
+@Component({
+  standalone: true,
+  imports: [
+    AngularRemoteComponentsModule,
+    TranslateModule,
+  ],
+  selector: 'example-comp',
+  template: `<h1>Hello from Remote Component</h1>`,
+})
+export class ExampleComponent implements ocxRemoteComponent, ocxRemoteWebcomponent {
+  permissions: string[] = [];
+
+  constructor(
+    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
+    private readonly userService: UserService,
+    private readonly translateService: TranslateService,
+    private readonly exampleService: ExampleAPIService
+  ) {
+    this.translateService.use(this.userService.lang$.getValue());
+  }
+
+  @Input() set ocxRemoteComponentConfig(config: RemoteComponentConfig) {
+    this.ocxInitRemoteComponent(config);
+  }
+
+  ocxInitRemoteComponent(config: RemoteComponentConfig): void {
+    this.baseUrl.next(config.baseUrl);
+    this.permissions = config.permissions;
+    this.exampleService.configuration = new Configuration({
+      basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
+    })
+  }
+}
+```
+
+The component imports:
+
+* `AngularRemoteComponentsModule` — provides the `ocxRemoteComponent`/`ocxRemoteWebcomponent` contract used by the Slot Component to configure the remote component.
+* `TranslateModule` — enables the `translate` pipe/directive and injecting `TranslateService` for translations.
+
+Key component features:
+
+Component Initialization
+
+The component implements `ocxRemoteWebcomponent` (required) and `ocxRemoteComponent` (optional). When `ocxRemoteComponentConfig` is set by the Slot Component, it should update `BASE_URL`, update permissions, and update service base URLs.
+
+RemoteComponentConfig Structure
+
+| Property    | Type       | Description                                      |
+| ----------- | ---------- | ------------------------------------------------ |
+| appId       | string     | Microfrontend unique identifier                  |
+| productName | string     | Application name                                 |
+| permissions | string\[\] | User permissions                                 |
+| baseUrl     | string     | URL for accessing content, e.g. '/mfe/mfe\_name' |
+
+Module Approach
+====================
+This page covers exposing an Angular application as a full Angular `NgModule` webcomponent, bootstrapped via `@onecx/angular-webcomponents`.
+
+## [](#angular-module-bootstrap-files)Bootstrap Files
+
+Webpack exposes `main.ts` as the Module Federation entry point. `main.ts` bootstraps asynchronously by dynamically importing `bootstrap.ts`, which uses `bootstrapModule()` from `@onecx/angular-webcomponents` to bootstrap the module while handling common Angular issues with Module Federation (NgZone sharing and platform sharing).
+
+webpack.config.js
+
+```typescript
+const config = withModuleFederationPlugin({
+  name: 'example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleModule': './src/main.ts'
+  },
+})
+```
+
+src/main.ts
+
+```typescript
+import('./bootstrap').catch((err) => console.error(err))
+```
+
+src/bootstrap.ts
+
+```typescript
+import { bootstrapModule } from '@onecx/angular-webcomponents'
+import { environment } from './environments/environment'
+import { ExampleModule } from './app/module'
+
+bootstrapModule(ExampleModule, 'microfrontend', environment.production)
+```
+
+## [](#angular-module-with-dobootstrap)Create a Module with DoBootstrap and CreateAppEntrypoint
+
+`createAppEntrypoint` registers `AppEntrypointComponent` as `<example-webcomponent>` in the Custom Elements registry, and connects the module’s router to the shell’s router.
+
+src/app/module.ts
+
+```typescript
+import { createAppEntrypoint } from '@onecx/angular-webcomponents'
+export class ExampleModule implements DoBootstrap {
+    constructor(private readonly injector: Injector) {}
+
+    ngDoBootstrap(): void {
+        createAppEntrypoint(AppEntrypointComponent, 'example-webcomponent', this.injector)
+    }
+}
+```
+
+## [](#angular-initialize-router-provider)Adding the initializeRouter Provider
+
+`initializeRouter` must be registered as an `APP_INITIALIZER` so the bootstrapped module’s router is connected with other routers.
+
+```typescript
+// In Module
+import { initializeRouter, startsWith } from '@onecx/angular-webcomponents'
+@NgModule({
+providers: [
+        // other providers
+        {
+            provide: APP_INITIALIZER,
+            useFactory: initializeRouter,
+            multi: true,
+            deps: [Router, AppStateService]
+        }
+    ]
+})
+```
+
+## [](#angular-routes-matcher-startswith)Routes Defined Using matcher and startsWith
+
+Use `startsWith` when constructing routes so the router only matches the URL parts relevant to the module.
+
+```typescript
+// Routes configuration
+export const routes: Routes = [
+  {
+    matcher: startsWith(''),
+    loadChildren: () => import('./feature/feature.module').then((mod) => mod.FeatureModule)
+  },
+  {
+    matcher: startsWith('tracking'),
+    loadChildren: () => import('./tracking/tracking.module').then((mod) => mod.TrackingModule)
+  }
+]
+```
+
+| |  When startsWith is used with initializeRouter, it removes already-used parts from the URL, allowing the app to route only within its own context instead of the shell’s context. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#angular-portal-api-configuration)Configuring API Requests with PortalApiConfiguration
+
+Services should use `PortalApiConfiguration` to construct correct URLs based on the current MFE topic, ensuring calls go to the right resources (e.g. `deployment_url/mfe/example/bff/search`).
+
+```typescript
+import { PortalApiConfiguration } from '@onecx/angular-utils'
+import { Configuration } from './shared/generated'
+import { environment } from './environments/environment'
+
+function apiConfigProvider() {
+  return new PortalApiConfiguration(Configuration, environment.apiPrefix)
+}
+
+@NgModule({
+  providers: [
+    {
+      provide: Configuration,
+      useFactory: apiConfigProvider
+    }
+    // other providers
+  ]
+})
+```
 
 AutoComplete for suggestions with array of type number
 ====================
@@ -13620,6 +13673,14 @@ When a process is deployed, it receives a version number. After making changes t
 
 A message is correlated only once to a process (once within one BPMN process ID), across all versions of this process. If multiple subscriptions for the same process are opened (by multiple process instances or within one instance), the message is correlated only to one of the subscriptions.
 
+BPMN: Request Callback
+====================
+Let’s look at the typical pattern to integrate a communication with another system.
+
+You might keep the process model independent of the fact if the notification service is synchronous or asynchronous and use a `service task` for sending a request. 1When the send and receive functionality is modeled in separate tasks/events, a correlation ID needs to be generated manually, message buffering is necessary and it is essential to think about idempotency.
+
+See also comparison of [communication patterns](https://blog.bernd-ruecker.com/service-integration-patterns-with-bpmn-and-camunda-cloud-53b0f458e49) from Bernd Rücker.
+
 BPMN: Open Topics
 ====================
 ## [](#%5Fhandling%5Fissues)Handling Issues
@@ -13629,14 +13690,6 @@ Business process model defines business reactions based on the business requirem
 Technical issues that might occur on service task level (service temporarily unavailable, job worker fails …​), are handled by Camunda using retries and incidents.
 
 ## [](#%5Fidempotent%5Fworkers)Idempotent Workers
-
-BPMN: Request Callback
-====================
-Let’s look at the typical pattern to integrate a communication with another system.
-
-You might keep the process model independent of the fact if the notification service is synchronous or asynchronous and use a `service task` for sending a request. 1When the send and receive functionality is modeled in separate tasks/events, a correlation ID needs to be generated manually, message buffering is necessary and it is essential to think about idempotency.
-
-See also comparison of [communication patterns](https://blog.bernd-ruecker.com/service-integration-patterns-with-bpmn-and-camunda-cloud-53b0f458e49) from Bernd Rücker.
 
 undefined
 ====================
@@ -13888,110 +13941,6 @@ npm install
 
 Figure 1\. Excerpt of generated files and directories for the NgRx **bookstore** UI App
 
-Create a Feature Module
-====================
-What is a Feature Module?
-
-A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
-In [Angular](https://angular.de/), feature modules are **NgModules** for the purpose of organizing code.
-
-| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#generate-a-feature-module)Generate a Feature Module
-
-The current working directory must be the root of an existing OneCX UI Application.
-
-| Directory | <root-of-ui-app> |
-| --------- | ---------------- |
-
-Create a feature module with the following command, preset resource/entity name
-
-```bash
-nx generate <namespace>/angular-generator:feature <feature> --resource=<resource>
-```
-
-with:
-
-| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
-| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
-
-Next, **you will be asked** if you would like to adapt the names for the generation.  
-If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
-If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
-
-The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
-Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a search component](create-search.html).
-
-### [](#key-naming-conventions)Key Naming Conventions
-
-* `src/app/<feature>/`  
-Directory for the feature module and its related files
-* `<feature>Module`  
-Name for the feature module
-* `/<feature>/`  
-Default **route path** for the application feature, see `app-routing.module.ts`.
-
-### [](#routing-configuration)Routing Configuration
-
-The generator will automatically configure the routing for the generated feature module.  
-It will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the feature module when the specified route is accessed.  
-The route path will be derived from the feature name, e.g. `/book/` for a feature module named "book".  
-You can further customize the routing configuration as needed after the generation.
-
-## [](#example)Example
-
-### [](#create-a-feature-module)Create a Feature Module
-
-Create a feature module **book** inside the application named **bookstore** to manage book data.  
-Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
-
-Create a Feature Module named "book"
-
-```bash
-nx generate @onecx/angular-generator:feature book --resource=Book
-```
-
-This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
-
-![generated feature book](../_images/generated_feature_book.png) 
-
-Figure 1\. Excerpt of generated files and directories
-
-### [](#routing)Routing
-
-The generator will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the **book** feature module when the `/book/` route is accessed.  
-You can further customize the routing configuration as needed after the generation, e.g., to add child routes for different components within the **book** feature module.
-
-Routing Configuration in app-routing.module.ts
-
-```javascript
-export const routes: Routes = [
-  {
-    // Adjust the matcher to match the feature route.
-    // If you only have one feature, you can use '' for simplification.
-    matcher: startsWith('book'),
-    loadChildren: () =>
-      import('./book/book.module').then((mod) => mod.BookModule),
-  },
-];
-```
-
-### [](#testing)Testing
-
-The generator does not create test cases for the feature module itself, but it neverthless it is a good practice to run the tests after generating the feature module to ensure that the existing functionality of the application is not broken and everything is working as expected.  
-Use the following command to run the tests:
-
-```bash
-npm run test
-```
-
-![test result feature](../_images/test_result_feature.png) 
-
-Figure 2\. Test result of the generated feature module
-
 Create a Detail Component
 ====================
 What is a Component?
@@ -14108,6 +14057,110 @@ After adaptations to the detail view and form controls, the detail component can
 ![generated book detail component book](../_images/generated_book_detail_component_book.png) 
 
 Figure 5\. Detail UI with adapted detail view
+
+Create a Feature Module
+====================
+What is a Feature Module?
+
+A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
+In [Angular](https://angular.de/), feature modules are **NgModules** for the purpose of organizing code.
+
+| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#generate-a-feature-module)Generate a Feature Module
+
+The current working directory must be the root of an existing OneCX UI Application.
+
+| Directory | <root-of-ui-app> |
+| --------- | ---------------- |
+
+Create a feature module with the following command, preset resource/entity name
+
+```bash
+nx generate <namespace>/angular-generator:feature <feature> --resource=<resource>
+```
+
+with:
+
+| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
+| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
+
+Next, **you will be asked** if you would like to adapt the names for the generation.  
+If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
+If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
+
+The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
+Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a search component](create-search.html).
+
+### [](#key-naming-conventions)Key Naming Conventions
+
+* `src/app/<feature>/`  
+Directory for the feature module and its related files
+* `<feature>Module`  
+Name for the feature module
+* `/<feature>/`  
+Default **route path** for the application feature, see `app-routing.module.ts`.
+
+### [](#routing-configuration)Routing Configuration
+
+The generator will automatically configure the routing for the generated feature module.  
+It will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the feature module when the specified route is accessed.  
+The route path will be derived from the feature name, e.g. `/book/` for a feature module named "book".  
+You can further customize the routing configuration as needed after the generation.
+
+## [](#example)Example
+
+### [](#create-a-feature-module)Create a Feature Module
+
+Create a feature module **book** inside the application named **bookstore** to manage book data.  
+Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
+
+Create a Feature Module named "book"
+
+```bash
+nx generate @onecx/angular-generator:feature book --resource=Book
+```
+
+This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
+
+![generated feature book](../_images/generated_feature_book.png) 
+
+Figure 1\. Excerpt of generated files and directories
+
+### [](#routing)Routing
+
+The generator will add a new route to the application’s main routing module (e.g. `app-routing.module.ts`) to lazy load the **book** feature module when the `/book/` route is accessed.  
+You can further customize the routing configuration as needed after the generation, e.g., to add child routes for different components within the **book** feature module.
+
+Routing Configuration in app-routing.module.ts
+
+```javascript
+export const routes: Routes = [
+  {
+    // Adjust the matcher to match the feature route.
+    // If you only have one feature, you can use '' for simplification.
+    matcher: startsWith('book'),
+    loadChildren: () =>
+      import('./book/book.module').then((mod) => mod.BookModule),
+  },
+];
+```
+
+### [](#testing)Testing
+
+The generator does not create test cases for the feature module itself, but it neverthless it is a good practice to run the tests after generating the feature module to ensure that the existing functionality of the application is not broken and everything is working as expected.  
+Use the following command to run the tests:
+
+```bash
+npm run test
+```
+
+![test result feature](../_images/test_result_feature.png) 
+
+Figure 2\. Test result of the generated feature module
 
 Create a Simple NgRx Page
 ====================
@@ -14466,50 +14519,6 @@ npm install
 npm run build  
 ```
 
-Glossary
-====================
-A collection of essential terms and concepts in the context of the **OneCX UI App Generator**.
-
-## [](#ui-app)UI App
-
-A UI App is a microfrontend application built using modern web technologies such as [Angular](https://angular.de/) or [React](https://reactjs.org/). Such application is designed to seamlessly integrate with the OneCX platform, providing a consistent user experience across different modules and features.  
-Within the OneCX ecosystem, a UI App typically serves as the **front-end interface** for users to interact with various functionalities offered by OneCX. It can be a standalone application or part of a larger suite of applications, and it communicates with backend services to fetch and display data, handle user inputs, and perform various operations.
-
-## [](#feature)Feature
-
-A feature is a specific functionality or capability within an application that serves a particular purpose or addresses a specific user need. It represents a distinct aspect of the application’s functionality and can be developed, tested, and deployed independently.
-
-In the context of the OneCX App Generator, a feature typically corresponds to a **feature module** in an [Angular](https://angular.de/) application, which encapsulates all the components, services, and state management related to that specific feature.
-
-When it is defined as `<Feature>`, please start the name of your entity with a capital letter, in other cases defined as `<feature>` use lowercase.
-
-## [](#feature-module)Feature Module
-
-A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
-In [Angular](https://angular.de/), feature modules are **NgModules** for the purpose of organizing code.
-
-## [](#resource)Entity / Resource
-
-An **entity** (**resource**) is a representation of a real-world object or concept that is relevant to the application’s domain. It typically corresponds to a data model that defines the structure and properties of the entity, as well as the operations that can be performed on it.  
-The name is usually equal to [<Feature> ](#feature).  
-The **entity/resource** is used in various places, e.g. for search results, details view, create and update requests. As it is shared, be cautious while making changes to it. If the **entity/resource** differs for different use cases, you can define multiple **entity/resources** in the [<Entity Schema> ](#entity-schema) and adjust the endpoints accordingly.
-
-## [](#entity-schema)Entity Schema
-
-An entity schema defines the structure of an **entity/resource**, including its properties and their types. It is used to ensure that the data for the entity is consistent and follows a defined format. The schema definition follows the OpenAPI specification. This is the basis for processing feature data, e.g., for searching, displaying, and modifying it.  
-At OneCX, we explicitly follow an **API-first approach**. In practice, this means that the [OpenAPI Specification](https://spec.openapis.org/oas/) file is created first, in which entities and the paths for requests/responses are described. The **OpenAPI** file serves as the basis for the implementation of the backend services and the frontend components.
-
-## [](#permission)Permission
-
-Permissions are a way **to control access** to certain features or actions within an application. They allow you to define who can perform specific actions based on their roles or other criteria. By configuring **permissions**, you can ensure that only authorized users can access sensitive data or perform critical operations, enhancing the security and integrity of your application.  
-The **permissions** are defined in the `values.yaml` file of the [Helm](https://helm.sh/) chart. This file contains a section for permissions where you can specify the actions that users can perform on different entities.  
-The `values.yaml` file is used by the OneCX permission operator during deployment to create the necessary permissions in the [Permission Management](../../onecx-permission/index.html).
-
-## [](#component)Component
-
-A Component is a reusable building block of the user interface in a UI Application. It encapsulates the structure, behavior, and presentation of a specific part of the UI, allowing developers to create modular and maintainable applications.  
-Components can represent anything from a simple button or form field to complex data-driven views.
-
 Configure Permissions
 ====================
 What are permissions?
@@ -14562,6 +14571,50 @@ After adding the permissions into the local environment, you can use them within
 ![permissions bookstore example](../_images/permissions_bookstore_example.png) 
 
 Figure 1\. Bookstore permissions within the Permission UI
+
+Glossary
+====================
+A collection of essential terms and concepts in the context of the **OneCX UI App Generator**.
+
+## [](#ui-app)UI App
+
+A UI App is a microfrontend application built using modern web technologies such as [Angular](https://angular.de/) or [React](https://reactjs.org/). Such application is designed to seamlessly integrate with the OneCX platform, providing a consistent user experience across different modules and features.  
+Within the OneCX ecosystem, a UI App typically serves as the **front-end interface** for users to interact with various functionalities offered by OneCX. It can be a standalone application or part of a larger suite of applications, and it communicates with backend services to fetch and display data, handle user inputs, and perform various operations.
+
+## [](#feature)Feature
+
+A feature is a specific functionality or capability within an application that serves a particular purpose or addresses a specific user need. It represents a distinct aspect of the application’s functionality and can be developed, tested, and deployed independently.
+
+In the context of the OneCX App Generator, a feature typically corresponds to a **feature module** in an [Angular](https://angular.de/) application, which encapsulates all the components, services, and state management related to that specific feature.
+
+When it is defined as `<Feature>`, please start the name of your entity with a capital letter, in other cases defined as `<feature>` use lowercase.
+
+## [](#feature-module)Feature Module
+
+A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application. It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.  
+In [Angular](https://angular.de/), feature modules are **NgModules** for the purpose of organizing code.
+
+## [](#resource)Entity / Resource
+
+An **entity** (**resource**) is a representation of a real-world object or concept that is relevant to the application’s domain. It typically corresponds to a data model that defines the structure and properties of the entity, as well as the operations that can be performed on it.  
+The name is usually equal to [<Feature> ](#feature).  
+The **entity/resource** is used in various places, e.g. for search results, details view, create and update requests. As it is shared, be cautious while making changes to it. If the **entity/resource** differs for different use cases, you can define multiple **entity/resources** in the [<Entity Schema> ](#entity-schema) and adjust the endpoints accordingly.
+
+## [](#entity-schema)Entity Schema
+
+An entity schema defines the structure of an **entity/resource**, including its properties and their types. It is used to ensure that the data for the entity is consistent and follows a defined format. The schema definition follows the OpenAPI specification. This is the basis for processing feature data, e.g., for searching, displaying, and modifying it.  
+At OneCX, we explicitly follow an **API-first approach**. In practice, this means that the [OpenAPI Specification](https://spec.openapis.org/oas/) file is created first, in which entities and the paths for requests/responses are described. The **OpenAPI** file serves as the basis for the implementation of the backend services and the frontend components.
+
+## [](#permission)Permission
+
+Permissions are a way **to control access** to certain features or actions within an application. They allow you to define who can perform specific actions based on their roles or other criteria. By configuring **permissions**, you can ensure that only authorized users can access sensitive data or perform critical operations, enhancing the security and integrity of your application.  
+The **permissions** are defined in the `values.yaml` file of the [Helm](https://helm.sh/) chart. This file contains a section for permissions where you can specify the actions that users can perform on different entities.  
+The `values.yaml` file is used by the OneCX permission operator during deployment to create the necessary permissions in the [Permission Management](../../onecx-permission/index.html).
+
+## [](#component)Component
+
+A Component is a reusable building block of the user interface in a UI Application. It encapsulates the structure, behavior, and presentation of a specific part of the UI, allowing developers to create modular and maintainable applications.  
+Components can represent anything from a simple button or form field to complex data-driven views.
 
 undefined
 ====================
@@ -18551,6 +18604,32 @@ undefined
 | [onecx.validator.values.mapping."mapping"](#onecx-validator%5Fonecx-validator-values-mapping-mapping) Key to parameter-name mapping Environment variable: ONECX\_VALIDATOR\_VALUES\_MAPPING\_\_MAPPING\_                                                                                                                                                       | Map<String,String> |                                                     |
 | [onecx.validator.size.template](#onecx-validator%5Fonecx-validator-size-template) Template for the constraint violations error message 6 parameters required: %1$s, %2$s, %3$s, %4$s, %5$d, %6$d %1$s = provider %2$s = key %3$s = parameter %4$s = message %5$d = min-size value %6$d = max-size value Environment variable: ONECX\_VALIDATOR\_SIZE\_TEMPLATE | string             | Parameter: %3$s Boundaries: %5$d Bytes - %6$d Bytes |
 
+OneCX UI Libraries
+====================
+`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
+
+This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
+
+## [](#overview)Overview
+
+| Library                                                                                  | Description                                                                                                     |
+| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
+| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
+| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
+| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
+| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
+| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
+| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
+| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
+| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
+| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
+| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
+| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
+| [**@onecx/build-utils**](libraries/build-utils.html)                                     | Provides build utilities for OneCX applications                                                                 |
+
+For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
+
 Browser Logging (debug-js)
 ====================
 OneCX UI libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
@@ -18697,32 +18776,6 @@ Some logs are intentionally high-volume and are separated into dedicated namespa
 * `@onecx/accelerator:Gatherer:<name>`
 
 These are excluded in the example above.
-
-OneCX UI Libraries
-====================
-`onecx-portal-ui-libs` is the umbrella term for all libraries in the OneCX ecosystem. The libraries are open source and can be found on [GitHub](https://github.com/onecx/onecx-portal-ui-libs).
-
-This documentation contains information about the libraries, how to install/use them, and how to contribute to the development. Additionally it contains instructions on how to set up a local development environment and testing the libraries in local projects.
-
-## [](#overview)Overview
-
-| Library                                                                                  | Description                                                                                                     |
-| ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| **@onecx/accelerator**                                                                   | Contains all framework independent accelerators                                                                 |
-| **@onecx/angular-accelerator**                                                           | Provides all angular related accelerators                                                                       |
-| **@onecx/angular-auth**                                                                  | Authentication services and components, providing Keycloak integration and user authentication management       |
-| [**@onecx/angular-integration-interface**](libraries/angular-integration-interface.html) | Integration services and interfaces for connecting Angular applications with the OneCX platform                 |
-| **@onecx/angular-remote-components**                                                     | Manages remote Angular components, enabling dynamic component loading and integration within OneCX applications |
-| **@onecx/angular-standalone-shell**                                                      | Provides the foundation for building portal applications using Angular’s standalone components                  |
-| **@onecx/angular-testing**                                                               | Contains testing utilities for OneCX applications                                                               |
-| **@onecx/angular-utils**                                                                 | Includes utility services and helper functions for Angular applications in the OneCX ecosystem                  |
-| **@onecx/angular-webcomponents**                                                         | Manages Angular webcomponents in OneCX applications, enabling component sharing                                 |
-| [**@onecx/integration-interface**](libraries/integration-interface.html)                 | Framework independent interfaces and type definitions for OneCX platform integration                            |
-| **@onecx/ngrx-accelerator**                                                              | Contains NgRx utilities and helpers for state management                                                        |
-| **@onecx/ngrx-integration-interface**                                                    | Integration services and utilities for integrating NgRx state management with OneCX platform services           |
-| [**@onecx/build-utils**](libraries/build-utils.html)                                     | Provides build utilities for OneCX applications                                                                 |
-
-For detailed guides on migrations, services and components, visit the [OneCX Portal UI Libraries guides](index.html).
 
 OneCX UI Libraries: Local Development
 ====================
@@ -21352,52 +21405,6 @@ This document aims to showcase how to manage InteractiveDataView Component.
 
 * [DataTableColumn](data-table-column.html)
 
-@onecx/angular-utils/cdk
-====================
-`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
-
-## [](#installation)Installation
-
-`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
-
-```sh
-npm i @onecx/angular-utils
-```
-
-## [](#api)API
-
-### [](#onecx-overlay-container)OnecxOverlayContainer
-
-A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
-  ]
-})
-export class RemoteModule {}
-```
-
-### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
-
-A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
-  ]
-})
-export class RemoteModule {}
-```
-
 undefined
 ====================
 ## [](#sharedLibraryConfig)Shared Library Configuration
@@ -21667,6 +21674,52 @@ module.exports = {
   ...webpackConfig,
   plugins: [...plugins, modifyMaterialPlugin]
 }
+```
+
+@onecx/angular-utils/cdk
+====================
+`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
+
+## [](#installation)Installation
+
+`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
+
+```sh
+npm i @onecx/angular-utils
+```
+
+## [](#api)API
+
+### [](#onecx-overlay-container)OnecxOverlayContainer
+
+A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
+
+### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
+
+A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
+  ]
+})
+export class RemoteModule {}
 ```
 
 Add Webpack Plugin for PrimeNG
@@ -28251,106 +28304,6 @@ With option **\-a** all images are updated, ignoring name filter. With option **
 ./update-images.sh  -a -c
 ```
 
-Migrate to v2
-====================
-| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-This guide highlights the key differences between OneCX Local Environment [v1](v1.html) and the current version, and explains how you can adapt your setup.
-
-## [](#general-changes)General Changes
-
-The v2 edition of OneCX Local Environment includes several improvements and new features compared to v1\. Some of the most significant changes include:
-
-* **Docker Compose project name**: The project name used in Docker Compose has been changed from `<current-directory>` to **onecx-local-env**. This affects the naming of networks, volumes and other Docker resources created by the compose file.
-* **Network rename**: The default network used by the services has been renamed from **example** to **onecx**.
-* **Service startup behavior**: In v1, some core services started automatically when running `docker compose up -d`, while additional services could be started using the two existing profiles: `all` and `parameters`. In v2, the system is fully profile-based, meaning that nothing starts by default when you run `docker compose up -d`. You must explicitly specify at least one profile to start the services. This allows for more fine-grained control over which services run.
-* **Script improvements**: All shell scripts have been improved to provide more functionality and better error handling. For example, the import script now includes options to specify which data to import, the edition of OneCX, secure authentication, tenant-specific imports, verbosity and skipping container checks. This allows for more flexibility and customization when importing data.
-* **Reorganized ENV files**: All environment variables are now located within the standard `./.env` file in the root of the version directory, instead of being scattered across different files.
-* **Security improvements**: Security can be optionally enabled on startup and during import. Security is now enabled by default for tenant-specific imports, and the import script automatically handles authentication and token retrieval for these imports. This means that once Docker services have been started with the security option enabled, all subsequent actions require an authenticated user. For example, an import operation must then be started with the `-s` option to succeed. This enhances the security of the environment and ensures that only authorized users can perform certain actions.
-
-## [](#network-rename)Network Rename
-
-v1
-
-The network that all services connected to was named **example**.
-
-v2
-
-In current version, the services use the **onecx** network within the compose file.  
-However, when the compose file is executed, Docker creates a network with the name format `<project_name>_default`. With **onecx** the complete network name is **onecx-local-env\_onecx**.  
-
-## [](#service-startup)Service Startup
-
-v1
-
-* Some core services started automatically when running: `docker compose up -d`
-* Additional services could be started using the two existing profiles: `all` and `parameters`.
-* This approach gave developers very little control over which apps were started, making it hard to, for example, run only a small subset of apps and one OneCX product.
-
-v2
-
-The system supports the compose profiles **all** and **base** (which includes all core services).  
-
-* **Nothing** starts by default when you run: `docker compose up -d`
-* You must explicitly specify at least one profile, for example:  
-Starting core services via compose profile `base`:  
-```bash  
-docker compose --profile base up -d  
-```
-
-| |  It is recommended to use the [Start Script](../scripts/start.html) for starting the environment, which handles profile selection and other options in a more user-friendly way.For details how to start OneCX in general see [Running Onecx](../run-onecx.html). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#data-import)Data Import
-
-v1
-
-The data import script had the sole purpose of sending data to services to trigger the import.  
-This caused issues if containers were not running, unhealthy, or still starting up.
-
-v2
-
-The import script now provides options to manage container states during the import process. By default, the script now:
-
-* Starts all required services.
-* Waits for them to become healthy and operational.
-* Imports the data.  
-If you want to manage container states manually, you can use the **\-x** option to skip checking running Docker services. This ensures the script does not start or stop any containers, allowing you to manage them manually.  
-Optionally you can also specify which data to import (**\-d**), enable secure authentication (**\-s**), specify tenant (**\-t**) for tenant-specific imports, and enable verbose output (**\-v**) for more details during the import process.  
-See [Import OneCX Data](../scripts/import.html) for more details on the available options and how to use the import script.
-
-## [](#env-files-and-variables)ENV Files and Variables
-
-v1
-
-Environment variables were located in multiple files in the root directory of the project, such as `.env`, `common.env`, `svc.env` and `bff.env`. This made it difficult to keep track of which variables were used for which version and services.
-
-v2
-
-All common project-related environment variables are now located in the standard compose environment file. This allows for better organization and scoped environment variables per edition.  
-Within the compose file of the edition, only the specific environment variables for each service are defined, either directly or via the **env\_file** directive.  
-At the beginning of the compose file (compose.yaml) are sections that define specific sets of variables for use in BFF or SVC services, with or without multi-tenancy:
-
-* **bff\_environment** ⇒ environment variables for BFF services
-* **svc\_single\_tenancy** ⇒ environment variables for SVC services **without** multi-tenancy
-* **svc\_multi\_tenancy** ⇒ environment variables for SVC services with **multi-tenancy**  
-This allows for better organization and easier management of environment variables, as well as clearer visibility of which variables are used for which services and editions. Use these variable when possible instead of defining new ones to ensure consistency across the compose file and services.
-
-Example of using environment variables in the compose file:
-
-```yaml
-services:
-  onecx-example-svc:
-    image: example-image:latest
-    container_name: onecx-example-svc
-    environment:
-      <<: *svc_multi_tenancy
-```
-
-| |  After reading all sections of this document you should be able to make all necessary adjustments to migrate from v1 to v2 of the OneCX Local Environment.Please make familiar with the current state of the OneCX Local Environment before proceeding. There are also functionality **to extend the environment** with custom services, see [Extend OneCX](../extend/extend.html) for more details. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
 Edition - v1
 ====================
 | |  Disclaimer This page was created for an older edition of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
@@ -28508,6 +28461,106 @@ OneCX Local Environment v1 mounts one global volume:
 * `postgres` — volume used by `postgresdb` to persist its data across container restarts.
 
 Additionally, some services (`traefik`, `postgresdb`, `pgadmin` and `keycloak-app`) mount local directories for initialization data.
+
+Migrate to v2
+====================
+| |  Disclaimer This page was created for an older version of OneCX Local Environment and may not reflect the current state of the project. It is kept for historical reference and to provide information for users who are still using v1, but it might contain outdated information. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+This guide highlights the key differences between OneCX Local Environment [v1](v1.html) and the current version, and explains how you can adapt your setup.
+
+## [](#general-changes)General Changes
+
+The v2 edition of OneCX Local Environment includes several improvements and new features compared to v1\. Some of the most significant changes include:
+
+* **Docker Compose project name**: The project name used in Docker Compose has been changed from `<current-directory>` to **onecx-local-env**. This affects the naming of networks, volumes and other Docker resources created by the compose file.
+* **Network rename**: The default network used by the services has been renamed from **example** to **onecx**.
+* **Service startup behavior**: In v1, some core services started automatically when running `docker compose up -d`, while additional services could be started using the two existing profiles: `all` and `parameters`. In v2, the system is fully profile-based, meaning that nothing starts by default when you run `docker compose up -d`. You must explicitly specify at least one profile to start the services. This allows for more fine-grained control over which services run.
+* **Script improvements**: All shell scripts have been improved to provide more functionality and better error handling. For example, the import script now includes options to specify which data to import, the edition of OneCX, secure authentication, tenant-specific imports, verbosity and skipping container checks. This allows for more flexibility and customization when importing data.
+* **Reorganized ENV files**: All environment variables are now located within the standard `./.env` file in the root of the version directory, instead of being scattered across different files.
+* **Security improvements**: Security can be optionally enabled on startup and during import. Security is now enabled by default for tenant-specific imports, and the import script automatically handles authentication and token retrieval for these imports. This means that once Docker services have been started with the security option enabled, all subsequent actions require an authenticated user. For example, an import operation must then be started with the `-s` option to succeed. This enhances the security of the environment and ensures that only authorized users can perform certain actions.
+
+## [](#network-rename)Network Rename
+
+v1
+
+The network that all services connected to was named **example**.
+
+v2
+
+In current version, the services use the **onecx** network within the compose file.  
+However, when the compose file is executed, Docker creates a network with the name format `<project_name>_default`. With **onecx** the complete network name is **onecx-local-env\_onecx**.  
+
+## [](#service-startup)Service Startup
+
+v1
+
+* Some core services started automatically when running: `docker compose up -d`
+* Additional services could be started using the two existing profiles: `all` and `parameters`.
+* This approach gave developers very little control over which apps were started, making it hard to, for example, run only a small subset of apps and one OneCX product.
+
+v2
+
+The system supports the compose profiles **all** and **base** (which includes all core services).  
+
+* **Nothing** starts by default when you run: `docker compose up -d`
+* You must explicitly specify at least one profile, for example:  
+Starting core services via compose profile `base`:  
+```bash  
+docker compose --profile base up -d  
+```
+
+| |  It is recommended to use the [Start Script](../scripts/start.html) for starting the environment, which handles profile selection and other options in a more user-friendly way.For details how to start OneCX in general see [Running Onecx](../run-onecx.html). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#data-import)Data Import
+
+v1
+
+The data import script had the sole purpose of sending data to services to trigger the import.  
+This caused issues if containers were not running, unhealthy, or still starting up.
+
+v2
+
+The import script now provides options to manage container states during the import process. By default, the script now:
+
+* Starts all required services.
+* Waits for them to become healthy and operational.
+* Imports the data.  
+If you want to manage container states manually, you can use the **\-x** option to skip checking running Docker services. This ensures the script does not start or stop any containers, allowing you to manage them manually.  
+Optionally you can also specify which data to import (**\-d**), enable secure authentication (**\-s**), specify tenant (**\-t**) for tenant-specific imports, and enable verbose output (**\-v**) for more details during the import process.  
+See [Import OneCX Data](../scripts/import.html) for more details on the available options and how to use the import script.
+
+## [](#env-files-and-variables)ENV Files and Variables
+
+v1
+
+Environment variables were located in multiple files in the root directory of the project, such as `.env`, `common.env`, `svc.env` and `bff.env`. This made it difficult to keep track of which variables were used for which version and services.
+
+v2
+
+All common project-related environment variables are now located in the standard compose environment file. This allows for better organization and scoped environment variables per edition.  
+Within the compose file of the edition, only the specific environment variables for each service are defined, either directly or via the **env\_file** directive.  
+At the beginning of the compose file (compose.yaml) are sections that define specific sets of variables for use in BFF or SVC services, with or without multi-tenancy:
+
+* **bff\_environment** ⇒ environment variables for BFF services
+* **svc\_single\_tenancy** ⇒ environment variables for SVC services **without** multi-tenancy
+* **svc\_multi\_tenancy** ⇒ environment variables for SVC services with **multi-tenancy**  
+This allows for better organization and easier management of environment variables, as well as clearer visibility of which variables are used for which services and editions. Use these variable when possible instead of defining new ones to ensure consistency across the compose file and services.
+
+Example of using environment variables in the compose file:
+
+```yaml
+services:
+  onecx-example-svc:
+    image: example-image:latest
+    container_name: onecx-example-svc
+    environment:
+      <<: *svc_multi_tenancy
+```
+
+| |  After reading all sections of this document you should be able to make all necessary adjustments to migrate from v1 to v2 of the OneCX Local Environment.Please make familiar with the current state of the OneCX Local Environment before proceeding. There are also functionality **to extend the environment** with custom services, see [Extend OneCX](../extend/extend.html) for more details. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 Add Webpack App UI Manually to OneCX
 ====================
@@ -29770,6 +29823,10 @@ undefined
 | [onecx.bookmark.default.url](#onecx-bookmark-svc%5Fonecx-bookmark-default-url) Default bookmark URL Environment variable: ONECX\_BOOKMARK\_DEFAULT\_URL                           | string  | https://github.com/onecx |
 | [onecx.bookmark.product-item-id](#onecx-bookmark-svc%5Fonecx-bookmark-product-item-id) Default bookmark URL Environment variable: ONECX\_BOOKMARK\_PRODUCT\_ITEM\_ID              | string  | PRODUCT\_BASE\_DOC\_URL  |
 
+undefined
+====================
+
+
 OneCX Bookmark Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-bookmark-bff/pkgs/container/onecx-bookmark-bff)
@@ -29887,10 +29944,6 @@ app:
         description: OneCX Bookmark Backend For Frontend
         name: OneCX Bookmark BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -30918,6 +30971,10 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
+undefined
+====================
+
+
 OneCX Help Backend Service
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -31021,10 +31078,6 @@ app:
         description: OneCX Help Backend Service
         name: OneCX Help SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -34437,10 +34490,6 @@ undefined
 ====================
 
 
-undefined
-====================
-
-
 OneCX Product Store Backend For Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-product-store-bff/pkgs/container/onecx-product-store-bff)
@@ -34554,6 +34603,10 @@ app:
         description: OneCX Product Store Backend For Frontend
         name: OneCX Product Store BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -36477,20 +36530,6 @@ app:
 
 undefined
 ====================
- Configuration property fixed at build time - All other configuration properties are overridable at runtime
-
-| Configuration property                                                                                                                                                                                        | Type    | Default |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
-| [onecx.tenant.default.no-claim.enabled](#onecx-tenant-svc%5Fonecx-tenant-default-no-claim-enabled) Enable or disable default no claim tenant Environment variable: ONECX\_TENANT\_DEFAULT\_NO\_CLAIM\_ENABLED | boolean | true    |
-| [onecx.tenant.default.no-claim.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-default-no-claim-tenant-id) Default no claim tenant ID Environment variable: ONECX\_TENANT\_DEFAULT\_NO\_CLAIM\_TENANT\_ID         | string  | default |
-| [onecx.tenant.default.enabled](#onecx-tenant-svc%5Fonecx-tenant-default-enabled) Enable or disable default tenant Environment variable: ONECX\_TENANT\_DEFAULT\_ENABLED                                       | boolean | true    |
-| [onecx.tenant.default.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-default-tenant-id) Default tenant ID Environment variable: ONECX\_TENANT\_DEFAULT\_TENANT\_ID                                               | string  | default |
-| [onecx.tenant.token.claim.org-id](#onecx-tenant-svc%5Fonecx-tenant-token-claim-org-id) Token claim ID of the organization ID Environment variable: ONECX\_TENANT\_TOKEN\_CLAIM\_ORG\_ID                       | string  | orgId   |
-| [onecx.tenant.resolver.default.enabled](#onecx-tenant-svc%5Fonecx-tenant-resolver-default-enabled) Enable or disable default tenant Environment variable: ONECX\_TENANT\_RESOLVER\_DEFAULT\_ENABLED           | boolean | true    |
-| [onecx.tenant.resolver.default.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-resolver-default-tenant-id) Default tenant ID Environment variable: ONECX\_TENANT\_RESOLVER\_DEFAULT\_TENANT\_ID                   | string  | default |
-
-undefined
-====================
 | Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
 | -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
 | tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
@@ -36516,6 +36555,20 @@ undefined
 | tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
 | onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+
+undefined
+====================
+ Configuration property fixed at build time - All other configuration properties are overridable at runtime
+
+| Configuration property                                                                                                                                                                                        | Type    | Default |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- |
+| [onecx.tenant.default.no-claim.enabled](#onecx-tenant-svc%5Fonecx-tenant-default-no-claim-enabled) Enable or disable default no claim tenant Environment variable: ONECX\_TENANT\_DEFAULT\_NO\_CLAIM\_ENABLED | boolean | true    |
+| [onecx.tenant.default.no-claim.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-default-no-claim-tenant-id) Default no claim tenant ID Environment variable: ONECX\_TENANT\_DEFAULT\_NO\_CLAIM\_TENANT\_ID         | string  | default |
+| [onecx.tenant.default.enabled](#onecx-tenant-svc%5Fonecx-tenant-default-enabled) Enable or disable default tenant Environment variable: ONECX\_TENANT\_DEFAULT\_ENABLED                                       | boolean | true    |
+| [onecx.tenant.default.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-default-tenant-id) Default tenant ID Environment variable: ONECX\_TENANT\_DEFAULT\_TENANT\_ID                                               | string  | default |
+| [onecx.tenant.token.claim.org-id](#onecx-tenant-svc%5Fonecx-tenant-token-claim-org-id) Token claim ID of the organization ID Environment variable: ONECX\_TENANT\_TOKEN\_CLAIM\_ORG\_ID                       | string  | orgId   |
+| [onecx.tenant.resolver.default.enabled](#onecx-tenant-svc%5Fonecx-tenant-resolver-default-enabled) Enable or disable default tenant Environment variable: ONECX\_TENANT\_RESOLVER\_DEFAULT\_ENABLED           | boolean | true    |
+| [onecx.tenant.resolver.default.tenant-id](#onecx-tenant-svc%5Fonecx-tenant-resolver-default-tenant-id) Default tenant ID Environment variable: ONECX\_TENANT\_RESOLVER\_DEFAULT\_TENANT\_ID                   | string  | default |
 
 undefined
 ====================
@@ -40499,6 +40552,10 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 * `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
 * `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
 
+undefined
+====================
+
+
 OneCX Workspace API Backend For Frontend
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -40593,10 +40650,6 @@ app:
         description: OneCX Workspace API Backend for Frontend
         name: OneCX Workspace API BFF
 ```
-
-undefined
-====================
-
 
 undefined
 ====================

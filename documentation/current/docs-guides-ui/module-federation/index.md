@@ -27,19 +27,19 @@ In OneCX, **Module Federation** is used to load microfrontends, expose reusable 
 Following are important concepts where module federation is involved:
 
 __Table 2\. Features__
-| Name                                                            | Description                                           |
-| --------------------------------------------------------------- | ----------------------------------------------------- |
-| [Preloaders](mf-preloaders.html)                                | Preloaders register Module Federation share scopes    |
-| [Shell router](mf-shell-router.html)                            | Shell router - dynamic content loading                |
-| [Dependency Sharing](mf-dependancy-sharing.html)                | Build-time and runtime negotiation of shared packages |
-| [Slot components](mf-slot-components.html)                      | Load remote modules or components in slots            |
-| [Custom Authentication Service](mf-authentication-service.html) | Implementation of a custom authentication service     |
+| Name                                             | Description                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| [Preloaders](mf-preloaders.html)                 | Preloaders register Module Federation share scopes    |
+| [Dependency Sharing](mf-dependancy-sharing.html) | Build-time and runtime negotiation of shared packages |
+| [Slot components](mf-slot-components.html)       | Load remote modules or components in slots            |
 
 ## [](#onecx-recommendations)OneCX Recommendations
 
 The following documents describe how to configure and use Module Federation in OneCX.
 
-| Name                                                             | Description                                                                |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends             |
-| [Application bootstrapping](application-bootstrapping.html)      | Describes how to bootstrap microfrontends content to use module federation |
+| Name                                                             | Description                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends |
+
+| |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
