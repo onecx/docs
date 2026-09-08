@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1977,234 +1693,289 @@ sudo update-ca-certificates
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
 
-OneCX Shell Integration
+OneCX API Guidelines
 ====================
-This section covers topics related to shell integration, including migration guides for different shell versions and best practices for integrating with the OneCX Shell.
+## [](#introduction)Introduction
 
-Migrate OneCX Shell from v2 to v3
-====================
-## [](#overview)Overview
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
 
-This document provides changes that need to be done to migrate from OneCX Shell v2 to v3\. The main changes include updates to the slot component layout and naming conventions, changes in the module federation approach and exposing the mf-manifest.json file.
+## [](#general-principles)General Principles
 
-## [](#supported-angular-versions)Supported Angular Versions
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
 
-Version 3 of the OneCX Shell introduces support for Angular 21 in addition to previous supported Angular 18 to 20 versions. Further information on Angular version support and compatibility for OneCX Shell can be found in the [Shell Version Documentation](../../onecx-shell-ui/onecx-shell-ui-docs.html#shell-version-information).
+## [](#api-versioning)API Versioning
 
-## [](#migration-steps)Migration Steps for v3
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
 
-### [](#slot-component-changes)1\. New Slot Component Layout and Namings
+## [](#resource-naming)Resource Naming
 
-Shell v3 introduces a new structured slot naming convention based on layout regions (header, sub-header, body-start, body-header, body-footer, body-end, footer), each with `start`, `center`, and `end` sub-regions. The old slot names are deprecated in favor of this new structure. Below is a visual representation of the new shell layout with the area names:
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
 
-![Shell v3 Layout with area names](../_images/shell_layout_v3.png) 
+## [](#mandatory-schema-fields)Mandatory Schema Fields
 
-The deprecated slot names continue to work via automatic remapping to the new equivalents, but **it is recommended to migrate to the new slot names** shown in the table below.
+### [](#general)General
 
-__Table 1\. Slot name migration mapping__
-| Old Slot Name (deprecated)  | New Slot Name                  |
-| --------------------------- | ------------------------------ |
-| onecx-shell-vertical-menu   | onecx-shell-body-start.start   |
-| onecx-shell-horizontal-menu | onecx-shell-header.center      |
-| onecx-shell-header-left     | onecx-shell-header.start       |
-| onecx-shell-header-right    | onecx-shell-header.end         |
-| onecx-shell-sub-header      | onecx-shell-body-header.center |
-| onecx-shell-footer          | onecx-shell-body-footer.start  |
-| onecx-page-footer           | onecx-shell-body-footer.start  |
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
 
-Additionally, shell v3 introduces **new slots for enhanced layout flexibility**. These new slots allow for more granular content placement across different regions, which provides better organization for content placement within the shell.
+Example using mandatory schema fields 
 
-**Click here to view all new slots in v3** 
-
-| Group                          | Slot Name                                                                                                           | Description                                                                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Header                         | onecx-shell-header.start                                                                                            | Start region of the shell header (e.g. logo)                                                                                 |
-| onecx-shell-header.center      | Center region of the shell header (e.g. horizontal menu, search bar)                                                |                                                                                                                              |
-| onecx-shell-header.end         | End region of the shell header (e.g. user profile)                                                                  |                                                                                                                              |
-| Sub-Header                     | onecx-shell-sub-header.start                                                                                        | Start region of the shell sub header (e.g. bookmarks)                                                                        |
-| onecx-shell-sub-header.center  | Center region of the shell sub header (e.g. banner bar)                                                             |                                                                                                                              |
-| onecx-shell-sub-header.end     | End region of the shell sub header (e.g. action buttons)                                                            |                                                                                                                              |
-| Body Start                     | onecx-shell-body-start.start                                                                                        | Start region of the shell body start (e.g. quick links)                                                                      |
-| onecx-shell-body-start.center  | Center region of the shell body start (e.g. sidebar navigation)                                                     |                                                                                                                              |
-| onecx-shell-body-start.end     | End region of the shell body start (e.g. action buttons)                                                            |                                                                                                                              |
-| Body Header                    | onecx-shell-body-header.start                                                                                       | Start region of the shell body header (e.g. breadcrumbs)                                                                     |
-| onecx-shell-body-header.center | Center region of the shell body header (e.g. title)                                                                 |                                                                                                                              |
-| onecx-shell-body-header.end    | End region of the shell body header (e.g. action buttons)                                                           |                                                                                                                              |
-| Body Footer                    | onecx-shell-body-footer.start                                                                                       | Start region of the shell body footer (e.g. info)                                                                            |
-| onecx-shell-body-footer.center | Center region of the shell body footer (e.g. comment section)                                                       |                                                                                                                              |
-| onecx-shell-body-footer.end    | End region of the shell body footer (e.g. action buttons)                                                           |                                                                                                                              |
-| Body End                       | onecx-shell-body-end.start                                                                                          | Start region of the shell body end (e.g. quick links)                                                                        |
-| onecx-shell-body-end.center    | Center region of the shell body end (e.g. sidebar navigation)                                                       |                                                                                                                              |
-| onecx-shell-body-end.end       | End region of the shell body end (e.g. action buttons)                                                              |                                                                                                                              |
-| Footer                         | onecx-shell-footer.start                                                                                            | Start region of the shell footer (e.g. logo)                                                                                 |
-| onecx-shell-footer.center      | Center region of the shell footer (e.g. footer menu)                                                                |                                                                                                                              |
-| onecx-shell-footer.end         | End region of the shell footer (e.g. version info)                                                                  |                                                                                                                              |
-| Extensions                     | onecx-shell-extensions                                                                                              | For providing additional functions that will not be displayed inside the slot (e.g. toast messages, cookie banner)           |
-| Additional                     | onecx-search-config                                                                                                 | Manage search configurations on search pages via assigned remote components. Defined in shell — do not redefine in products. |
-| onecx-column-group-selection   | Manage table column group selection via assigned remote components. Defined in shell — do not redefine in products. |                                                                                                                              |
-
-### [](#module-federation-approach)2\. New Module Federation Approach
-
-Compared to v2, Shell v3 introduces these module federation changes:
-
-* Runtime loading uses [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced) instead of the previous `@angular-architects/module-federation` runtime approach.
-* Nx workspaces use Nx module federation files (`module-federation.config.ts` \+ `webpack.config.ts`) instead of legacy plugin-only `webpack.config.js` setup.
-* Shell integration is share-scope aware (routes and preloaders).
-
-#### [](#recommended-mf-approach)Recommended approach for shell v3
-
-Shell v3 is built on [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced). It is recommended to use build tools that base on `@module-federation/enhanced` from shell v3.
-
-Use this decision guide for the module federation approach selection:
-
-* Nx applications: use [@nx/angular/module-federation](https://www.npmjs.com/package/@nx/angular/module-federation) (see [Example 1](#example-nx-mf))
-* Non-Nx applications: use direct [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced) (recommended, see [Example 2](#example-enhanced-mf))
-* Legacy approach: [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) with explicit share-scope handling (see [Example 3](#example-legacy-mf))
-
-| |  Required shareScope mapping (Angular 21) Use explicit share scopes: Angular 18/19/20 remotes: default Angular 21 remotes: angular\_21 This mapping is required so the shell resolves shared packages from the correct scope. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-#### [](#example-nx-mf)Example 1: using [@nx/angular/module-federation](https://www.npmjs.com/package/@nx/angular/module-federation) (Nx applications only)
-
-This approach uses `@module-federation/enhanced` under the hood via the **Nx** build integration and should be used only in Nx-based applications. The configuration is split into two files:
-
-* `module-federation.config.ts` — declares the app name, what it exposes, and how dependencies are shared. Using `getOneCXSharedRecommendations` from `@onecx/accelerator` is recommended to automatically apply the correct sharing settings for OneCX packages.
-* `webpack.config.ts` — applies the module federation config to the base webpack config and sets the `shareScope`. For Angular 21 remotes, `shareScope: 'angular_21'` is required here. Additional webpack customization (plugins, output, parser settings) can be added to the returned config object.
-
-module-federation.config.ts
-
-```ts
-import { ModuleFederationConfig } from '@nx/module-federation'
-import { getOneCXSharedRecommendations } from '@onecx/accelerator'
-
-const config: ModuleFederationConfig = {
-  name: 'my-app',
-  exposes: {
-    './RemoteModule': 'src/main.ts'
-  },
-  shared: (libraryName, sharedConfig) => {
-    return getOneCXSharedRecommendations(libraryName, sharedConfig)
-  }
-}
-
-export default config
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
 ```
 
-webpack.config.ts
+### [](#endpoints)Endpoints
 
-```ts
-import { Configuration } from 'webpack'
-import { withModuleFederation } from '@nx/angular/module-federation'
-import config from './module-federation.config'
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
 
-export default async function (baseConfig: Configuration) {
-  const withMf = await withModuleFederation(config, {
-    shareScope: 'angular_21' // required for Angular 21 remotes
-  })
+For response description please use the following pattern: `{Resource} {operation} {status}`
 
-  return withMf(baseConfig) // additional custom webpack configuration can be added here
-}
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
 ```
 
-#### [](#example-enhanced-mf)Example 2: using direct [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced)
+Examples
 
-Use `@module-federation/enhanced` for runtime explicitly in shell-side loading code. This is the recommended approach for non-Nx applications:
+CreateThemeRequest  
+GetUserResponse
 
-The configuration is split into two files:
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-* `module-federation.config.ts` — declares the app name, what it exposes, and how dependencies are shared. Using `getOneCXSharedRecommendations` from `@onecx/accelerator` is recommended to automatically apply the correct sharing settings for OneCX packages. For Angular 21 remotes, `shareScope: 'angular_21'` is required here..
-* `webpack.config.ts` — extends the base webpack configuration by registering the ModuleFederationPlugin and sets the `shareScope`. Additional webpack customization (plugins, output, parser settings) can be added to the returned config object.
+## [](#http-methods)HTTP Methods
 
-module-federation.config.js
+### [](#get)GET
 
-```ts
-const { getOneCXSharedRecommendations } = require('@onecx/accelerator');
-const { dependencies } = require('./package.json');
-
-const sharedEntries = {};
-for (const libName of Object.keys(dependencies)) {
-  const result = getOneCXSharedRecommendations(libName, {
-    requiredVersion: dependencies[libName],
-    shareScope: 'angular_21',
-  });
-  if (result !== false) {
-    sharedEntries[libName] = result;
-  }
-}
-
-module.exports = {
-  name: 'my-app',
-  filename: 'remoteEntry.js',
-  library: { type: 'module' },
-  exposes: {
-    './RemoteModule': 'src/remote-main.ts',
-  },
-  shared: sharedEntries,
-  shareScope: 'angular_21',
-};
+```yml
+GET /{apiVersion}/{resources}/{id}
 ```
 
-webpack.config.js
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
 
-```ts
-const { ModuleFederationPlugin } = require('@module-federation/enhanced/webpack');
-const webpack = require('webpack');
-const isProduction = process.env.NODE_ENV === 'production';
-const mfConfig = require('./module-federation.config');
+Example
 
-module.exports = {
-  devServer: { allowedHosts: 'all' },
-  plugins: [
-    new ModuleFederationPlugin(mfConfig),
-    new webpack.DefinePlugin({ ngDevMode: JSON.stringify(!isProduction) }),
-  ],
-  output: { uniqueName: 'my-app', publicPath: 'auto' },
-  module: { parser: { javascript: { importMeta: false } } },
-  experiments: { topLevelAwait: true, outputModule: true },
-  optimization: { runtimeChunk: false, splitChunks: false },
-};
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
 ```
 
-#### [](#example-legacy-mf)Example 3: using legacy [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation)
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
 
-This can still be used as a legacy variant, but for Angular 21 the `shareScope` must be set in the individual shared package definitions and also at the top-level module federation configuration.
+### [](#post)POST
 
-Example `webpack.config.js` fragment
-
-```javascript
-const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
-
-const config = withModuleFederationPlugin({
-  //name, filename, exposes, etc.
-  shared: share({
-    '@angular/core': {
-      requiredVersion: 'auto',
-      includeSecondaries: true,
-      shareScope: 'angular_21',
-    },
-    // other shared packages
-  }),
-  shareScope: 'angular_21',
-})
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
 ```
 
-### [](#mf-manifest)3\. Exposing mf-manifest.json file
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
 
-With the migration to `@module-federation/enchanced` the build output includes a `mf-manifest.json` file that contains metadata about the exposed modules and their dependencies. It is recommended to expose this file in the deployed application to enable better integration and compatibility with the OneCX Shell v3.
+#### [](#search)Search
 
-For that the applications `values.yaml` should include the following configuration:
+* To support pagination include the following mandatory criteria:
 
-Example configuration to expose mf-manifest.json
-
-```yaml
----
-    microfrontend:
-      enabled: true
-      entrySuffix: ""mf-manifest.json""
-      spec:
-        shareScope: 'angular_21'
----
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
 ```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -2638,6 +2409,235 @@ The Workspace avoids tight coupling with individual apps. Instead, it relies on 
 * OneCX Portal UI Libs: shared components and styles used by the Workspace UI.
 * OneCX Theme: branding and theming across apps and workspaces.
 * OneCX IAM and Tenant: authentication, authorization, and tenant scoping for users.
+
+OneCX Shell Integration
+====================
+This section covers topics related to shell integration, including migration guides for different shell versions and best practices for integrating with the OneCX Shell.
+
+Migrate OneCX Shell from v2 to v3
+====================
+## [](#overview)Overview
+
+This document provides changes that need to be done to migrate from OneCX Shell v2 to v3\. The main changes include updates to the slot component layout and naming conventions, changes in the module federation approach and exposing the mf-manifest.json file.
+
+## [](#supported-angular-versions)Supported Angular Versions
+
+Version 3 of the OneCX Shell introduces support for Angular 21 in addition to previous supported Angular 18 to 20 versions. Further information on Angular version support and compatibility for OneCX Shell can be found in the [Shell Version Documentation](../../onecx-shell-ui/onecx-shell-ui-docs.html#shell-version-information).
+
+## [](#migration-steps)Migration Steps for v3
+
+### [](#slot-component-changes)1\. New Slot Component Layout and Namings
+
+Shell v3 introduces a new structured slot naming convention based on layout regions (header, sub-header, body-start, body-header, body-footer, body-end, footer), each with `start`, `center`, and `end` sub-regions. The old slot names are deprecated in favor of this new structure. Below is a visual representation of the new shell layout with the area names:
+
+![Shell v3 Layout with area names](../_images/shell_layout_v3.png) 
+
+The deprecated slot names continue to work via automatic remapping to the new equivalents, but **it is recommended to migrate to the new slot names** shown in the table below.
+
+__Table 1\. Slot name migration mapping__
+| Old Slot Name (deprecated)  | New Slot Name                  |
+| --------------------------- | ------------------------------ |
+| onecx-shell-vertical-menu   | onecx-shell-body-start.start   |
+| onecx-shell-horizontal-menu | onecx-shell-header.center      |
+| onecx-shell-header-left     | onecx-shell-header.start       |
+| onecx-shell-header-right    | onecx-shell-header.end         |
+| onecx-shell-sub-header      | onecx-shell-body-header.center |
+| onecx-shell-footer          | onecx-shell-body-footer.start  |
+| onecx-page-footer           | onecx-shell-body-footer.start  |
+
+Additionally, shell v3 introduces **new slots for enhanced layout flexibility**. These new slots allow for more granular content placement across different regions, which provides better organization for content placement within the shell.
+
+**Click here to view all new slots in v3** 
+
+| Group                          | Slot Name                                                                                                           | Description                                                                                                                  |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Header                         | onecx-shell-header.start                                                                                            | Start region of the shell header (e.g. logo)                                                                                 |
+| onecx-shell-header.center      | Center region of the shell header (e.g. horizontal menu, search bar)                                                |                                                                                                                              |
+| onecx-shell-header.end         | End region of the shell header (e.g. user profile)                                                                  |                                                                                                                              |
+| Sub-Header                     | onecx-shell-sub-header.start                                                                                        | Start region of the shell sub header (e.g. bookmarks)                                                                        |
+| onecx-shell-sub-header.center  | Center region of the shell sub header (e.g. banner bar)                                                             |                                                                                                                              |
+| onecx-shell-sub-header.end     | End region of the shell sub header (e.g. action buttons)                                                            |                                                                                                                              |
+| Body Start                     | onecx-shell-body-start.start                                                                                        | Start region of the shell body start (e.g. quick links)                                                                      |
+| onecx-shell-body-start.center  | Center region of the shell body start (e.g. sidebar navigation)                                                     |                                                                                                                              |
+| onecx-shell-body-start.end     | End region of the shell body start (e.g. action buttons)                                                            |                                                                                                                              |
+| Body Header                    | onecx-shell-body-header.start                                                                                       | Start region of the shell body header (e.g. breadcrumbs)                                                                     |
+| onecx-shell-body-header.center | Center region of the shell body header (e.g. title)                                                                 |                                                                                                                              |
+| onecx-shell-body-header.end    | End region of the shell body header (e.g. action buttons)                                                           |                                                                                                                              |
+| Body Footer                    | onecx-shell-body-footer.start                                                                                       | Start region of the shell body footer (e.g. info)                                                                            |
+| onecx-shell-body-footer.center | Center region of the shell body footer (e.g. comment section)                                                       |                                                                                                                              |
+| onecx-shell-body-footer.end    | End region of the shell body footer (e.g. action buttons)                                                           |                                                                                                                              |
+| Body End                       | onecx-shell-body-end.start                                                                                          | Start region of the shell body end (e.g. quick links)                                                                        |
+| onecx-shell-body-end.center    | Center region of the shell body end (e.g. sidebar navigation)                                                       |                                                                                                                              |
+| onecx-shell-body-end.end       | End region of the shell body end (e.g. action buttons)                                                              |                                                                                                                              |
+| Footer                         | onecx-shell-footer.start                                                                                            | Start region of the shell footer (e.g. logo)                                                                                 |
+| onecx-shell-footer.center      | Center region of the shell footer (e.g. footer menu)                                                                |                                                                                                                              |
+| onecx-shell-footer.end         | End region of the shell footer (e.g. version info)                                                                  |                                                                                                                              |
+| Extensions                     | onecx-shell-extensions                                                                                              | For providing additional functions that will not be displayed inside the slot (e.g. toast messages, cookie banner)           |
+| Additional                     | onecx-search-config                                                                                                 | Manage search configurations on search pages via assigned remote components. Defined in shell — do not redefine in products. |
+| onecx-column-group-selection   | Manage table column group selection via assigned remote components. Defined in shell — do not redefine in products. |                                                                                                                              |
+
+### [](#module-federation-approach)2\. New Module Federation Approach
+
+Compared to v2, Shell v3 introduces these module federation changes:
+
+* Runtime loading uses [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced) instead of the previous `@angular-architects/module-federation` runtime approach.
+* Nx workspaces use Nx module federation files (`module-federation.config.ts` \+ `webpack.config.ts`) instead of legacy plugin-only `webpack.config.js` setup.
+* Shell integration is share-scope aware (routes and preloaders).
+
+#### [](#recommended-mf-approach)Recommended approach for shell v3
+
+Shell v3 is built on [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced). It is recommended to use build tools that base on `@module-federation/enhanced` from shell v3.
+
+Use this decision guide for the module federation approach selection:
+
+* Nx applications: use [@nx/angular/module-federation](https://www.npmjs.com/package/@nx/angular/module-federation) (see [Example 1](#example-nx-mf))
+* Non-Nx applications: use direct [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced) (recommended, see [Example 2](#example-enhanced-mf))
+* Legacy approach: [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation) with explicit share-scope handling (see [Example 3](#example-legacy-mf))
+
+| |  Required shareScope mapping (Angular 21) Use explicit share scopes: Angular 18/19/20 remotes: default Angular 21 remotes: angular\_21 This mapping is required so the shell resolves shared packages from the correct scope. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+#### [](#example-nx-mf)Example 1: using [@nx/angular/module-federation](https://www.npmjs.com/package/@nx/angular/module-federation) (Nx applications only)
+
+This approach uses `@module-federation/enhanced` under the hood via the **Nx** build integration and should be used only in Nx-based applications. The configuration is split into two files:
+
+* `module-federation.config.ts` — declares the app name, what it exposes, and how dependencies are shared. Using `getOneCXSharedRecommendations` from `@onecx/accelerator` is recommended to automatically apply the correct sharing settings for OneCX packages.
+* `webpack.config.ts` — applies the module federation config to the base webpack config and sets the `shareScope`. For Angular 21 remotes, `shareScope: 'angular_21'` is required here. Additional webpack customization (plugins, output, parser settings) can be added to the returned config object.
+
+module-federation.config.ts
+
+```ts
+import { ModuleFederationConfig } from '@nx/module-federation'
+import { getOneCXSharedRecommendations } from '@onecx/accelerator'
+
+const config: ModuleFederationConfig = {
+  name: 'my-app',
+  exposes: {
+    './RemoteModule': 'src/main.ts'
+  },
+  shared: (libraryName, sharedConfig) => {
+    return getOneCXSharedRecommendations(libraryName, sharedConfig)
+  }
+}
+
+export default config
+```
+
+webpack.config.ts
+
+```ts
+import { Configuration } from 'webpack'
+import { withModuleFederation } from '@nx/angular/module-federation'
+import config from './module-federation.config'
+
+export default async function (baseConfig: Configuration) {
+  const withMf = await withModuleFederation(config, {
+    shareScope: 'angular_21' // required for Angular 21 remotes
+  })
+
+  return withMf(baseConfig) // additional custom webpack configuration can be added here
+}
+```
+
+#### [](#example-enhanced-mf)Example 2: using direct [@module-federation/enhanced](https://www.npmjs.com/package/@module-federation/enhanced)
+
+Use `@module-federation/enhanced` for runtime explicitly in shell-side loading code. This is the recommended approach for non-Nx applications:
+
+The configuration is split into two files:
+
+* `module-federation.config.ts` — declares the app name, what it exposes, and how dependencies are shared. Using `getOneCXSharedRecommendations` from `@onecx/accelerator` is recommended to automatically apply the correct sharing settings for OneCX packages. For Angular 21 remotes, `shareScope: 'angular_21'` is required here..
+* `webpack.config.ts` — extends the base webpack configuration by registering the ModuleFederationPlugin and sets the `shareScope`. Additional webpack customization (plugins, output, parser settings) can be added to the returned config object.
+
+module-federation.config.js
+
+```ts
+const { getOneCXSharedRecommendations } = require('@onecx/accelerator');
+const { dependencies } = require('./package.json');
+
+const sharedEntries = {};
+for (const libName of Object.keys(dependencies)) {
+  const result = getOneCXSharedRecommendations(libName, {
+    requiredVersion: dependencies[libName],
+    shareScope: 'angular_21',
+  });
+  if (result !== false) {
+    sharedEntries[libName] = result;
+  }
+}
+
+module.exports = {
+  name: 'my-app',
+  filename: 'remoteEntry.js',
+  library: { type: 'module' },
+  exposes: {
+    './RemoteModule': 'src/remote-main.ts',
+  },
+  shared: sharedEntries,
+  shareScope: 'angular_21',
+};
+```
+
+webpack.config.js
+
+```ts
+const { ModuleFederationPlugin } = require('@module-federation/enhanced/webpack');
+const webpack = require('webpack');
+const isProduction = process.env.NODE_ENV === 'production';
+const mfConfig = require('./module-federation.config');
+
+module.exports = {
+  devServer: { allowedHosts: 'all' },
+  plugins: [
+    new ModuleFederationPlugin(mfConfig),
+    new webpack.DefinePlugin({ ngDevMode: JSON.stringify(!isProduction) }),
+  ],
+  output: { uniqueName: 'my-app', publicPath: 'auto' },
+  module: { parser: { javascript: { importMeta: false } } },
+  experiments: { topLevelAwait: true, outputModule: true },
+  optimization: { runtimeChunk: false, splitChunks: false },
+};
+```
+
+#### [](#example-legacy-mf)Example 3: using legacy [@angular-architects/module-federation](https://www.npmjs.com/package/@angular-architects/module-federation)
+
+This can still be used as a legacy variant, but for Angular 21 the `shareScope` must be set in the individual shared package definitions and also at the top-level module federation configuration.
+
+Example `webpack.config.js` fragment
+
+```javascript
+const { share, withModuleFederationPlugin } = require('@angular-architects/module-federation/webpack')
+
+const config = withModuleFederationPlugin({
+  //name, filename, exposes, etc.
+  shared: share({
+    '@angular/core': {
+      requiredVersion: 'auto',
+      includeSecondaries: true,
+      shareScope: 'angular_21',
+    },
+    // other shared packages
+  }),
+  shareScope: 'angular_21',
+})
+```
+
+### [](#mf-manifest)3\. Exposing mf-manifest.json file
+
+With the migration to `@module-federation/enchanced` the build output includes a `mf-manifest.json` file that contains metadata about the exposed modules and their dependencies. It is recommended to expose this file in the deployed application to enable better integration and compatibility with the OneCX Shell v3.
+
+For that the applications `values.yaml` should include the following configuration:
+
+Example configuration to expose mf-manifest.json
+
+```yaml
+---
+    microfrontend:
+      enabled: true
+      entrySuffix: ""mf-manifest.json""
+      spec:
+        shareScope: 'angular_21'
+---
+```
 
 Microfrontend Bootstrapping
 ====================
@@ -6390,7 +6390,7 @@ Details about the usage can be found in the [PortalMessageService documentation]
 
 Assets
 ====================
-In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which is described per-technology on the Recommended Setup how-to pages.
+In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which will be added per-technology on the Recommended Setup how-to pages once they are published.
 
 ## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
 
@@ -6409,7 +6409,7 @@ The same principle applies in both directions:
 
 OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
 
-The exact build configuration — how to declare the assets of a given library in an Angular or React application — is described on the Recommended Setup **Expose Library Assets** page for each technology. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
+The exact build configuration — how to declare the assets of a given library in an Angular or React application — will be described on the Recommended Setup **Expose Library Assets** page for each technology once that guidance is published. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
 
 ### [](#translation-assets)Translation assets (required)
 
@@ -6425,17 +6425,16 @@ An application should also expose its own assets so the shell can apply them whe
 
 In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
 
-Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — is described on the Recommended Setup **Expose Component Styles** page.
+Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — will be described on the Recommended Setup **Expose Component Styles** page once that guidance is published.
 
-Note the boundary with the **Style Isolation** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
+Note the boundary with the **[Style Isolation](style-isolation.html)** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
 
 ## [](#related)Related
 
 | |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-| |  A link to the **Style Isolation** concept page will be added here once that page is published — it owns the rules for what belongs in an application’s styles.css and how it is scoped. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+* [Style Isolation](style-isolation.html) — rules for what belongs in an application’s `styles.css` and how the platform scopes it.
 
 | |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -6588,6 +6587,69 @@ The rest of the URL path should be handled by the application itself. In this ca
 
 | |  Once the Recommended Setup **Adapt Routing** page is published, link it here as the practical step-by-step how-to (see internal-tasks#607). |
 | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Style Isolation
+====================
+In OneCX, every application’s styles are confined to the DOM region that application renders into. This page is a technology-agnostic overview of the rules OneCX places on application styles and why they exist; it does not cover how to publish `styles.css` in the first place — that mechanic is owned by [Assets](assets.html) and, per technology, by the Recommended Setup **Expose Component Styles** page.
+
+## [](#why-style-isolation)Why style isolation matters
+
+A single OneCX page can render content from many applications at once: the shell’s own interface (its header, navigation, and menus), the active microfrontend, and any number of remote components from other applications, all in the same document. If every application’s stylesheet applied globally, a rule written by one team could silently repaint another team’s UI, the shell’s navigation, or vice versa — the kind of cross-application breakage that is hard to trace back to its source.
+
+To prevent this, OneCX confines each application’s styles to only the DOM elements that belong to that application. An application’s stylesheet renders that application correctly, and has no visible effect anywhere else on the page — including on other microfrontends, other remote components, and the shell itself.
+
+## [](#how-isolation-is-enforced)How isolation is enforced
+
+Style isolation is not a convention applications are trusted to follow — the platform enforces it structurally. When the shell loads an application’s `styles.css`, it wraps the stylesheet in a CSS scoping boundary tied to the DOM region that application’s content occupies on the page. Any selector in that stylesheet is only ever evaluated against elements inside that region; it cannot match, and therefore cannot affect, anything outside it (the shell’s own interface, another microfrontend, another remote component). If an application’s content is itself hosting a remote component from a **different** application, that boundary also stops at the nested content’s edge, so a parent application’s styles cannot leak down into a remote component it merely embeds.
+
+One consequence of this is that a `:root` selector in `styles.css` does not do what it would in a standalone page. Instead of targeting the document root, it is automatically rewritten to target the boundary of the application’s own DOM region — so CSS custom properties an application defines under `:root` are available throughout its own content, but are not visible to, and do not override, any other application’s or the shell’s custom properties.
+
+## [](#the-styles-css-contract)The styles.css contract
+
+`styles.css` is the **only** sanctioned location for an application’s own styles. It is the single file the platform loads on the application’s behalf and confines to the application’s DOM region. How `styles.css` is exposed and loaded is described on [Assets](assets.html). Any CSS an application needs beyond its components' own scoped styles belongs in it, and nowhere else:
+
+* Do not rely on stylesheets injected outside of this mechanism (for example a `<link>` or `<style>` tag added directly to the document by application code) to style your application — the platform has no way to confine or clean up styles it did not load itself.
+* Do not assume rules in `styles.css` apply outside your application’s own DOM region. The platform actively confines them to it.
+
+## [](#what-belongs-in-styles-css)What belongs in styles.css
+
+Rules in `styles.css` should only ever describe the appearance of elements that belong to your own application: your components' host elements, elements they render, and CSS custom properties your application defines for its own use. Selectors can be as broad as an element or attribute selector (for example `button { …​ }`) — broad selectors are safe here because the platform automatically confines them to your application’s DOM region; they simply never match anything outside it.
+
+## [](#anti-patterns-to-avoid)Anti-patterns to avoid
+
+Because `styles.css` rules are confined to your application’s own DOM region, any rule written to reach **outside** that region has no effect — it is not a matter of style but simply does not do anything, which makes these patterns confusing to debug rather than merely discouraged:
+
+* **Targeting document-level elements**, such as `body` or `html`. These elements sit outside every application’s DOM region, so such rules never match.
+* **Using the universal selector (`*`) deliberately** to apply an application-wide reset inside your own DOM region. The selector still matches only your application’s descendants, so it can affect the whole application but cannot affect the shell or another application.
+* **Targeting classes or IDs you do not own** — for example a selector that happens to match a class name used by another application’s components, the shell’s own interface, or a shared library, in the hope of overriding its appearance. Even if the name matches, the rule is confined to your own DOM region and will not reach that content.
+* **Relying on `styles.css` to theme other applications or the shell.** Cross-application appearance (colors, fonts, spacing that should be consistent platform-wide) is a [theming](#documentation:docs-guides-ui:angular/theming.adoc) concern, expressed through shared theme variables, not through application styles reaching into content you do not own.
+
+/* Anti-pattern: body and html are outside every application's DOM region */
+body {
+    background-color: #f5f5f5;
+}
+
+/* Correct: applies a reset across your application's own descendants only */
+* {
+    box-sizing: border-box;
+}
+
+/* Anti-pattern: has no effect even if the class name matches another
+   application's markup — the rule is confined to your own DOM region */
+.shared-card {
+    border: none;
+}
+
+/* Correct: styles your own component's elements */
+.my-app-summary-panel {
+    border: 1px solid var(--primary-color);
+}
+
+## [](#related)Related
+
+* [Assets](assets.html) — owns the **what** and **how** of exposing `styles.css` so the shell can load it; this page owns the **rules** for what belongs inside it once exposed.
+* [Theming](#documentation:docs-guides-ui:angular/theming.adoc) — the mechanism for platform-wide, cross-application appearance (theme variables), as opposed to an individual application’s own styles.
+* [Style scoping implementation deep dive](https://github.com/onecx/onecx-portal-ui-libs/blob/main/dev-docs/styles/scoping.adoc) — implementation details for the shell’s CSS scoping boundary.
 
 Theming
 ====================
@@ -7515,173 +7577,64 @@ Module Federation and Share Scopes
 ====================
 Remote package sharing and share scopes are part of Required Setup. See [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html).
 
-NgRX
+NgRx
 ====================
-This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
+## [](#what-is-ngrx)What Is NgRx?
 
-OneCx uses NgRx to manage the state of an applet. The communication with the store is done by smart components, usually by the page components.
+* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
+* Core building blocks:  
+   * Actions: Plain events that describe what happened.  
+   * Reducers: Pure functions that compute new state from the previous state and an action.  
+   * Selectors: Memoized queries to read and derive data from state.  
+   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
+   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
 
-## [](#guidelines-for-ngrx)Guidelines for NgRx
+## [](#overview)Overview
 
-* An action is only dispatched at one place.
-* Actions are never dispatched conditionally.
-* For every component that is getting data from the store there is an interface for the viewmodel that is called like the component class but with postfix "ViewModel".
-* For every component that is getting data from the store there is a selector for the viewmodel that is called like the viewmodel interface but with the prefix "select".
-* Every component that is getting data from the store selects only the viewmodel via the viewmodel selector. The observable that is storing the result is called `viewModel$`.
-* Every HTML file of a component that is getting data from the store has an outer ng-container tag that is using the ngrxLet directive e.g. `*ngrxLet="viewModel$ as vm"`.
-* The store never stores data that can be computed from other data in the store. This is done in selectors.
-* Selectors are only accessing the data on top-level of the part of the store that is past to it.
-* Every feature module has its own feature store.
-* The store is the model of the applet and is modeled like that. Data that is relevant for all pages in the feature are stored on top-level. Data that is only relevant for one page is stored in a subsection of the store which is called like the page.
-* All HTTP calls are done in effects.
-* Routing or changing the URL parameters via the angular router is done in effects.
-* Selectors, reducers and effects are tested.
-* For reducers there is at least a test for the initial state and for one state that is not the initial state.
-* Effects are tested via marble testing.
-* Selector tests are testing the projector function of the selectors.
+Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
 
-## [](#project-structure)Project structure
+Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
 
-* [See example for NgRx project](https://github.com/onecx-apps/ping-angular-app-ui)The following examples shows a potential folder structure, that might be extended based on the need.
+## [](#core-packages)Core Packages
 
-| |  Folders should only be created and used if they have content. \[Example Angular NgRx structure\] |
-| --------------------------------------------------------------------------------------------------- |
+* Store: `@ngrx/store` — application and feature state containers.
+* Effects: `@ngrx/effects` — side-effects and async flows.
+* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
+* Router Store: `@ngrx/router-store` — integrates Angular Router state.
+* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
+* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
 
-├── src
-│   ├── app
-│   │   ├── featuremodule1      // one of feature modules, might have many of them
-│   │   │    ├── components     // optional - components shared between pages of this feature module
-│   │   │    │    ├── featurecomponent1
-│   │   │    │    │    ├── featurecomponent1.component.html
-│   │   │    │    │    ├── featurecomponent1.component.scss
-│   │   │    │    │    ├── featurecomponent1.component.spec.ts
-│   │   │    │    │    ├── featurecomponent1.component.ts
-│   │   │    ├── directives     // optional - directives used in specific feature module
-│   │   │    ├── pages
-│   │   │    │    ├── page1       // every page gets a subfolder, might have many of them
-│   │   │    │    │     ├── page1subcomponent1    // one of subcomponent for page, optional + might have many of them
-│   │   │    │    │     │     ├── page1subcomponent1.component.html
-│   │   │    │    │     │     ├── page1subcomponent1.component.scss
-│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
-│   │   │    │    │     │     ├── page1subcomponent1.component.ts
-│   │   │    │    │     │     ├── page1subcomponent1.viewmodel.ts
-│   │   │    │    │     ├── dialogs
-│   │   │    │    │     │     ├── page1dialog1    // dialog that is only used by this page, optional + might have many of them
-│   │   │    │    │     │     │     ├── page1dialog1.component.html
-│   │   │    │    │     │     │     ├── page1dialog1.component.scss
-│   │   │    │    │     │     │     ├── page1dialog1.component.spec.ts
-│   │   │    │    │     │     │     ├── page1dialog1.component.ts
-│   │   │    │    │     │     │     ├── page1dialog1.viewmodel.ts
-│   │   │    │    │     ├── page1.component.html
-│   │   │    │    │     ├── page1.component.scss
-│   │   │    │    │     ├── page1.component.spec.ts
-│   │   │    │    │     ├── page1.component.ts
-│   │   │    │    │     ├── page1.reducer.ts
-│   │   │    │    │     ├── page1.reducer.spec.ts
-│   │   │    │    │     ├── page1.selectors.ts
-│   │   │    │    │     ├── page1.selectors.spec.ts
-│   │   │    │    │     ├── page1.state.ts
-│   │   │    │    │     ├── page1.effects.spec.ts
-│   │   │    │    │     ├── page1.effects.ts
-│   │   │    │    │     ├── page1.actions.ts
-│   │   │    │    │     ├── page1.viewmodel.ts
-│   │   │    ├── dialogs // dialogs which are used across pages, optional
-│   │   │    │    ├── dialog1       // every dialog gets a subfolder, might have many of them
-│   │   │    │    │     ├── dialog1subcomponent1    // one of subcomponent for dialog, optional + might have many of them
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.html
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.scss
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.spec.ts
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.ts
-│   │   │    │    │     │     ├── dialog1subcomponent1.viewmodel.ts
-│   │   │    │    │     ├── dialog1.component.html
-│   │   │    │    │     ├── dialog1.component.scss
-│   │   │    │    │     ├── dialog1.component.spec.ts
-│   │   │    │    │     ├── dialog1.component.ts
-│   │   │    │    │     ├── dialog1.reducer.ts
-│   │   │    │    │     ├── dialog1.reducer.spec.ts
-│   │   │    │    │     ├── dialog1.selectors.ts
-│   │   │    │    │     ├── dialog1.selectors.spec.ts
-│   │   │    │    │     ├── dialog1.state.ts
-│   │   │    │    │     ├── dialog1.effects.spec.ts
-│   │   │    │    │     ├── dialog1.effects.ts
-│   │   │    │    │     ├── dialog1.actions.ts
-│   │   │    │    │     ├── dialog1.viewmodel.ts
-│   │   │    ├── featuremodule1.module.ts
-│   │   │    ├── featuremodule1.reducers.ts
-│   │   │    ├── featuremodule1.reducers.spec.ts
-│   │   │    ├── featuremodule1.routes.ts
-│   │   │    ├── featuremodule1.selectors.ts
-│   │   │    ├── featuremodule1.selectors.spec.ts
-│   │   │    ├── featuremodule1.state.ts
-│   │   ├── shared // (technical) components and directives used in multiple feature modules
-│   │   │    ├── components
-│   │   │    │     ├── sharedcomponent1
-│   │   │    │     │     ├── sharedcomponent1.component.html
-│   │   │    │     │     ├── sharedcomponent1.component.scss
-│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
-│   │   │    │     │     ├── sharedcomponent1.component.ts
-│   │   │    ├── directives
-│   │   │    │     ├── directive1.ts
-│   │   │    │     ├── directive1.spec.ts
-│   │   │    ├── generated      //generated from openApi
-│   │   │    │    ├── models
-│   │   │    │    ├── services
-│   │   │    ├── shared.module.ts
-│   │   ├── app-routing.module.ts
-│   │   ├── app.component.html
-│   │   ├── app.component.scss
-│   │   ├── app.component.ts
-│   │   ├── app.module.ts
-│   │   ├── app.state.ts
-│   │   ├── app.reducers.ts
-│   │   ├── app.reducers.spec.ts
-│   │   ├── app.selectors.ts
-│   │   ├── app.selectors.spec.ts
-│   ├── assets
-│   │   │   ├── i18n
-│   │   │   ├── fonts
-│   │   │   ├── images
-│   │   │   ├── scss
-│   │   │   ├── yamls
-│   ├── environments
-│   │   │   ├── dev
-│   │   │   ├── prod
+## [](#getting-started)Getting Started
 
-## [](#subcomponents)Subcomponents
+Install commonly used packages:
 
-Usually subcomponents have a single input for the viewmodel called `vm`. This viewmodel is a member of the components viewmodel and is build via selectors. If a subcomponent has also a subsubcomponent, the viewmodel of the subcomponent has a member containing the viewmodel of the subsubcomponent.
+```bash
+npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
+```
 
-## [](#dialogs)Dialogs
+High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
 
-There are two kinds of dialogs:
+## [](#onecx-guides-and-examples)OneCX Guides and Examples
 
-* dialogs only used in one page
-* dialogs used in multiple pages
+* [Lazy Loading Tabs with NgRx](lazy-loading.html)
+* Adding Search Criteria:  
+   * [Search Criteria](search-criteria/search-criteria.html)  
+   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
+   * [Calendar](search-criteria/calendar.html)  
+   * [Dropdown](search-criteria/dropdown.html)  
+   * [MultiSelect](search-criteria/multiselect.html)
 
-Both dialog types have in common that:
+## [](#useful-links)Useful Links
 
-* they are opened in effects
-* the result is handled in the effects and is converted into an action
-* they have a viewmodel
-* they are opened with `PortalDialogService.openDialog(…​)`
-* they are communicating with the code that opened the dialog by implementing the interface `DialogResult`
-* Implementing `DialogButtonClicked` can help setting the dialog result before the dialog closes
-
-### [](#dialogs-used-in-one-page)Dialogs used in one page
-
-The components used for dialogs are subcomponents of the page they are used in. Theses subcomponents are placed in a subfolder called 'dialogs'. They do not have a separate section in the store because they are sharing the data of the page they are belonging to. The viewmodel can be passed via an input which is called 'vm'. The viewmodel is read from the store via a viewmodel selector in the effects or is build with data from the action which is triggering the opening of the dialog.
-
-The dialogs can also dispatch actions but only if they are not used to react on the closing of the dialog. Reacting to the closing is always done via the Observable returned by `openDialog(…​)`
-
-### [](#dialogs-used-in-mulitple-pages)Dialogs used in multiple pages
-
-The structure and inner workings of a dialog that is used in many pages is similar to the structure of a page. They have their own section in the store, own effects, own selectors,…​ Dialogs that are used by multiple pages are always dispatching an action that is informing about the opening of the dialog in the constructor of the dialog component. The viewmodel is read from the store inside of the component via a selector like it is done for a page.
-
-## [](#further-information-about-ngrx)Further information about NgRx
-
-For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
-
-Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
+* Official website: [NgRx](https://ngrx.io/)
+* Documentation: [Docs](https://ngrx.io/docs)
+* Store: [Store](https://ngrx.io/guide/store)
+* Effects: [Effects](https://ngrx.io/guide/effects)
+* Entity: [Entity](https://ngrx.io/guide/entity)
+* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
+* Router Store: [Router Store](https://ngrx.io/guide/router-store)
+* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
+* Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
 Lazy loading tabs
 ====================
@@ -7870,112 +7823,173 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-NgRx
+NgRX
 ====================
-## [](#what-is-ngrx)What Is NgRx?
+This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
 
-* A set of libraries for Angular to manage global and feature state in a predictable and testable way.
-* Core building blocks:  
-   * Actions: Plain events that describe what happened.  
-   * Reducers: Pure functions that compute new state from the previous state and an action.  
-   * Selectors: Memoized queries to read and derive data from state.  
-   * Effects: Side-effect handlers for async work (HTTP, routing, etc.).  
-   * Entity/ComponentStore/Router Store/DevTools: Optional libraries to simplify common patterns.
+OneCx uses NgRx to manage the state of an applet. The communication with the store is done by smart components, usually by the page components.
 
-## [](#overview)Overview
+## [](#guidelines-for-ngrx)Guidelines for NgRx
 
-Use NgRx when you need any of the following: \* Shared state across multiple routes/components and modules. \* Complex async orchestration (load, cache, error handling, retries). \* Auditability and predictability (time-travel debugging, action logs). \* Derived data that benefits from memoization via selectors.
+* An action is only dispatched at one place.
+* Actions are never dispatched conditionally.
+* For every component that is getting data from the store there is an interface for the viewmodel that is called like the component class but with postfix "ViewModel".
+* For every component that is getting data from the store there is a selector for the viewmodel that is called like the viewmodel interface but with the prefix "select".
+* Every component that is getting data from the store selects only the viewmodel via the viewmodel selector. The observable that is storing the result is called `viewModel$`.
+* Every HTML file of a component that is getting data from the store has an outer ng-container tag that is using the ngrxLet directive e.g. `*ngrxLet="viewModel$ as vm"`.
+* The store never stores data that can be computed from other data in the store. This is done in selectors.
+* Selectors are only accessing the data on top-level of the part of the store that is past to it.
+* Every feature module has its own feature store.
+* The store is the model of the applet and is modeled like that. Data that is relevant for all pages in the feature are stored on top-level. Data that is only relevant for one page is stored in a subsection of the store which is called like the page.
+* All HTTP calls are done in effects.
+* Routing or changing the URL parameters via the angular router is done in effects.
+* Selectors, reducers and effects are tested.
+* For reducers there is at least a test for the initial state and for one state that is not the initial state.
+* Effects are tested via marble testing.
+* Selector tests are testing the projector function of the selectors.
 
-Prefer local component state or `ComponentStore` for purely local/ephemeral UI concerns. Avoid putting computed/derivable data into the store; compute it via selectors instead.
+## [](#project-structure)Project structure
 
-## [](#core-packages)Core Packages
+* [See example for NgRx project](https://github.com/onecx-apps/ping-angular-app-ui)The following examples shows a potential folder structure, that might be extended based on the need.
 
-* Store: `@ngrx/store` — application and feature state containers.
-* Effects: `@ngrx/effects` — side-effects and async flows.
-* Entity: `@ngrx/entity` — helpers for collections (ids, dictionaries, adapters).
-* Router Store: `@ngrx/router-store` — integrates Angular Router state.
-* ComponentStore: `@ngrx/component-store` — local, component-scoped state management.
-* Store DevTools: `@ngrx/store-devtools` — time-travel debugging via Redux DevTools.
+| |  Folders should only be created and used if they have content. \[Example Angular NgRx structure\] |
+| --------------------------------------------------------------------------------------------------- |
 
-## [](#getting-started)Getting Started
+├── src
+│   ├── app
+│   │   ├── featuremodule1      // one of feature modules, might have many of them
+│   │   │    ├── components     // optional - components shared between pages of this feature module
+│   │   │    │    ├── featurecomponent1
+│   │   │    │    │    ├── featurecomponent1.component.html
+│   │   │    │    │    ├── featurecomponent1.component.scss
+│   │   │    │    │    ├── featurecomponent1.component.spec.ts
+│   │   │    │    │    ├── featurecomponent1.component.ts
+│   │   │    ├── directives     // optional - directives used in specific feature module
+│   │   │    ├── pages
+│   │   │    │    ├── page1       // every page gets a subfolder, might have many of them
+│   │   │    │    │     ├── page1subcomponent1    // one of subcomponent for page, optional + might have many of them
+│   │   │    │    │     │     ├── page1subcomponent1.component.html
+│   │   │    │    │     │     ├── page1subcomponent1.component.scss
+│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
+│   │   │    │    │     │     ├── page1subcomponent1.component.ts
+│   │   │    │    │     │     ├── page1subcomponent1.viewmodel.ts
+│   │   │    │    │     ├── dialogs
+│   │   │    │    │     │     ├── page1dialog1    // dialog that is only used by this page, optional + might have many of them
+│   │   │    │    │     │     │     ├── page1dialog1.component.html
+│   │   │    │    │     │     │     ├── page1dialog1.component.scss
+│   │   │    │    │     │     │     ├── page1dialog1.component.spec.ts
+│   │   │    │    │     │     │     ├── page1dialog1.component.ts
+│   │   │    │    │     │     │     ├── page1dialog1.viewmodel.ts
+│   │   │    │    │     ├── page1.component.html
+│   │   │    │    │     ├── page1.component.scss
+│   │   │    │    │     ├── page1.component.spec.ts
+│   │   │    │    │     ├── page1.component.ts
+│   │   │    │    │     ├── page1.reducer.ts
+│   │   │    │    │     ├── page1.reducer.spec.ts
+│   │   │    │    │     ├── page1.selectors.ts
+│   │   │    │    │     ├── page1.selectors.spec.ts
+│   │   │    │    │     ├── page1.state.ts
+│   │   │    │    │     ├── page1.effects.spec.ts
+│   │   │    │    │     ├── page1.effects.ts
+│   │   │    │    │     ├── page1.actions.ts
+│   │   │    │    │     ├── page1.viewmodel.ts
+│   │   │    ├── dialogs // dialogs which are used across pages, optional
+│   │   │    │    ├── dialog1       // every dialog gets a subfolder, might have many of them
+│   │   │    │    │     ├── dialog1subcomponent1    // one of subcomponent for dialog, optional + might have many of them
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.html
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.scss
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.spec.ts
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.ts
+│   │   │    │    │     │     ├── dialog1subcomponent1.viewmodel.ts
+│   │   │    │    │     ├── dialog1.component.html
+│   │   │    │    │     ├── dialog1.component.scss
+│   │   │    │    │     ├── dialog1.component.spec.ts
+│   │   │    │    │     ├── dialog1.component.ts
+│   │   │    │    │     ├── dialog1.reducer.ts
+│   │   │    │    │     ├── dialog1.reducer.spec.ts
+│   │   │    │    │     ├── dialog1.selectors.ts
+│   │   │    │    │     ├── dialog1.selectors.spec.ts
+│   │   │    │    │     ├── dialog1.state.ts
+│   │   │    │    │     ├── dialog1.effects.spec.ts
+│   │   │    │    │     ├── dialog1.effects.ts
+│   │   │    │    │     ├── dialog1.actions.ts
+│   │   │    │    │     ├── dialog1.viewmodel.ts
+│   │   │    ├── featuremodule1.module.ts
+│   │   │    ├── featuremodule1.reducers.ts
+│   │   │    ├── featuremodule1.reducers.spec.ts
+│   │   │    ├── featuremodule1.routes.ts
+│   │   │    ├── featuremodule1.selectors.ts
+│   │   │    ├── featuremodule1.selectors.spec.ts
+│   │   │    ├── featuremodule1.state.ts
+│   │   ├── shared // (technical) components and directives used in multiple feature modules
+│   │   │    ├── components
+│   │   │    │     ├── sharedcomponent1
+│   │   │    │     │     ├── sharedcomponent1.component.html
+│   │   │    │     │     ├── sharedcomponent1.component.scss
+│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
+│   │   │    │     │     ├── sharedcomponent1.component.ts
+│   │   │    ├── directives
+│   │   │    │     ├── directive1.ts
+│   │   │    │     ├── directive1.spec.ts
+│   │   │    ├── generated      //generated from openApi
+│   │   │    │    ├── models
+│   │   │    │    ├── services
+│   │   │    ├── shared.module.ts
+│   │   ├── app-routing.module.ts
+│   │   ├── app.component.html
+│   │   ├── app.component.scss
+│   │   ├── app.component.ts
+│   │   ├── app.module.ts
+│   │   ├── app.state.ts
+│   │   ├── app.reducers.ts
+│   │   ├── app.reducers.spec.ts
+│   │   ├── app.selectors.ts
+│   │   ├── app.selectors.spec.ts
+│   ├── assets
+│   │   │   ├── i18n
+│   │   │   ├── fonts
+│   │   │   ├── images
+│   │   │   ├── scss
+│   │   │   ├── yamls
+│   ├── environments
+│   │   │   ├── dev
+│   │   │   ├── prod
 
-Install commonly used packages:
+## [](#subcomponents)Subcomponents
 
-```bash
-npm install @ngrx/store @ngrx/effects @ngrx/entity @ngrx/router-store @ngrx/store-devtools
-```
+Usually subcomponents have a single input for the viewmodel called `vm`. This viewmodel is a member of the components viewmodel and is build via selectors. If a subcomponent has also a subsubcomponent, the viewmodel of the subcomponent has a member containing the viewmodel of the subsubcomponent.
 
-High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Create feature state, initial state, and reducers. 3\. Add selectors to expose view models from state. 4\. Implement effects to handle HTTP calls, routing, and other side effects. 5\. Wire up the feature with `provideState`/`provideEffects` (standalone) or feature modules. 6\. Use the Redux DevTools for debugging (`StoreDevtoolsModule` or `provideStoreDevtools`).
+## [](#dialogs)Dialogs
 
-## [](#onecx-guides-and-examples)OneCX Guides and Examples
+There are two kinds of dialogs:
 
-* [Lazy Loading Tabs with NgRx](lazy-loading.html)
-* Adding Search Criteria:  
-   * [Search Criteria](search-criteria/search-criteria.html)  
-   * [Autocomplete](search-criteria/autocomplete/autocomplete.html)  
-   * [Calendar](search-criteria/calendar.html)  
-   * [Dropdown](search-criteria/dropdown.html)  
-   * [MultiSelect](search-criteria/multiselect.html)
+* dialogs only used in one page
+* dialogs used in multiple pages
 
-## [](#useful-links)Useful Links
+Both dialog types have in common that:
 
-* Official website: [NgRx](https://ngrx.io/)
-* Documentation: [Docs](https://ngrx.io/docs)
-* Store: [Store](https://ngrx.io/guide/store)
-* Effects: [Effects](https://ngrx.io/guide/effects)
-* Entity: [Entity](https://ngrx.io/guide/entity)
-* ComponentStore: [ComponentStore](https://ngrx.io/guide/component-store)
-* Router Store: [Router Store](https://ngrx.io/guide/router-store)
-* DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
-* Schematics: [Schematics](https://ngrx.io/guide/schematics)
+* they are opened in effects
+* the result is handled in the effects and is converted into an action
+* they have a viewmodel
+* they are opened with `PortalDialogService.openDialog(…​)`
+* they are communicating with the code that opened the dialog by implementing the interface `DialogResult`
+* Implementing `DialogButtonClicked` can help setting the dialog result before the dialog closes
 
-Permissions in Angular
-====================
-The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
-In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
+### [](#dialogs-used-in-one-page)Dialogs used in one page
 
-This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
+The components used for dialogs are subcomponents of the page they are used in. Theses subcomponents are placed in a subfolder called 'dialogs'. They do not have a separate section in the store because they are sharing the data of the page they are belonging to. The viewmodel can be passed via an input which is called 'vm'. The viewmodel is read from the store via a viewmodel selector in the effects or is build with data from the action which is triggering the opening of the dialog.
 
-## [](#permissions-basics)Permission Basics
+The dialogs can also dispatch actions but only if they are not used to react on the closing of the dialog. Reacting to the closing is always done via the Observable returned by `openDialog(…​)`
 
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+### [](#dialogs-used-in-mulitple-pages)Dialogs used in multiple pages
 
-### [](#permission-setup)Permission Setup
+The structure and inner workings of a dialog that is used in many pages is similar to the structure of a page. They have their own section in the store, own effects, own selectors,…​ Dialogs that are used by multiple pages are always dispatching an action that is informing about the opening of the dialog in the constructor of the dialog component. The viewmodel is read from the store inside of the component via a selector like it is done for a page.
 
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+## [](#further-information-about-ngrx)Further information about NgRx
 
-### [](#permission-validation)Permission Validation
+For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
 
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission in Angular
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
+Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
 
 Content Visibility Based on Permissions
 ====================
@@ -8073,6 +8087,54 @@ example.html
 
 | |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Permissions in Angular
+====================
+The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
+In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
+
+This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
+
+## [](#permissions-basics)Permission Basics
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+### [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+### [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission in Angular
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
 
 PrimeNG
 ====================
@@ -16124,114 +16186,6 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
-Configure Search Add-Ons
-====================
-Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
-
-![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
-
-Figure 1\. Default search page header actions
-
-## [](#action-9)ACTION S9
-
-Configure the Search Page Result Diagram
-
-By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
-
-![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
-
-Figure 2\. Search Page Result Diagram for the Example App
-
-Select the column to be displayed
-
-The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
-
-### Template: Column Selection for Diagram
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S9 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'id';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Type Diagram
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S9 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'bookType';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-## [](#action-10)ACTION S10
-
-Configure Search Header Actions
-
-The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
-
-### Template: Search Header Actions
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S10 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Search Header Actions
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S10 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
-```
-
 Mock API
 ====================
 What is a Mock API?
@@ -16429,6 +16383,114 @@ const PROXY_CONFIG = {
     onProxyRes: onProxyRes
   }
 }
+```
+
+Configure Search Add-Ons
+====================
+Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
+
+![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
+
+Figure 1\. Default search page header actions
+
+## [](#action-9)ACTION S9
+
+Configure the Search Page Result Diagram
+
+By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
+
+![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
+
+Figure 2\. Search Page Result Diagram for the Example App
+
+Select the column to be displayed
+
+The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
+
+### Template: Column Selection for Diagram
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S9 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'id';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Type Diagram
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S9 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'bookType';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+## [](#action-10)ACTION S10
+
+Configure Search Header Actions
+
+The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
+
+### Template: Search Header Actions
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S10 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Search Header Actions
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S10 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
 ```
 
 Configure Search Criteria
@@ -21858,16 +21920,6 @@ this.workspaceService.doesUrlExistFor('orders', 'orders-ui', 'order').subscribe(
 
 This example checks if a valid URL for Orders UI (UI component) of the Orders application to an order details endpoint can be constructed. If true, then Orders application is registered in the workspace and it has UI component with id `orders-ui` with configured endpoint called `order`.
 
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
-
 DataTableColumn
 ====================
 ## [](#data-table-column-properties-overview)DataTableColumn properties overview
@@ -21909,6 +21961,16 @@ FilterType enum
 | ------ | ------------------------------------------------------------------------ |
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
+
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
 
 @onecx/angular-utils/cdk
 ====================
