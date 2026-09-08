@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1921,290 +2205,6 @@ Example configuration to expose mf-manifest.json
         shareScope: 'angular_21'
 ---
 ```
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 Process Automation
 ====================
@@ -6440,6 +6440,100 @@ Note the boundary with the **Style Isolation** concept: exposing `styles.css` is
 | |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
+Authentication
+====================
+In OneCX, the shell has full control of the authentication flow and the user’s session. An integrated application never implements its own login, token storage, or session logic — it relies on the shell for all of that and limits itself to the small set of interactions described on this page.
+
+## [](#the-shell-owns-auth-model)The shell-owns-auth model
+
+The shell authenticates the user, holds the session, and keeps the access token valid for the lifetime of that session. It does this through a pluggable authentication service: by default this is Keycloak, but the shell can also be configured to use a custom authentication service (see [Custom Authentication Service](#custom-authentication-service)) or run with authentication disabled for local development (see [Disabling authentication for local development](#disabling-authentication-for-local-development)).
+
+Because the shell owns this flow end-to-end, an application never talks to the identity provider directly and never manages tokens on its own. Instead, an application is permitted to:
+
+* attach the current authentication headers to its own outgoing HTTP requests,
+* ask the shell to end the session (log out), and
+* — only if strictly necessary — read auth state directly from the shell.
+
+Each of these is covered below, from the most common (attaching headers) to the last resort (reading state directly).
+
+## [](#attaching-the-token-to-outgoing-requests)Attaching the token to outgoing requests
+
+Every application integrated with OneCX must ensure its outgoing HTTP requests carry the shell’s authentication headers. This is the most common interaction with authentication and the one every application needs. For the exact setup steps for Angular (`AngularAuthModule`) and React (`axiosFactory`), see [Configure Authentication](../setup/required/configure-authentication.html).
+
+## [](#sending-a-logout-event)Sending a logout event
+
+An application can ask the shell to end the current session by publishing a logout event on the shared events topic from `@onecx/integration-interface`, rather than implementing its own logout logic:
+
+```typescript
+import { EventsTopic, EventType } from '@onecx/integration-interface'
+
+const eventsTopic = new EventsTopic()
+eventsTopic.publish({ type: EventType.AUTH_LOGOUT_BUTTON_CLICKED })
+```
+
+The shell listens for this event and calls the configured authentication service’s logout, which ends the session (for the default Keycloak service, this redirects the user to the identity provider’s logout flow).
+
+## [](#using-the-auth-proxy-as-a-last-resort)Using the auth proxy as a last resort
+
+The shell exposes a small auth proxy on the global namespace — `window.onecxAuth.authServiceProxy.v1` — so that code that cannot go through a framework interceptor or the provided HTTP helper can still read the current auth state. It exposes exactly two operations:
+
+* `getHeaderValues(): Record<string, string>` — the current authentication headers, keyed by header name.
+* `updateTokenIfNeeded(): Promise<boolean>` — ensures the token is still valid, refreshing it first if needed.
+
+Reach for the auth proxy only when the standard header-attaching mechanism (`AngularAuthModule` interceptor or `axiosFactory`) genuinely cannot be used, for example a third-party HTTP client that does not support interceptors. `@onecx/angular-auth` and `@onecx/react-auth` both wrap this same global proxy in an `AuthProxyService` / `authServiceProxy` so application code does not have to touch `window.onecxAuth` directly:
+
+```typescript
+// Angular — inject AuthProxyService from '@onecx/angular-auth'
+await this.authProxyService.updateTokenIfNeeded()
+const headers = this.authProxyService.getHeaderValues()
+```
+
+```typescript
+// React
+import { authServiceProxy } from '@onecx/react-auth'
+
+await authServiceProxy.updateTokenIfNeeded()
+const headers = authServiceProxy.getHeaderValues()
+```
+
+The proxy is only populated once the shell has initialized; guard direct `window.onecxAuth` access accordingly if not going through one of the library wrappers.
+
+## [](#advanced-authentication-topics)Advanced authentication topics
+
+The topics below go beyond what most applications need and cover how the shell’s authentication itself is configured and refreshed.
+
+### [](#custom-authentication-service)Configuring a custom authentication service
+
+By default the shell authenticates through Keycloak. A deployment can instead configure the shell to load a custom authentication service via module federation, using the following shell environment variables:
+
+* `AUTH_SERVICE` — set to `custom` to enable a custom authentication service (`keycloak` is the default).
+* `AUTH_SERVICE_CUSTOM_URL` — the module-federation remote URL the shell loads the custom authentication service factory from.
+
+The remote exposed at that URL must default-export an authentication service factory function that returns an implementation of the shell’s authentication service contract (`init`, `getHeaderValues`, `logout`, `updateTokenIfNeeded`), and the shell calls that factory to obtain the service used for the rest of the session.
+
+### [](#disabling-authentication-for-local-development)Disabling authentication for local development
+
+Setting `AUTH_SERVICE` to `disabled` replaces the authentication service with a no-op implementation: it returns empty authentication headers and resolves immediately, without contacting an identity provider.
+
+| |  Use AUTH\_SERVICE=disabled only for local development and testing, such as running the shell without a Keycloak instance available. Never use it in a production or otherwise publicly reachable environment — it removes authentication entirely, leaving every application and backend call unprotected. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#logout)Logout
+
+Logout is always driven through the configured authentication service, either because the user triggered it in the shell itself or because an application published the logout event described in [Sending a logout event](#sending-a-logout-event). There is no application-level logout API beyond publishing that event — the shell’s authentication service is responsible for actually clearing the session.
+
+### [](#token-refresh)Token refresh
+
+The shell keeps the access token valid transparently: both the Angular HTTP interceptor and the React `axiosFactory` call `updateTokenIfNeeded()` before every outgoing request, refreshing the token first if it is close to expiry. Application code does not need to schedule its own token refresh — it only needs to go through one of the mechanisms in [Attaching the token to outgoing requests](#attaching-the-token-to-outgoing-requests), or call `updateTokenIfNeeded()` itself if it uses the auth proxy directly.
+
+## [](#related)Related
+
+* [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
+* [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
+
+| |  A reciprocal cross-link to the **Permissions Handling** feature page will be added once that page exists — whichever ticket lands second. |
+| -------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Routing
 ====================
 An application integrated with OneCX still loads and runs without following these routing guidelines, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. This page explains the platform-level routing requirements and the reasons behind them, shared by both Angular and React applications.
@@ -7835,6 +7929,54 @@ High-level steps: 1\. Define actions for user intents and async outcomes. 2\. Cr
 * DevTools: [Store DevTools](https://ngrx.io/guide/store-devtools)
 * Schematics: [Schematics](https://ngrx.io/guide/schematics)
 
+Permissions in Angular
+====================
+The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
+In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
+
+This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
+
+## [](#permissions-basics)Permission Basics
+
+In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
+
+### [](#permission-setup)Permission Setup
+
+To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
+
+### [](#permission-validation)Permission Validation
+
+To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
+
+### [](#check-for-permissions)Check For Permission in Angular
+
+To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Check for single permission
+userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions
+userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#get-all-application-permissions)Get All Application Permissions
+
+To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+// Get all application permissions
+userService.getPermissions().pipe((
+    // Pipe the permission list
+))
+```
+
 Content Visibility Based on Permissions
 ====================
 The `*ocxIfPermission` and `*ocxIfNotPermission` directives control whether a template is rendered based on the current user’s permissions.
@@ -7931,54 +8073,6 @@ example.html
 
 | |  The directive adds/removes a disabled attribute on the **root node** of the rendered template. Make sure your template’s root element supports being disabled (e.g., <button>, <input>, some PrimeNG host elements). |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-Permissions in Angular
-====================
-The [OneCX permission management](../../../onecx-permission/index.html) is responsible for managing permissions in OneCX. Permissions are used to control access to certain features or actions within an application based on the user’s roles and permissions.  
-In Angular applications, the [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface can be used to check for permissions and implement conditional rendering or access control based on the user’s permissions.
-
-This guide provides an overview of how to work with permissions in Angular applications within the OneCX ecosystem, including how to check for permissions and retrieve the list of permissions for the current user.  
-
-## [](#permissions-basics)Permission Basics
-
-In OneCX, there are 3 key concepts: permission, role and user. Each application can define many permissions that allow or deny an action on a specific resource (e.g. USER#DELETE) and then can validate if the permissions is met. Every user registered has set of roles assigned to them (e.g. admin) where each role is assigned with different permissions. With combination of those 3 concepts, application can be displayed differently based on the current user permissions.
-
-### [](#permission-setup)Permission Setup
-
-To set up permissions for the application, OneCX core applications should be used to add or modify existing permissions and assignments for roles.
-
-### [](#permission-validation)Permission Validation
-
-To perform permission validation in Angular applications, [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) should be used. Depending on the requirements different methods and properties should be used
-
-### [](#check-for-permissions)Check For Permission in Angular
-
-To check if the currently logged in user has specific permission(s), use the `hasPermission` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Check for single permission
-userService.hasPermission('USER#DELETE')
-
-// Check for multiple permissions
-userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
-```
-
-### [](#get-all-application-permissions)Get All Application Permissions
-
-To get a list of all permissions for the current user in the context of the application, use the `getPermissions` method of [User Service](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-example.ts
-
-```typescript
-const userService = inject(UserService)
-// Get all application permissions
-userService.getPermissions().pipe((
-    // Pipe the permission list
-))
-```
 
 PrimeNG
 ====================
@@ -9585,6 +9679,10 @@ Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s boo
 ## [](#react-applications)React Applications
 
 React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
+
+## [](#advanced-topics)Advanced Topics
+
+For the shell-owns-auth model, sending a logout event, using the auth proxy directly, configuring a custom authentication service, and token refresh, see [Authentication](../../concepts/authentication.html).
 
 Configure Remote Package Sharing
 ====================
@@ -16026,6 +16124,114 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
+Configure Search Add-Ons
+====================
+Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
+
+![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
+
+Figure 1\. Default search page header actions
+
+## [](#action-9)ACTION S9
+
+Configure the Search Page Result Diagram
+
+By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
+
+![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
+
+Figure 2\. Search Page Result Diagram for the Example App
+
+Select the column to be displayed
+
+The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
+
+### Template: Column Selection for Diagram
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S9 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'id';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Type Diagram
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S9 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S9: Select the column to be displayed in the diagram
+  this.diagramColumnId = 'bookType';
+  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
+```
+
+## [](#action-10)ACTION S10
+
+Configure Search Header Actions
+
+The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
+
+### Template: Search Header Actions
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.component.ts                             |
+
+ACTION S10 in `<resource>-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
+```
+
+Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
+
+---
+
+### Example: Book Search Header Actions
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.component.ts                 |
+
+ACTION S10 in `book-search.component.ts` 
+
+```javascript
+  // ACTION S10: Update header actions
+  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
+      const actions: Action[] = [
+        {
+          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          icon: PrimeIcons.DOWNLOAD,
+          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
+          show: 'asOverflow',
+          actionCallback: () => this.exportItems(),
+        },
+        ...
+```
+
 Mock API
 ====================
 What is a Mock API?
@@ -16223,114 +16429,6 @@ const PROXY_CONFIG = {
     onProxyRes: onProxyRes
   }
 }
-```
-
-Configure Search Add-Ons
-====================
-Search Add-Ons are additional features that can be added to the search page to enhance its functionality and provide a better user experience. These add-ons can include features such as search result diagrams, header actions, and more.
-
-![generated book search component header actions](../../_images/generated_book_search_component_header-actions.png) 
-
-Figure 1\. Default search page header actions
-
-## [](#action-9)ACTION S9
-
-Configure the Search Page Result Diagram
-
-By default, a diagram component is added to display the value distribution of a certain column in the search results. This component is called `GroupByCountDiagram` and it groups the values of a column and counts how many times each value appears in the search results. The result is displayed as a diagram, which can be either a bar chart or a pie chart, depending on the configuration.
-
-![generated book search component books diagram](../../_images/generated_book_search_component_books-diagram.png) 
-
-Figure 2\. Search Page Result Diagram for the Example App
-
-Select the column to be displayed
-
-The `columnId` is the key of the column to use for the result diagram. You can select any column you defined in the search results.
-
-### Template: Column Selection for Diagram
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S9 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'id';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Type Diagram
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S9 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S9: Select the column to be displayed in the diagram
-  this.diagramColumnId = 'bookType';
-  this.diagramColumn$ = this.viewModel$.pipe(map((vm) =>vm.columns.find((e) => e.id === this.diagramColumnId) as DataTableColumn));
-```
-
-## [](#action-10)ACTION S10
-
-Configure Search Header Actions
-
-The header of the search page contains action buttons that allow users to perform various operations related to the search functionality. These actions can be customized to fit the specific needs of your application.
-
-### Template: Search Header Actions
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.component.ts                             |
-
-ACTION S10 in `<resource>-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: '<%= resourceConstantName %>_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
-```
-
-Please refer to the [GroupByCountDiagram Component](../../../onecx-portal-ui-libs/components/group-by-count-diagram.html) for more adaptations.
-
----
-
-### Example: Book Search Header Actions
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.component.ts                 |
-
-ACTION S10 in `book-search.component.ts` 
-
-```javascript
-  // ACTION S10: Update header actions
-  headerActions$: Observable<Action[]> = this.viewModel$.pipe(map((vm) => {
-      const actions: Action[] = [
-        {
-          labelKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          icon: PrimeIcons.DOWNLOAD,
-          titleKey: 'BOOK_SEARCH.HEADER_ACTIONS.EXPORT_ALL',
-          show: 'asOverflow',
-          actionCallback: () => this.exportItems(),
-        },
-        ...
 ```
 
 Configure Search Criteria
@@ -21760,6 +21858,16 @@ this.workspaceService.doesUrlExistFor('orders', 'orders-ui', 'order').subscribe(
 
 This example checks if a valid URL for Orders UI (UI component) of the Orders application to an order details endpoint can be constructed. If true, then Orders application is registered in the workspace and it has UI component with id `orders-ui` with configured endpoint called `order`.
 
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
+
 DataTableColumn
 ====================
 ## [](#data-table-column-properties-overview)DataTableColumn properties overview
@@ -21801,16 +21909,6 @@ FilterType enum
 | ------ | ------------------------------------------------------------------------ |
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
-
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
 
 @onecx/angular-utils/cdk
 ====================
@@ -36121,6 +36219,8 @@ undefined
 
 undefined
 ====================
+## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
+
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
@@ -36398,8 +36498,6 @@ For further details on version compatibility, refer to the following resources:
 
 undefined
 ====================
-## [](#%5Fonecx%5Fshell%5Fui)onecx-shell-ui
-
 ## [](#onecx-shell-ui)OneCX Shell UI
 
 ### [](#what-is-shell)What is Shell
