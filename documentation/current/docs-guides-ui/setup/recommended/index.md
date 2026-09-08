@@ -15,4 +15,4 @@ This tier applies to both paths of building a OneCX UI:
 * [Expose Component Styles](expose-component-styles.html) — how to expose an application’s and its libraries' `styles.css` in the build output, so the shell can style the app.
 * [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
-* [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](#documentation:docs-guides-ui:concepts/routing.adoc) for the full deep dive.
+* [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.

@@ -115,7 +115,7 @@ Routing is done with relative paths
 Impact: Incorrect routing results
 
 * Use relative paths in Angular router configuration to avoid navigation issues.
-* Please refer to the [OneCX Routing Guide](#documentation:docs-guides-ui:angular/routing/index.adoc#general-routing-guidelines) for using relative paths and other information on routing in OneCX.
+* Please refer to the [OneCX Routing Guide](../docs-guides-ui/concepts/routing.html#general-routing-guidelines) for using relative paths and other information on routing in OneCX.
 
 Webpack configuration for importMeta
 
