@@ -1320,6 +1320,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1692,290 +1976,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -2638,6 +2638,40 @@ The Workspace avoids tight coupling with individual apps. Instead, it relies on 
 * OneCX Portal UI Libs: shared components and styles used by the Workspace UI.
 * OneCX Theme: branding and theming across apps and workspaces.
 * OneCX IAM and Tenant: authentication, authorization, and tenant scoping for users.
+
+Module Federation Introduction
+====================
+[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
+
+**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
+
+**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
+
+This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
+
+Before proceeding, familiarize yourself with the following concepts:
+
+__Table 1\. Prerequisites__
+| Name                                                                                | Description                                                                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
+| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
+| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
+| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
+| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
+
+__Table 2\. Concepts__
+| Name                                                           | Description                                                          |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
+| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
+
+__Table 3\. Microfrontends in OneCX__
+| Name                                                             | Description                                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
+| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
+| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Microfrontend Bootstrapping
 ====================
@@ -3534,40 +3568,6 @@ The name of the remote entry file (usually `remoteEntry.js`).
 
 * [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
 * [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
-
-Module Federation Introduction
-====================
-[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
-
-**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
-
-**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
-
-This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
-
-Before proceeding, familiarize yourself with the following concepts:
-
-__Table 1\. Prerequisites__
-| Name                                                                                | Description                                                                                     |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
-| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
-| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
-| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
-| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
-
-__Table 2\. Concepts__
-| Name                                                           | Description                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
-| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
-
-__Table 3\. Microfrontends in OneCX__
-| Name                                                             | Description                                                                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
-| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
-| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Clean Removal of a Custom App
 ====================
@@ -6388,6 +6388,117 @@ In OneCX toast messages display is handled via [PortalMessageService](../../onec
 
 Details about the usage can be found in the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html).
 
+Theming
+====================
+In OneCX, theming controls how the content of a page looks. The OneCX shell, working together with the OneCX Theme Management application, provides the theme. A theme’s look is expressed as a set of CSS variables (design tokens) — OneCX’s own suite of theme variables. Each workspace can use a different theme, and the theme’s variables are exposed on every page — with different values depending on the workspace being accessed.
+
+## [](#how-theming-works)How theming works
+
+The shell makes the active theme’s variables available on the page automatically, based on the workspace being accessed. An application does not have to do anything to apply a theme — there is no import, provider, or build step on its side.
+
+Regardless of whether an application is built with Angular or React, consuming a theme is the same thing: reference the corresponding CSS variable in the application’s own styles, as shown in [Utilizing Theme Variables](#utilizing-theme-variables) below.
+
+## [](#what-an-application-must-do)What an application must do
+
+The only responsibility of a OneCX-compatible application is to use the theme variables in its own styles instead of hard-coded color, font, or spacing values. Doing so means the application automatically adopts whatever theme is active for the workspace and restyles itself when the theme changes. Hard-coded styles, by contrast, do not follow the active theme and look out of place when the theme differs.
+
+## [](#theme-variables)Theme Variables
+
+Theme variables are CSS variables available on the page for any application.
+
+Below is a list of the theme variables available on the page:
+
+Basic Variables
+
+| CSS variable            | Description                                            |
+| ----------------------- | ------------------------------------------------------ |
+| \--primary-color        | Primary color of non-text content.                     |
+| \--secondary-color      | Secondary color of non-text content.                   |
+| \--content-bg-color     | Default background color of non-text content.          |
+| \--content-alt-bg-color | Alternate background color of non-text content.        |
+| \--hover-bg-color       | Default background color on hover of non-text content. |
+
+Text-related Variables
+
+| CSS variable                | Description                                                                               |
+| --------------------------- | ----------------------------------------------------------------------------------------- |
+| \--font-family              | Default font family for text content.                                                     |
+| \--font-size                | Default font size for text content.                                                       |
+| \--text-color               | Primary font text color.                                                                  |
+| \--text-secondary-color     | Secondary font text color for elements in lower design hierarchy, usually less prominent. |
+| \--solid-surface-text-color | Font text color on solid (opaque) surfaces.                                               |
+
+Button-related Variables
+
+| CSS variable        | Description                                        |
+| ------------------- | -------------------------------------------------- |
+| \--button-hover-bg  | Background color of a button in hover state.       |
+| \--button-active-bg | Background color of a button in active state.      |
+| \--danger-button-bg | Background color of a button with danger severity. |
+
+Message-related Variables
+
+| CSS variable          | Description                                          |
+| --------------------- | ---------------------------------------------------- |
+| \--info-message-bg    | Background color of a message with info severity.    |
+| \--success-message-bg | Background color of a message with success severity. |
+| \--warning-message-bg | Background color of a message with warning severity. |
+| \--error-message-bg   | Background color of a message with error severity.   |
+
+Misc Variables
+
+| CSS variable                | Description                                                                            |
+| --------------------------- | -------------------------------------------------------------------------------------- |
+| \--divider-color            | Color of divider HTML elements, such as <hr> or component borders.                     |
+| \--body-bg-color            | Background color of the document’s body, used for the content pane’s background color. |
+| \--overlay-content-bg-color | Background color of the overlays.                                                      |
+
+Topbar Variables
+
+| CSS variable                       | Description                                                          |
+| ---------------------------------- | -------------------------------------------------------------------- |
+| \--topbar-bg-color                 | Background color of the topbar.                                      |
+| \--topbar-left-bg-color            | Background color of the topbar’s left side.                          |
+| \--topbar-text-color               | Color of the text in the topbar.                                     |
+| \--topbar-item-text-color          | Color of the text of the items located in the topbar.                |
+| \--topbar-item-text-hover-bg-color | Background color for the items located in the topbar on hover state. |
+| \--topbar-menu-button-bg-color     | Background color of the vertical menu hiding toggle.                 |
+| \--topbar-menu-button-text-color   | Color of the text in the vertical menu hiding toggle.                |
+| \--logo-color                      | Color of the topbar’s logo.                                          |
+
+Sidebar Variables
+
+| CSS variable                   | Description                                                                                         |
+| ------------------------------ | --------------------------------------------------------------------------------------------------- |
+| \--menu-bg-color               | Background color of the sidebar (left side of the shell).                                           |
+| \--menu-text-color             | Text color of the menu, located in the sidebar (left side of the shell).                            |
+| \--menu-item-text-color        | Text color of the menu item, located in the sidebar (left side of the shell).                       |
+| \--menu-item-bg-color          | Background color of the menu item, located in the sidebar (left side of the shell).                 |
+| \--menu-item-hover-bg-color    | Background color of the menu item in hover state, located in the sidebar (left side of the shell).  |
+| \--menu-active-item-text-color | Text color of the menu item in active state, located in the sidebar (left side of the shell).       |
+| \--menu-active-item-bg-color   | Background color of the menu item in active state, located in the sidebar (left side of the shell). |
+| \--menu-inline-border-color    | Border color of the inline menu, located in the sidebar (left side of the shell).                   |
+
+## [](#utilizing-theme-variables)Utilizing Theme Variables
+
+Regardless of whether your application is built with Angular or React, using a theme variable just means referencing the corresponding CSS variable in your styles — injecting and applying the variables' values is handled automatically. When creating styles for UI components, it’s important to consider whether a style should be theme-aware. Example of a stylesheet using a theme variable:
+
+styles.css
+
+```css
+button {
+    background-color: var(--primary-color);
+}
+```
+
+The example above sets the background color for each button element to the value corresponding to the `--primary-color` theme variable.
+
+## [](#related)Related
+
+To apply a theme to an application step by step, see [Apply Theming](../setup/recommended/apply-theming.html) and [Expose Component Styles](../setup/recommended/expose-component-styles.html).
+
+For details on customizing the OneCX PrimeNG theme, see [OneCX PrimeNG Theming](../angular/primeng/theming.html).
+
 Translations
 ====================
 In OneCX, applications provide multi-language support through translations. Each application keeps its own translation files — key-value pairs, one set per supported language (for example `en` and `de`) — and at runtime looks up the value for a given key in the language the user has selected. A OneCX-compatible application that does not expose these translations still loads and runs, but its user-facing text is not translated — the key itself is shown where the text should be — so translations should be set up for any app that must present localized content.
@@ -6415,14 +6526,6 @@ The responsibility of a OneCX-compatible application is to expose its translatio
 
 | |  A reciprocal cross-link to the **Multi-language** feature page will be added once that page exists — whichever ticket lands second. |
 | -------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
-
-In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
-
-This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
 
 Module Federation in OneCX
 ====================
@@ -6469,6 +6572,14 @@ The following documents describe how to configure and use Module Federation in O
 
 | |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
 
 Module Federation Dependency Sharing in OneCX
 ====================
@@ -9186,7 +9297,7 @@ Apply Theming
 ====================
 An application integrated with OneCX still loads and runs even if it doesn’t use OneCX theme variables, but it renders with a theme that doesn’t match the rest of the shell. In OneCX, each workspace can use a different theme for its pages, and the shell makes the active theme’s CSS variables available on every page automatically — the application should use those variables in its own styles instead of hard-coded values.
 
-See [Theming](#documentation:docs-guides-ui:concepts/theming.adoc) for the full list of available theme variables and how to use them in Angular and React applications.
+See [Theming](../../concepts/theming.html) for the full list of available theme variables and how to use them in Angular and React applications.
 
 Expose Component Styles
 ====================
@@ -9221,7 +9332,7 @@ This tier applies to both paths of building a OneCX UI:
 ## [](#recommended-setup-pages)Pages
 
 * [Expose Component Styles](expose-component-styles.html) — how to expose an application’s and its libraries' `styles.css` in the build output, so the shell can style the app.
-* [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](#documentation:docs-guides-ui:concepts/theming.adoc) for the full deep dive.
+* [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](#documentation:docs-guides-ui:concepts/routing.adoc) for the full deep dive.
 
@@ -11027,6 +11138,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
+
 AutoComplete for suggestions with array of type string
 ====================
 ## [](#goal)Goal: Add AutoComplet String
@@ -11262,14 +11381,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -14220,6 +14331,60 @@ npm run test
 
 Figure 2\. Test result of the generated feature module
 
+Create a Simple NgRx Page
+====================
+This guide describes how to create a simple NgRx page using the OneCX App Generator.
+
+A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
+This can be done if you have already set up an initial Application with an feature.
+
+| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#create-ngrx-page)Create NgRx Page
+
+Follow these steps:
+
+1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
+2. Run the following OneCX App Generator command.  
+The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
+Generate page/component  
+```bash  
+nx generate @onecx/angular-generator:ngrx-page [feature module]  
+```
+3. Follow the prompts to provide details like the page component name and the page title.  
+That’s it.
+4. Navigate in your browser to the new component using the the component name as route.
+
+## [](#example)Example
+
+To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
+
+Generate page/component
+
+```bash
+nx generate @onecx/angular-generator:ngrx-page hello-world
+```
+
+When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
+To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
+
+OneCX Local Environment with Hello Component
+
+```text
+http://onecx.localhost/onecx-shell/admin/hello-world/hello
+```
+
+![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
+
+Figure 1\. Hello Component in action
+
+Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
+
+![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
+
+Figure 2\. Generated files for the Hello Component
+
 Create an Entity Schema
 ====================
 What is an Entity Schema?
@@ -14337,60 +14502,6 @@ npm run apigen
 
 The result can be found in the generated API folder:  
 `<root-of-ui-app>/src/app/shared/generated`.
-
-Create a Simple NgRx Page
-====================
-This guide describes how to create a simple NgRx page using the OneCX App Generator.
-
-A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
-This can be done if you have already set up an initial Application with an feature.
-
-| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
-| -------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#create-ngrx-page)Create NgRx Page
-
-Follow these steps:
-
-1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
-2. Run the following OneCX App Generator command.  
-The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
-Generate page/component  
-```bash  
-nx generate @onecx/angular-generator:ngrx-page [feature module]  
-```
-3. Follow the prompts to provide details like the page component name and the page title.  
-That’s it.
-4. Navigate in your browser to the new component using the the component name as route.
-
-## [](#example)Example
-
-To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
-
-Generate page/component
-
-```bash
-nx generate @onecx/angular-generator:ngrx-page hello-world
-```
-
-When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
-To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
-
-OneCX Local Environment with Hello Component
-
-```text
-http://onecx.localhost/onecx-shell/admin/hello-world/hello
-```
-
-![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
-
-Figure 1\. Hello Component in action
-
-Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
-
-![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
-
-Figure 2\. Generated files for the Hello Component
 
 Create a Search Component
 ====================
@@ -19227,21 +19338,6 @@ This component displays data as a list or grid and allows you to switch between 
 
 To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
-
 OneCX Consent
 ====================
 ## [](#overview)Overview
@@ -19336,6 +19432,21 @@ URL normalization aims to avoid accidental mismatches:
 * Removes a trailing slash
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
+
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX GroupByCountDiagram
 ====================
@@ -28098,90 +28209,6 @@ Figure 1\. Successful stopping with cleanup
 ./stop-onecx.sh -p all -c
 ```
 
-Update local Docker images
-====================
-To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
-
-The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
-
-Command to display the available options:
-
-```bash
-./update-images.sh -h
-```
-
-| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#available-options)Available Options
-
-The script accepts several optional options to customize its behavior. Some options can be combined.
-
-The available options are:
-
-\-a
-
-Update all images, ignoring name filter (if option **\-n** is also used).  
-If used in combination with **\-c** then all orphaned images and stopped containers are removed.
-
-\-c
-
-Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
-Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
-Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-\-h
-
-Displays help information about the script and its available options. If used then all other options are ignored.
-
-\-n <text>
-
-Name filter, update images which have <text> into image name
-
-## [](#examples)Examples
-
-### [](#update-traefik-image)Update Traefik Image
-
-The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
-
-```bash
-./update-images.sh  -n traefik -c
-```
-
-![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
-
-Figure 1\. Successful update with name filter and cleanup
-
-### [](#cleanup-only)Cleanup only
-
-Started without any name filter will remove all orphaned images. No additional confirmation is required.
-
-![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
-
-Figure 2\. Excerpt from the list of orphaned images
-
-```bash
-./update-images.sh  -c
-```
-
-The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
-
-Figure 3\. Image deletion failed
-
-![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
-
-Figure 4\. Image deletion successful after stopping the container
-
-### [](#update-all-images-and-cleanup)Update all images and cleanup
-
-With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
-
-```bash
-./update-images.sh  -a -c
-```
-
 Integrate Microfrontends into OneCX
 ====================
 The script **toggle-mfes.sh** integrates a locally running microfrontend into the OneCX environment, allowing it to interact with other microfrontends. This process is also reversible.
@@ -28361,6 +28388,90 @@ In this example, the OneCX Workspace microfrontend is running both in Docker Com
 ![script toggle mfes.sh priotize routes](../_images/scripts/script_toggle-mfes.sh_priotize-routes.png) 
 
 Figure 8\. Example routing for OneCX Workspace microservices
+
+Update local Docker images
+====================
+To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
+
+The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
+
+Command to display the available options:
+
+```bash
+./update-images.sh -h
+```
+
+| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined.
+
+The available options are:
+
+\-a
+
+Update all images, ignoring name filter (if option **\-n** is also used).  
+If used in combination with **\-c** then all orphaned images and stopped containers are removed.
+
+\-c
+
+Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
+Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
+Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-n <text>
+
+Name filter, update images which have <text> into image name
+
+## [](#examples)Examples
+
+### [](#update-traefik-image)Update Traefik Image
+
+The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
+
+```bash
+./update-images.sh  -n traefik -c
+```
+
+![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
+
+Figure 1\. Successful update with name filter and cleanup
+
+### [](#cleanup-only)Cleanup only
+
+Started without any name filter will remove all orphaned images. No additional confirmation is required.
+
+![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
+
+Figure 2\. Excerpt from the list of orphaned images
+
+```bash
+./update-images.sh  -c
+```
+
+The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
+
+Figure 3\. Image deletion failed
+
+![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
+
+Figure 4\. Image deletion successful after stopping the container
+
+### [](#update-all-images-and-cleanup)Update all images and cleanup
+
+With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
+
+```bash
+./update-images.sh  -a -c
+```
 
 Migrate to v2
 ====================
@@ -29021,10 +29132,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-announcement-svc/pkgs/container/onecx-announcement-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -29109,6 +29216,10 @@ app:
         description: OneCX Announcement Backend Service
         name: OneCX Announcement SVC
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -30150,9 +30261,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
-
-## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -30229,7 +30338,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
+
+## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -39989,6 +40100,10 @@ app:
 
 undefined
 ====================
+
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-svc/pkgs/container/onecx-workspace-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -40087,10 +40202,6 @@ app:
         description: OneCX Workspace Backend Service
         name: OneCX Workspace SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
