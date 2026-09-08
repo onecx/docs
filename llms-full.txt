@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2206,6 +1922,290 @@ Example configuration to expose mf-manifest.json
 ---
 ```
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 Process Automation
 ====================
 OneCX provides built-in support for automating the software development lifecycle through Continuous Integration (CI) and Continuous Delivery/Deployment (CD) practices. This ensures that code changes are automatically tested, integrated, and deployed to production environments with minimal manual intervention.
@@ -2638,40 +2638,6 @@ The Workspace avoids tight coupling with individual apps. Instead, it relies on 
 * OneCX Portal UI Libs: shared components and styles used by the Workspace UI.
 * OneCX Theme: branding and theming across apps and workspaces.
 * OneCX IAM and Tenant: authentication, authorization, and tenant scoping for users.
-
-Module Federation Introduction
-====================
-[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
-
-**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
-
-**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
-
-This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
-
-Before proceeding, familiarize yourself with the following concepts:
-
-__Table 1\. Prerequisites__
-| Name                                                                                | Description                                                                                     |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
-| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
-| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
-| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
-| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
-
-__Table 2\. Concepts__
-| Name                                                           | Description                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
-| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
-
-__Table 3\. Microfrontends in OneCX__
-| Name                                                             | Description                                                                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
-| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
-| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Microfrontend Bootstrapping
 ====================
@@ -3568,6 +3534,40 @@ The name of the remote entry file (usually `remoteEntry.js`).
 
 * [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
 * [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
+
+Module Federation Introduction
+====================
+[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
+
+**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
+
+**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
+
+This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
+
+Before proceeding, familiarize yourself with the following concepts:
+
+__Table 1\. Prerequisites__
+| Name                                                                                | Description                                                                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
+| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
+| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
+| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
+| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
+
+__Table 2\. Concepts__
+| Name                                                           | Description                                                          |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
+| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
+
+__Table 3\. Microfrontends in OneCX__
+| Name                                                             | Description                                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
+| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
+| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Clean Removal of a Custom App
 ====================
@@ -6072,51 +6072,6 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 
 If you encounter the above mentioned error you might be using multiple conflicting `webpack` versions in your project. To verify that this is the case, first run `npm ls webpack`. If this command returns a list of multiple **different** versions of `webpack`, please modify your `package.json` file to resolve the version mismatches (change version or install webpack dependency if it doesn’t exist yet). In our case it helped to set the version to a fixed version (5.94.0), as this was the exact version that one other package tried to use as a peer dependency.
 
-Angular
-====================
-* [Angular Homepage](https://angular.io/)
-* [Guides](https://angular.io/guide/developer-guide-overview)
-* [Source code](https://github.com/angular/angular)
-* [Angular Quick Start](https://angular.io/start)
-* [NgRx](https://ngrx.io/)
-* [Ping Angular App UI](https://github.com/onecx-apps/ping-angular-app-ui)
-
-NgRx Store provides reactive state management for Angular apps inspired by Redux.
-
-## [](#requirements)Requirements
-
-For the developing the Quarkus application we need to install these tools:
-
-### [](#developer-ide)Developer IDE
-
-* [Visual Studio Code](https://code.visualstudio.com/)
-
-### [](#vs-code-extensions)VS Code Extensions
-
-* [SonarLint](https://marketplace.visualstudio.com/items?itemName=SonarSource.sonarlint-vscode)
-* [Angular Language Service](https://marketplace.visualstudio.com/items?itemName=Angular.ng-template)
-* [EsLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
-* [GitLens](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens)
-* [Import Cost](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost)
-* [IntelliCode)](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.vscodeintellicode)
-* [IntelliCode API Usage Examples](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.intellicode-api-usage-examples)
-* [IntelliSense for CSS class names in HTML](https://marketplace.visualstudio.com/items?itemName=Zignd.html-css-class-completion)
-* [HTML CSS Support](https://marketplace.visualstudio.com/items?itemName=ecmel.vscode-html-css)
-* [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
-* [Prettier ESLint](https://marketplace.visualstudio.com/items?itemName=rvest.vs-code-prettier-eslint)
-* [ThunderClient](https://marketplace.visualstudio.com/items?itemName=rangav.vscode-thunder-client)
-* [SonarLint](https://plugins.jetbrains.com/plugin/7973-sonarlint)
-
-### [](#useful-browser-plugins)Useful browser plugins
-
-* [Angular dev tools extension](https://angular.io/guide/devtools#devtools-overview)
-* [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview/)
-* [ReduxDevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd)
-
-### [](#useful-links)Useful links
-
-* [Storybook](https://storybook.js.org/)
-
 Angular Guidelines
 ====================
 This chapter gives guidance which guidelines should be followed during the development.
@@ -6242,6 +6197,51 @@ The following examples shows a potential folder structure, that might be extende
 │   ├── environments
 │   │   │   ├── dev
 │   │   │   ├── prod
+
+Angular
+====================
+* [Angular Homepage](https://angular.io/)
+* [Guides](https://angular.io/guide/developer-guide-overview)
+* [Source code](https://github.com/angular/angular)
+* [Angular Quick Start](https://angular.io/start)
+* [NgRx](https://ngrx.io/)
+* [Ping Angular App UI](https://github.com/onecx-apps/ping-angular-app-ui)
+
+NgRx Store provides reactive state management for Angular apps inspired by Redux.
+
+## [](#requirements)Requirements
+
+For the developing the Quarkus application we need to install these tools:
+
+### [](#developer-ide)Developer IDE
+
+* [Visual Studio Code](https://code.visualstudio.com/)
+
+### [](#vs-code-extensions)VS Code Extensions
+
+* [SonarLint](https://marketplace.visualstudio.com/items?itemName=SonarSource.sonarlint-vscode)
+* [Angular Language Service](https://marketplace.visualstudio.com/items?itemName=Angular.ng-template)
+* [EsLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+* [GitLens](https://marketplace.visualstudio.com/items?itemName=eamodio.gitlens)
+* [Import Cost](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost)
+* [IntelliCode)](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.vscodeintellicode)
+* [IntelliCode API Usage Examples](https://marketplace.visualstudio.com/items?itemName=VisualStudioExptTeam.intellicode-api-usage-examples)
+* [IntelliSense for CSS class names in HTML](https://marketplace.visualstudio.com/items?itemName=Zignd.html-css-class-completion)
+* [HTML CSS Support](https://marketplace.visualstudio.com/items?itemName=ecmel.vscode-html-css)
+* [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode)
+* [Prettier ESLint](https://marketplace.visualstudio.com/items?itemName=rvest.vs-code-prettier-eslint)
+* [ThunderClient](https://marketplace.visualstudio.com/items?itemName=rangav.vscode-thunder-client)
+* [SonarLint](https://plugins.jetbrains.com/plugin/7973-sonarlint)
+
+### [](#useful-browser-plugins)Useful browser plugins
+
+* [Angular dev tools extension](https://angular.io/guide/devtools#devtools-overview)
+* [Lighthouse](https://developer.chrome.com/docs/lighthouse/overview/)
+* [ReduxDevTools](https://chrome.google.com/webstore/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd)
+
+### [](#useful-links)Useful links
+
+* [Storybook](https://storybook.js.org/)
 
 Enable OneCX app to run in standalone
 ====================
@@ -6387,6 +6387,58 @@ In OneCX toast messages display is handled via [PortalMessageService](../../onec
 ## [](#display-toast-message)Display Toast Message
 
 Details about the usage can be found in the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html).
+
+Assets
+====================
+In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which is described per-technology on the Recommended Setup how-to pages.
+
+## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
+
+In a standalone web application, static assets are served from the application’s own origin: the browser requests `/assets/icons/logo.svg`, the server resolves that path against the application’s build output, and the asset loads.
+
+OneCX applications do not run standalone. Each application is packaged as a Micro Frontend and **loaded into the OneCX shell**. When the shell loads a Micro Frontend, it is loaded relative to the shell’s deployment rather than from the application’s own origin. This changes how asset URLs are resolved: a path that the application’s build emitted is no longer guaranteed to resolve against the location the browser actually loads the application from.
+
+As a result, an asset that is merely **present** in a library’s npm package — or that is bundled into the application’s build output — is not enough for the application to **reference** it at runtime from the shell. The asset must be published to a path the application’s own build serves, and the code must reference it through that published path. This is why asset handling in OneCX is not the same as in a standalone app: the special treatment exists to make library- and application-provided assets resolvable even though the application runs from the shell.
+
+The same principle applies in both directions:
+
+* **Library-provided assets** (e.g. the translation files or icons a OneCX library ships) must be exposed by the application so the application can resolve them at runtime.
+* **Application-provided assets** (the app’s own styles and other static files) must be exposed so the shell can load and apply them when the application is active.
+
+## [](#library-assets)Library assets
+
+OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
+
+The exact build configuration — how to declare the assets of a given library in an Angular or React application — is described on the Recommended Setup **Expose Library Assets** page for each technology. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
+
+### [](#translation-assets)Translation assets (required)
+
+The most important library assets are **translation files**: a library that provides user-facing text ships i18n files for the languages it supports, and the application that uses the library is responsible for making those files available. Without them, library-provided strings fall back to untranslated keys or missing text.
+
+The **translation files** of the OneCX libraries the application uses are required to be exposed: they are what carry the user-facing text, and without them the library’s strings fall back to untranslated keys or missing text.
+
+## [](#application-assets)Application assets
+
+An application should also expose its own assets so the shell can apply them when the application is active.
+
+### [](#application-styles)Application styles (recommended)
+
+In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
+
+Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — is described on the Recommended Setup **Expose Component Styles** page.
+
+Note the boundary with the **Style Isolation** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
+
+## [](#related)Related
+
+| |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  A link to the **Style Isolation** concept page will be added here once that page is published — it owns the rules for what belongs in an application’s styles.css and how it is scoped. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+| |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 Routing
 ====================
@@ -8528,6 +8580,481 @@ await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
 const response = await apiClient.get('/profile');
 ```
 
+@onecx/react-integration-interface
+====================
+## [](#overview)Overview
+
+`@onecx/react-integration-interface` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of [@onecx/integration-interface](../../../onecx-portal-ui-libs/libraries/integration-interface.html). This library offers contexts containing a set of functionalities useful for integrating Microfrontends with OneCX without directly utilizing Topics.
+
+## [](#contexts)Contexts
+
+### [](#app-state-provider)App State Provider
+
+Usage
+
+**Access information about the platform state**.
+
+This context creates new instances of several Topics that contain information about the current state of the platform and makes sure they are cleaned up correctly on destruction.
+
+Example
+
+**Wrap your app with the provider and read topics with `useAppState`.**
+
+```tsx
+import { AppStateProvider, useAppState } from "@onecx/react-integration-interface";
+
+const Status = () => {
+  const { currentWorkspace$ } = useAppState();
+  // currentWorkspace$.subscribe((ws) => console.log(ws));
+  return null;
+};
+
+export const App = () => (
+  <AppStateProvider>
+    <Status />
+  </AppStateProvider>
+);
+```
+
+Topics used
+
+* [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)
+* [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)
+* [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)
+* [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)
+* [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)
+* [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic)
+* [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)
+
+Dependencies
+
+None
+
+API
+
+**App State Provider** properties enable access to topic instances:
+
+__Table 1\. App State Provider properties__
+| Property name     | Type                                                                                                                | Description                                                                                                                                                              |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| globalError$      | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)           | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic) instance.                                                      |
+| globalLoading$    | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)       | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic) instance.                                                  |
+| currentMfe$       | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)             | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic) instance.                                                        |
+| currentLocation$  | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)   | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic) instance.                                              |
+| currentPage$      | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)           | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic) instance. Emits only when page path matches document location. |
+| currentWorkspace$ | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) instance.                                            |
+| isAuthenticated$  | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)   | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic) instance.                                              |
+| currentPortal$    | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | Deprecated. Use currentWorkspace$ instead.                                                                                                                               |
+
+### [](#configuration-provider)Configuration Provider
+
+Usage
+
+**Initialize and access configuration variables for a platform**.
+
+This provider loads configuration variables for the application and exposes them via the ConfigurationTopic.
+
+Example
+
+**Provide defaults and read configuration via `useConfiguration`.**
+
+```tsx
+import {
+  ConfigurationProvider,
+  useConfiguration,
+} from "@onecx/react-integration-interface";
+
+const ConfigInfo = () => {
+  const { config } = useConfiguration();
+  return <pre>{JSON.stringify(config, null, 2)}</pre>;
+};
+
+export const App = () => (
+  <ConfigurationProvider defaultConfig={{ appId: "my-app", portalId: "portal" }}>
+    <ConfigInfo />
+  </ConfigurationProvider>
+);
+```
+
+Topics used
+
+* [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic)
+
+Dependencies
+
+* HttpClient
+
+API
+
+**Configuration Provider** properties:
+
+__Table 2\. Configuration Provider properties__
+| Property name | Type                                                                                                         | Description                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| config$       | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) instance. |
+| isInitialized | Promise<void>                                                                                                | Promise resolved when Configuration Provider is initialized.                                                           |
+| config        | Config \| null                                                                                               | Current config snapshot.                                                                                               |
+
+**Configuration Provider** methods can be used for platform configuration variable management:
+
+__Table 3\. Configuration Provider methods__
+| Method signature                           | Return type                                                                                                      | Description                                                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| init()                                     | Promise<boolean>                                                                                                 | Initializes Configuration Service by loading configuration variables and publishes them via ConfigurationTopic. |
+| getProperty(key: CONFIG\_KEY)              | Promise<string \| undefined>                                                                                     | Gets value set for a key from topic.                                                                            |
+| async setProperty(key: string, val:string) | Promise<void>                                                                                                    | Updates the value for a key in the configuration. Publishes new message via ConfigurationTopic.                 |
+| getConfig()                                | Promise<[Config](../../../onecx-portal-ui-libs/libraries/integration-interface.html#config-object) \| undefined> | Gets all configuration variables defined for the app from the topic.                                            |
+
+### [](#theme-provider)Theme Provider
+
+Usage
+
+**Change the page display style by applying Themes**.
+
+This provider exposes the current theme topic and keeps its lifecycle scoped to the React tree.
+
+Example
+
+**Wrap the tree and read the current theme topic.**
+
+```tsx
+import { ThemeProvider, useTheme } from "@onecx/react-integration-interface";
+
+const ThemeStatus = () => {
+  const { currentTheme$ } = useTheme();
+  // currentTheme$.subscribe((theme) => console.log(theme));
+  return null;
+};
+
+export const App = () => (
+  <ThemeProvider>
+    <ThemeStatus />
+  </ThemeProvider>
+);
+```
+
+Topics used
+
+* [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic)
+
+API
+
+**Theme Provider** properties enable access to topic instances:
+
+__Table 4\. Theme Provider properties__
+| Property name | Type                                                                                                        | Description                                                                                                           |
+| ------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| currentTheme$ | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) instance. |
+
+\=== User Provider
+
+Usage
+
+**Access the user’s data, settings and permissions**.
+
+This service contains user-related information and allows checking user permissions by utilizing Topics.
+
+Example
+
+**Provide user context and check permissions.**
+
+```tsx
+import { UserProvider, useUserService } from "@onecx/react-integration-interface";
+
+const Permissions = () => {
+  const { hasPermission } = useUserService();
+  // hasPermission("MY_PERMISSION").then(console.log);
+  return null;
+};
+
+export const App = () => (
+  <UserProvider>
+    <Permissions />
+  </UserProvider>
+);
+```
+
+Topics used
+
+* [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic)
+* [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)
+
+API
+
+**User Provider** properties enable access to the user’s information:
+
+__Table 5\. User Provider properties__
+| Property          | Type                                                                                                      | Description                                                                                                                                                                                                                   |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| profile$          | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) instance.                                                                                                           |
+| lang$             | BehaviorSubject<string>                                                                                   | User’s language. For every new message in the [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic), the language will be updated based on the user’s locale information. |
+| isInitialized     | Promise<void>                                                                                             | Promise resolved when User Service is initialized.                                                                                                                                                                            |
+| permissionsTopic$ | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)  | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic) instance.                                                                                                            |
+
+**User Provider** methods:
+
+__Table 6\. User Provider methods__
+| Method Signature                                   | Return Type            | Description                                                                               |
+| -------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| getPermissions()                                   | Observable<string\[\]> | Returns the permissions stream from PermissionsTopic.                                     |
+| hasPermission(permissionKey: string \| string\[\]) | Promise<boolean>       | Checks if user has specified permission/permissions using PermissionTopic’s latest value. |
+
+### [](#parameters-provider)Parameters Provider
+
+Usage
+
+**Access application parameters published by the shell.**
+
+Topics used
+
+* [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic)
+
+Example
+
+**Read a parameter inside the provider.**
+
+```tsx
+import { ParametersProvider, useParameters } from "@onecx/react-integration-interface";
+
+const Params = () => {
+  const { get } = useParameters();
+  // get("feature.flag", false).then(console.log);
+  return null;
+};
+
+export const App = () => (
+  <ParametersProvider>
+    <Params />
+  </ParametersProvider>
+);
+```
+
+API
+
+**Parameters Provider** properties:
+
+__Table 7\. Parameters Provider properties__
+| Property name | Type                                                                                                   | Description                                                                                                      |
+| ------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| parameters$   | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) instance. |
+
+**Parameters Provider** methods:
+
+__Table 8\. Parameters Provider methods__
+| Method signature                                                        | Return type | Description                                                             |
+| ----------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
+| get(key: string, defaultValue: T, productName?: string, appId?: string) | Promise<T>  | Resolves a parameter value for the current MFE (falls back to default). |
+
+### [](#portal-message-provider)Portal Message Provider
+
+Usage
+
+**Publish translated toast messages through the shell.**
+
+Topics used
+
+* [MessageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic)
+
+Example
+
+**Publish a success message from a component.**
+
+```tsx
+import {
+  PortalMessageProvider,
+  usePortalMessage,
+} from "@onecx/react-integration-interface";
+
+const Notify = () => {
+  const { success } = usePortalMessage();
+  // success({ summaryKey: "saved", detailKey: "saved.detail" });
+  return null;
+};
+
+export const App = () => (
+  <PortalMessageProvider>
+    <Notify />
+  </PortalMessageProvider>
+);
+```
+
+API
+
+**Portal Message Provider** methods:
+
+__Table 9\. Portal Message Provider methods__
+| Method signature                                     | Return type   | Description                                              |
+| ---------------------------------------------------- | ------------- | -------------------------------------------------------- |
+| success(msg) / info(msg) / warning(msg) / error(msg) | Promise<void> | Publishes a message with translated summary/detail keys. |
+
+### [](#remote-components-provider)Remote Components Provider
+
+Usage
+
+**Access the list of remote components published by the shell.**
+
+Topics used
+
+* [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic)
+
+Example
+
+**Read remote components from the context.**
+
+```tsx
+import {
+  RemoteComponentsProvider,
+  useRemoteComponents,
+} from "@onecx/react-integration-interface";
+
+const Remotes = () => {
+  const { remoteComponents$ } = useRemoteComponents();
+  // remoteComponents$.subscribe((list) => console.log(list));
+  return null;
+};
+
+export const App = () => (
+  <RemoteComponentsProvider>
+    <Remotes />
+  </RemoteComponentsProvider>
+);
+```
+
+API
+
+**Remote Components Provider** properties:
+
+__Table 10\. Remote Components Provider properties__
+| Property name     | Type                                                                                                                | Description                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| remoteComponents$ | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) instance. |
+
+### [](#shell-capability)Shell Capability
+
+Usage
+
+**Check shell capabilities before using optional topics.**
+
+Example
+
+**Set and check capabilities once during bootstrapping.**
+
+```ts
+import { setCapabilities, hasCapability } from "@onecx/react-integration-interface";
+
+setCapabilities(["PORTAL_SEARCH"]);
+const canSearch = hasCapability("PORTAL_SEARCH");
+```
+
+API
+
+**Shell capability** methods:
+
+__Table 11\. Shell capability methods__
+| Method signature                              | Return type | Description                                        |
+| --------------------------------------------- | ----------- | -------------------------------------------------- |
+| setCapabilities(capabilities: Capability\[\]) | void        | Sets the list of shell capabilities on globalThis. |
+| hasCapability(capability: Capability)         | boolean     | Checks if a capability is present.                 |
+
+### [](#image-repository-provider)Image Repository Provider
+
+Usage
+
+**Expose an image repository service from the integration interface.**
+
+Note
+
+The current implementation is commented out in the library source and not active. This section documents the intended API if it is re-enabled.
+
+Example
+
+**Provide the image repository service (when enabled).**
+
+```tsx
+import {
+  ImageRepositoryProvider,
+  useImageRepository,
+} from "@onecx/react-integration-interface";
+
+const Images = () => {
+  const { imageRepositoryService } = useImageRepository();
+  // imageRepositoryService.getImage("logo");
+  return null;
+};
+
+export const App = () => (
+  <ImageRepositoryProvider>
+    <Images />
+  </ImageRepositoryProvider>
+);
+```
+
+API
+
+**Image Repository Provider** properties:
+
+__Table 12\. Image Repository Provider properties__
+| Property name          | Type                                                                                                                  | Description                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| imageRepositoryService | [ImageRepositoryService](../../../onecx-portal-ui-libs/libraries/integration-interface.html#image-repository-service) | Image repository service instance. |
+
+### [](#workspace-hook)Workspace Hook
+
+Usage
+
+**Manage Workspace resources**.
+
+This hook offers set of methods useful when developing Microfrontends referencing other Applications via routing.
+
+Example
+
+**Wrap your app with the required providers and use the hook in a component.**
+
+```tsx
+import {
+  AppStateProvider,
+  useWorkspace,
+} from "@onecx/react-integration-interface";
+
+const WorkspaceLinks = () => {
+  const { getUrl } = useWorkspace();
+
+  // Example: subscribe to the Observable to get the URL
+  // getUrl("product", "app").subscribe((url) => console.log(url));
+
+  return null;
+};
+
+export const App = () => (
+  <AppStateProvider>
+    <WorkspaceLinks />
+  </AppStateProvider>
+);
+```
+
+Topics used
+
+None.
+
+Dependencies
+
+* HttpClient
+* [AppStateProvider](#app-state-provider)
+
+react-utils
+
+* [@onecx/react-utils](react-utils.html)includes `withApp`, which wraps your component with the base providers and styling helpers (globals, PrimeReact isolation, app styles, base providers). Use it to bootstrap an application with the expected OneCX context.
+
+API
+
+**Workspace Hook** \- **useWorkspace** can be used for constructing routes to Applications:
+
+__Table 13\. Workspace Hook methods__
+| Method signature                                                                                               | Return type         | Description                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
+| doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
+
 @onecx/react-remote-components
 ====================
 ## [](#overview)Overview
@@ -9004,481 +9531,6 @@ An application integrated with OneCX still loads and runs without adapting its r
 
 See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
 
-@onecx/react-integration-interface
-====================
-## [](#overview)Overview
-
-`@onecx/react-integration-interface` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of [@onecx/integration-interface](../../../onecx-portal-ui-libs/libraries/integration-interface.html). This library offers contexts containing a set of functionalities useful for integrating Microfrontends with OneCX without directly utilizing Topics.
-
-## [](#contexts)Contexts
-
-### [](#app-state-provider)App State Provider
-
-Usage
-
-**Access information about the platform state**.
-
-This context creates new instances of several Topics that contain information about the current state of the platform and makes sure they are cleaned up correctly on destruction.
-
-Example
-
-**Wrap your app with the provider and read topics with `useAppState`.**
-
-```tsx
-import { AppStateProvider, useAppState } from "@onecx/react-integration-interface";
-
-const Status = () => {
-  const { currentWorkspace$ } = useAppState();
-  // currentWorkspace$.subscribe((ws) => console.log(ws));
-  return null;
-};
-
-export const App = () => (
-  <AppStateProvider>
-    <Status />
-  </AppStateProvider>
-);
-```
-
-Topics used
-
-* [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)
-* [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)
-* [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)
-* [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)
-* [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)
-* [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic)
-* [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)
-
-Dependencies
-
-None
-
-API
-
-**App State Provider** properties enable access to topic instances:
-
-__Table 1\. App State Provider properties__
-| Property name     | Type                                                                                                                | Description                                                                                                                                                              |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| globalError$      | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic)           | [GlobalErrorTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-error-topic) instance.                                                      |
-| globalLoading$    | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic)       | [GlobalLoadingTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#global-loading-topic) instance.                                                  |
-| currentMfe$       | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic)             | [CurrentMfeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-mfe-topic) instance.                                                        |
-| currentLocation$  | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic)   | [CurrentLocationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-location-topic) instance.                                              |
-| currentPage$      | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic)           | [CurrentPageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-page-topic) instance. Emits only when page path matches document location. |
-| currentWorkspace$ | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) instance.                                            |
-| isAuthenticated$  | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic)   | [IsAuthenticatedTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#is-authenticated-topic) instance.                                              |
-| currentPortal$    | [CurrentWorkspaceTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-workspace-topic) | Deprecated. Use currentWorkspace$ instead.                                                                                                                               |
-
-### [](#configuration-provider)Configuration Provider
-
-Usage
-
-**Initialize and access configuration variables for a platform**.
-
-This provider loads configuration variables for the application and exposes them via the ConfigurationTopic.
-
-Example
-
-**Provide defaults and read configuration via `useConfiguration`.**
-
-```tsx
-import {
-  ConfigurationProvider,
-  useConfiguration,
-} from "@onecx/react-integration-interface";
-
-const ConfigInfo = () => {
-  const { config } = useConfiguration();
-  return <pre>{JSON.stringify(config, null, 2)}</pre>;
-};
-
-export const App = () => (
-  <ConfigurationProvider defaultConfig={{ appId: "my-app", portalId: "portal" }}>
-    <ConfigInfo />
-  </ConfigurationProvider>
-);
-```
-
-Topics used
-
-* [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic)
-
-Dependencies
-
-* HttpClient
-
-API
-
-**Configuration Provider** properties:
-
-__Table 2\. Configuration Provider properties__
-| Property name | Type                                                                                                         | Description                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| config$       | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) | [ConfigurationTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#configuration-topic) instance. |
-| isInitialized | Promise<void>                                                                                                | Promise resolved when Configuration Provider is initialized.                                                           |
-| config        | Config \| null                                                                                               | Current config snapshot.                                                                                               |
-
-**Configuration Provider** methods can be used for platform configuration variable management:
-
-__Table 3\. Configuration Provider methods__
-| Method signature                           | Return type                                                                                                      | Description                                                                                                     |
-| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| init()                                     | Promise<boolean>                                                                                                 | Initializes Configuration Service by loading configuration variables and publishes them via ConfigurationTopic. |
-| getProperty(key: CONFIG\_KEY)              | Promise<string \| undefined>                                                                                     | Gets value set for a key from topic.                                                                            |
-| async setProperty(key: string, val:string) | Promise<void>                                                                                                    | Updates the value for a key in the configuration. Publishes new message via ConfigurationTopic.                 |
-| getConfig()                                | Promise<[Config](../../../onecx-portal-ui-libs/libraries/integration-interface.html#config-object) \| undefined> | Gets all configuration variables defined for the app from the topic.                                            |
-
-### [](#theme-provider)Theme Provider
-
-Usage
-
-**Change the page display style by applying Themes**.
-
-This provider exposes the current theme topic and keeps its lifecycle scoped to the React tree.
-
-Example
-
-**Wrap the tree and read the current theme topic.**
-
-```tsx
-import { ThemeProvider, useTheme } from "@onecx/react-integration-interface";
-
-const ThemeStatus = () => {
-  const { currentTheme$ } = useTheme();
-  // currentTheme$.subscribe((theme) => console.log(theme));
-  return null;
-};
-
-export const App = () => (
-  <ThemeProvider>
-    <ThemeStatus />
-  </ThemeProvider>
-);
-```
-
-Topics used
-
-* [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic)
-
-API
-
-**Theme Provider** properties enable access to topic instances:
-
-__Table 4\. Theme Provider properties__
-| Property name | Type                                                                                                        | Description                                                                                                           |
-| ------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| currentTheme$ | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) | [CurrentThemeTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#current-theme-topic) instance. |
-
-\=== User Provider
-
-Usage
-
-**Access the user’s data, settings and permissions**.
-
-This service contains user-related information and allows checking user permissions by utilizing Topics.
-
-Example
-
-**Provide user context and check permissions.**
-
-```tsx
-import { UserProvider, useUserService } from "@onecx/react-integration-interface";
-
-const Permissions = () => {
-  const { hasPermission } = useUserService();
-  // hasPermission("MY_PERMISSION").then(console.log);
-  return null;
-};
-
-export const App = () => (
-  <UserProvider>
-    <Permissions />
-  </UserProvider>
-);
-```
-
-Topics used
-
-* [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic)
-* [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)
-
-API
-
-**User Provider** properties enable access to the user’s information:
-
-__Table 5\. User Provider properties__
-| Property          | Type                                                                                                      | Description                                                                                                                                                                                                                   |
-| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| profile$          | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) | [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic) instance.                                                                                                           |
-| lang$             | BehaviorSubject<string>                                                                                   | User’s language. For every new message in the [UserProfileTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#user-profile-topic), the language will be updated based on the user’s locale information. |
-| isInitialized     | Promise<void>                                                                                             | Promise resolved when User Service is initialized.                                                                                                                                                                            |
-| permissionsTopic$ | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic)  | [PermissionsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#permissions-topic) instance.                                                                                                            |
-
-**User Provider** methods:
-
-__Table 6\. User Provider methods__
-| Method Signature                                   | Return Type            | Description                                                                               |
-| -------------------------------------------------- | ---------------------- | ----------------------------------------------------------------------------------------- |
-| getPermissions()                                   | Observable<string\[\]> | Returns the permissions stream from PermissionsTopic.                                     |
-| hasPermission(permissionKey: string \| string\[\]) | Promise<boolean>       | Checks if user has specified permission/permissions using PermissionTopic’s latest value. |
-
-### [](#parameters-provider)Parameters Provider
-
-Usage
-
-**Access application parameters published by the shell.**
-
-Topics used
-
-* [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic)
-
-Example
-
-**Read a parameter inside the provider.**
-
-```tsx
-import { ParametersProvider, useParameters } from "@onecx/react-integration-interface";
-
-const Params = () => {
-  const { get } = useParameters();
-  // get("feature.flag", false).then(console.log);
-  return null;
-};
-
-export const App = () => (
-  <ParametersProvider>
-    <Params />
-  </ParametersProvider>
-);
-```
-
-API
-
-**Parameters Provider** properties:
-
-__Table 7\. Parameters Provider properties__
-| Property name | Type                                                                                                   | Description                                                                                                      |
-| ------------- | ------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| parameters$   | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) | [ParametersTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#parameters-topic) instance. |
-
-**Parameters Provider** methods:
-
-__Table 8\. Parameters Provider methods__
-| Method signature                                                        | Return type | Description                                                             |
-| ----------------------------------------------------------------------- | ----------- | ----------------------------------------------------------------------- |
-| get(key: string, defaultValue: T, productName?: string, appId?: string) | Promise<T>  | Resolves a parameter value for the current MFE (falls back to default). |
-
-### [](#portal-message-provider)Portal Message Provider
-
-Usage
-
-**Publish translated toast messages through the shell.**
-
-Topics used
-
-* [MessageTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic)
-
-Example
-
-**Publish a success message from a component.**
-
-```tsx
-import {
-  PortalMessageProvider,
-  usePortalMessage,
-} from "@onecx/react-integration-interface";
-
-const Notify = () => {
-  const { success } = usePortalMessage();
-  // success({ summaryKey: "saved", detailKey: "saved.detail" });
-  return null;
-};
-
-export const App = () => (
-  <PortalMessageProvider>
-    <Notify />
-  </PortalMessageProvider>
-);
-```
-
-API
-
-**Portal Message Provider** methods:
-
-__Table 9\. Portal Message Provider methods__
-| Method signature                                     | Return type   | Description                                              |
-| ---------------------------------------------------- | ------------- | -------------------------------------------------------- |
-| success(msg) / info(msg) / warning(msg) / error(msg) | Promise<void> | Publishes a message with translated summary/detail keys. |
-
-### [](#remote-components-provider)Remote Components Provider
-
-Usage
-
-**Access the list of remote components published by the shell.**
-
-Topics used
-
-* [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic)
-
-Example
-
-**Read remote components from the context.**
-
-```tsx
-import {
-  RemoteComponentsProvider,
-  useRemoteComponents,
-} from "@onecx/react-integration-interface";
-
-const Remotes = () => {
-  const { remoteComponents$ } = useRemoteComponents();
-  // remoteComponents$.subscribe((list) => console.log(list));
-  return null;
-};
-
-export const App = () => (
-  <RemoteComponentsProvider>
-    <Remotes />
-  </RemoteComponentsProvider>
-);
-```
-
-API
-
-**Remote Components Provider** properties:
-
-__Table 10\. Remote Components Provider properties__
-| Property name     | Type                                                                                                                | Description                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| remoteComponents$ | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) | [RemoteComponentsTopic](../../../onecx-portal-ui-libs/libraries/integration-interface.html#remote-components-topic) instance. |
-
-### [](#shell-capability)Shell Capability
-
-Usage
-
-**Check shell capabilities before using optional topics.**
-
-Example
-
-**Set and check capabilities once during bootstrapping.**
-
-```ts
-import { setCapabilities, hasCapability } from "@onecx/react-integration-interface";
-
-setCapabilities(["PORTAL_SEARCH"]);
-const canSearch = hasCapability("PORTAL_SEARCH");
-```
-
-API
-
-**Shell capability** methods:
-
-__Table 11\. Shell capability methods__
-| Method signature                              | Return type | Description                                        |
-| --------------------------------------------- | ----------- | -------------------------------------------------- |
-| setCapabilities(capabilities: Capability\[\]) | void        | Sets the list of shell capabilities on globalThis. |
-| hasCapability(capability: Capability)         | boolean     | Checks if a capability is present.                 |
-
-### [](#image-repository-provider)Image Repository Provider
-
-Usage
-
-**Expose an image repository service from the integration interface.**
-
-Note
-
-The current implementation is commented out in the library source and not active. This section documents the intended API if it is re-enabled.
-
-Example
-
-**Provide the image repository service (when enabled).**
-
-```tsx
-import {
-  ImageRepositoryProvider,
-  useImageRepository,
-} from "@onecx/react-integration-interface";
-
-const Images = () => {
-  const { imageRepositoryService } = useImageRepository();
-  // imageRepositoryService.getImage("logo");
-  return null;
-};
-
-export const App = () => (
-  <ImageRepositoryProvider>
-    <Images />
-  </ImageRepositoryProvider>
-);
-```
-
-API
-
-**Image Repository Provider** properties:
-
-__Table 12\. Image Repository Provider properties__
-| Property name          | Type                                                                                                                  | Description                        |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| imageRepositoryService | [ImageRepositoryService](../../../onecx-portal-ui-libs/libraries/integration-interface.html#image-repository-service) | Image repository service instance. |
-
-### [](#workspace-hook)Workspace Hook
-
-Usage
-
-**Manage Workspace resources**.
-
-This hook offers set of methods useful when developing Microfrontends referencing other Applications via routing.
-
-Example
-
-**Wrap your app with the required providers and use the hook in a component.**
-
-```tsx
-import {
-  AppStateProvider,
-  useWorkspace,
-} from "@onecx/react-integration-interface";
-
-const WorkspaceLinks = () => {
-  const { getUrl } = useWorkspace();
-
-  // Example: subscribe to the Observable to get the URL
-  // getUrl("product", "app").subscribe((url) => console.log(url));
-
-  return null;
-};
-
-export const App = () => (
-  <AppStateProvider>
-    <WorkspaceLinks />
-  </AppStateProvider>
-);
-```
-
-Topics used
-
-None.
-
-Dependencies
-
-* HttpClient
-* [AppStateProvider](#app-state-provider)
-
-react-utils
-
-* [@onecx/react-utils](react-utils.html)includes `withApp`, which wraps your component with the base providers and styling helpers (globals, PrimeReact isolation, app styles, base providers). Use it to bootstrap an application with the expected OneCX context.
-
-API
-
-**Workspace Hook** \- **useWorkspace** can be used for constructing routes to Applications:
-
-__Table 13\. Workspace Hook methods__
-| Method signature                                                                                               | Return type         | Description                                                                                                                                                                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
-| doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
-
 Apply Theming
 ====================
 An application integrated with OneCX still loads and runs even if it doesn’t use OneCX theme variables, but it renders with a theme that doesn’t match the rest of the shell. In OneCX, each workspace can use a different theme for its pages, and the shell makes the active theme’s CSS variables available on every page automatically — the application should use those variables in its own styles instead of hard-coded values.
@@ -9503,18 +9555,6 @@ An application integrated with OneCX still loads and runs without exposing the a
 * [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
 * [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
-Configure Authentication
-====================
-Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
-
-## [](#angular-applications)Angular Applications
-
-Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s bootstrap providers. It registers an HTTP interceptor that automatically attaches the required authentication headers to outgoing requests.
-
-## [](#react-applications)React Applications
-
-React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
-
 Recommended Setup
 ====================
 Recommended Setup covers the steps an application **should** complete to behave correctly in the OneCX shell. Unlike Required Setup, skipping any of these steps does not break the app outright — it still loads and runs — but it behaves **visibly incorrectly**: wrong or missing styles, missing or broken translations, or broken navigation.
@@ -9533,6 +9573,18 @@ This tier applies to both paths of building a OneCX UI:
 * [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
+
+Configure Authentication
+====================
+Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
+
+## [](#angular-applications)Angular Applications
+
+Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s bootstrap providers. It registers an HTTP interceptor that automatically attaches the required authentication headers to outgoing requests.
+
+## [](#react-applications)React Applications
+
+React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
 
 Configure Remote Package Sharing
 ====================
@@ -9630,27 +9682,6 @@ For Angular 21 and newer applications, the shell expects them to be loaded into 
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
 
-Required Setup
-====================
-Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
-
-This tier applies to both paths of building a OneCX UI:
-
-* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
-* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
-
-| |  If a step isn’t listed here, it belongs to a different tier. See [Recommended Setup](../recommended/index.html) for steps an app **should** complete to behave correctly, not just to run. An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Required tier as part of the same three-tier Setup structure. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#required-setup-pages)Pages
-
-* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
-* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
-   * [Module Approach](expose-remote-module/module-approach.html)  
-   * [Component Approach](expose-remote-module/component-approach.html)
-* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
-* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
-
 Expose a Remote Module
 ====================
 Every application integrated with OneCX must expose itself to the shell via Module Federation, so the shell can dynamically load it at runtime. This page covers the requirements and setup steps for both Angular and React applications.
@@ -9714,6 +9745,27 @@ const config = withModuleFederationPlugin({
 ```
 
 See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
+
+Required Setup
+====================
+Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
+
+This tier applies to both paths of building a OneCX UI:
+
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
+* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
+
+| |  If a step isn’t listed here, it belongs to a different tier. See [Recommended Setup](../recommended/index.html) for steps an app **should** complete to behave correctly, not just to run. An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Required tier as part of the same three-tier Setup structure. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#required-setup-pages)Pages
+
+* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
+* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
+   * [Module Approach](expose-remote-module/module-approach.html)  
+   * [Component Approach](expose-remote-module/component-approach.html)
+* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
+* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
 
 Platform &amp; Package Compatibility Requirements
 ====================
@@ -11324,14 +11376,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
-
 AutoComplete for suggestions with array of type string
 ====================
 ## [](#goal)Goal: Add AutoComplet String
@@ -11567,6 +11611,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -15974,26 +16026,6 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
-undefined
-====================
-### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
-
-The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
-
-**Placeholder**:
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../generator/glossary.html#feature).
-
-| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, you can modify all files to your needs.
-
 Mock API
 ====================
 What is a Mock API?
@@ -17114,6 +17146,26 @@ Make sure to review the test results and address any issues that may arise to en
 ![test result search](../../_images/test_result_search.png) 
 
 Figure 1\. Test results
+
+undefined
+====================
+### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
+
+The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
+
+**Placeholder**:
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](../../generator/glossary.html#feature).
+
+| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, you can modify all files to your needs.
 
 Configure Detail View (React)
 ====================
@@ -19619,6 +19671,21 @@ URL normalization aims to avoid accidental mismatches:
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
 
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
+
 OneCX GroupByCountDiagram
 ====================
 ## [](#overview)Overview
@@ -19706,21 +19773,6 @@ GroupByCountDiagramComponentState interface
         activeDiagramType?: DiagramType
     }
 ```
-
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX PageHeader
 ====================
@@ -21760,55 +21812,51 @@ This document aims to showcase how to manage InteractiveDataView Component.
 
 * [DataTableColumn](data-table-column.html)
 
-undefined
+@onecx/angular-utils/cdk
 ====================
-## [](#onecxSharedRecommendations)OneCX Shared Recommendations
+`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
 
-The `getOneCXSharedRecommendations` function provides OneCX-specific recommendations for shared library configurations. It automatically applies optimized settings for Angular, OneCX, RxJS, PrimeNG, ngx-translate, and ngrx packages.
+## [](#installation)Installation
 
-```ts
-getOneCXSharedRecommendations(
-  libraryName: string,
-  sharedConfig: SharedLibraryConfig
-): false | SharedLibraryConfig
+`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
+
+```sh
+npm i @onecx/angular-utils
 ```
 
-### [](#onecxSharedRecommendationsUsage)Usage Example
+## [](#api)API
 
-```ts
-import { getOneCXSharedRecommendations } from '@onecx/build-utils';
+### [](#onecx-overlay-container)OnecxOverlayContainer
 
-const sharedConfig = {
-  singleton: false,
-  strictVersion: false,
-  eager: false,
-  requiredVersion: 'any',
-  shareScope: 'angular_21'
-};
+A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
 
-const recommendedConfig = getOneCXSharedRecommendations('@angular/core', sharedConfig);
-// Output: { singleton: false, strictVersion: false, eager: false, version: '1.0.0', requiredVersion: 'any', shareScope: 'angular_21' }
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
+  ]
+})
+export class RemoteModule {}
 ```
 
-### [](#configProperties)Config Properties
+### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
 
-The `SharedLibraryConfig` object can include the following properties:
+A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
 
-| Property           | Type            | Description                                              |
-| ------------------ | --------------- | -------------------------------------------------------- |
-| singleton          | boolean         | Whether only one instance should exist                   |
-| strictVersion      | boolean         | Whether version mismatches should cause errors           |
-| eager              | boolean         | Whether to load immediately vs lazy                      |
-| requiredVersion    | string \| false | Required version or any/false for no requirement         |
-| version            | string          | Actual version of the package                            |
-| includeSecondaries | boolean         | Include secondary entry points (for @angular-architects) |
-| shareScope         | string          | Scope for sharing (e.g., angular\_21)                    |
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
 
-For recommended libraries, the function applies the following defaults:
-
-* `singleton`: `false` — Allows multiple versions to coexist
-* `strictVersion`: `false` — Permits version flexibility
-* `eager`: `false` — Enables lazy loading of shared modules
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
 
 undefined
 ====================
@@ -21977,50 +22025,108 @@ const sharedEntries = getOneCXSharedLibraryConfig(
 );
 ```
 
-@onecx/angular-utils/cdk
+undefined
 ====================
-`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
+## [](#onecxSharedRecommendations)OneCX Shared Recommendations
 
-## [](#installation)Installation
+The `getOneCXSharedRecommendations` function provides OneCX-specific recommendations for shared library configurations. It automatically applies optimized settings for Angular, OneCX, RxJS, PrimeNG, ngx-translate, and ngrx packages.
 
-`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
-
-```sh
-npm i @onecx/angular-utils
+```ts
+getOneCXSharedRecommendations(
+  libraryName: string,
+  sharedConfig: SharedLibraryConfig
+): false | SharedLibraryConfig
 ```
 
-## [](#api)API
+### [](#onecxSharedRecommendationsUsage)Usage Example
 
-### [](#onecx-overlay-container)OnecxOverlayContainer
+```ts
+import { getOneCXSharedRecommendations } from '@onecx/build-utils';
 
-A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
+const sharedConfig = {
+  singleton: false,
+  strictVersion: false,
+  eager: false,
+  requiredVersion: 'any',
+  shareScope: 'angular_21'
+};
 
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
-  ]
-})
-export class RemoteModule {}
+const recommendedConfig = getOneCXSharedRecommendations('@angular/core', sharedConfig);
+// Output: { singleton: false, strictVersion: false, eager: false, version: '1.0.0', requiredVersion: 'any', shareScope: 'angular_21' }
 ```
 
-### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
+### [](#configProperties)Config Properties
 
-A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
+The `SharedLibraryConfig` object can include the following properties:
 
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
+| Property           | Type            | Description                                              |
+| ------------------ | --------------- | -------------------------------------------------------- |
+| singleton          | boolean         | Whether only one instance should exist                   |
+| strictVersion      | boolean         | Whether version mismatches should cause errors           |
+| eager              | boolean         | Whether to load immediately vs lazy                      |
+| requiredVersion    | string \| false | Required version or any/false for no requirement         |
+| version            | string          | Actual version of the package                            |
+| includeSecondaries | boolean         | Include secondary entry points (for @angular-architects) |
+| shareScope         | string          | Scope for sharing (e.g., angular\_21)                    |
 
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
+For recommended libraries, the function applies the following defaults:
+
+* `singleton`: `false` — Allows multiple versions to coexist
+* `strictVersion`: `false` — Permits version flexibility
+* `eager`: `false` — Enables lazy loading of shared modules
+
+Add Webpack Plugin for Angular Material
+====================
+In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
+
+| |  This setup will be replaced by a OneCX-provided Webpack plugin in a future version. |
+| -------------------------------------------------------------------------------------- |
+
+## [](#%5Finstall%5Fand%5Fconfigure%5Fwebpack%5Fplugin)Install and Configure Webpack Plugin
+
+1. Install `modify-source-webpack-plugin`  
+```bash  
+npm install modify-source-webpack-plugin --save-dev  
+```
+2. Import `ModifySourcePlugin` and `ReplaceOperation` from `` modify-source-webpack-plugin`in `webpack.config.js ``
+3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
+   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
+   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
+         * scope: `all`  
+         * match pattern: `document\.createElement\(`  
+         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
+4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
+
+Example webpack.config.js
+
+```javascript
+const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+
+const modifyMaterialPlugin = new ModifySourcePlugin({
+  rules: [
+    {
+      test: (module) => {
+        return (
+          module.resource &&
+          (module.resource.includes('@angular/material') ||
+            module.resource.includes('@angular/cdk'))
+        )
+      },
+      operations: [
+        new ReplaceOperation(
+          'all',
+          'document\\.createElement\\(',
+          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
+        )
+      ]
+    }
   ]
 })
-export class RemoteModule {}
+
+module.exports = {
+  ...webpackConfig,
+  plugins: [...plugins, modifyMaterialPlugin]
+}
 ```
 
 Add Webpack Plugin for PrimeNG
@@ -22153,60 +22259,6 @@ npm uninstall --save @onecx/standalone-shell
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
 
-Add Webpack Plugin for Angular Material
-====================
-In OneCX v6, applications using Angular Material or Angular CDK must add a Webpack plugin. This change is required after upgrading to Angular 19.
-
-| |  This setup will be replaced by a OneCX-provided Webpack plugin in a future version. |
-| -------------------------------------------------------------------------------------- |
-
-## [](#%5Finstall%5Fand%5Fconfigure%5Fwebpack%5Fplugin)Install and Configure Webpack Plugin
-
-1. Install `modify-source-webpack-plugin`  
-```bash  
-npm install modify-source-webpack-plugin --save-dev  
-```
-2. Import `ModifySourcePlugin` and `ReplaceOperation` from `` modify-source-webpack-plugin`in `webpack.config.js ``
-3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
-   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
-   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
-         * scope: `all`  
-         * match pattern: `document\.createElement\(`  
-         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
-4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
-
-Example webpack.config.js
-
-```javascript
-const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
-
-const modifyMaterialPlugin = new ModifySourcePlugin({
-  rules: [
-    {
-      test: (module) => {
-        return (
-          module.resource &&
-          (module.resource.includes('@angular/material') ||
-            module.resource.includes('@angular/cdk'))
-        )
-      },
-      operations: [
-        new ReplaceOperation(
-          'all',
-          'document\\.createElement\\(',
-          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
-        )
-      ]
-    }
-  ]
-})
-
-module.exports = {
-  ...webpackConfig,
-  plugins: [...plugins, modifyMaterialPlugin]
-}
-```
-
 undefined
 ====================
 AI Migration Agent 
@@ -22324,49 +22376,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Provide ThemeConfig](provide-theme-config.html)
 * [Update Webpack Config to Use Dynamic Shared Entries](update-webpack-config.html)
 
-Remove addInitializeModuleGuard()
-====================
-In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
-
-## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
-
-* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
-* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
-* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
-* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
-
-| |  AngularAcceleratorModule already provides TranslationConnectionService |
-| ------------------------------------------------------------------------- |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-@NgModule({
-  imports: [
-    RouterModule.forRoot(addInitializeModuleGuard(routes)),
-  ],
-})
-export class AppModule {}
-```
-
-After
-
-```typescript
-import { provideTranslationConnectionService } from '@onecx/angular-utils';
-
-@NgModule({
-  imports: [
-    RouterModule.forRoot(routes),
-  ],
-  providers: [
-    provideTranslationConnectionService(),
-  ],
-})
-export class AppModule {}
-```
-
 Provide ThemeConfig
 ====================
 | |  These changes are required for apps using PrimeNG only. |
@@ -22411,6 +22420,49 @@ bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.pro
 In angular 19+ OneCX is creating its own theme presets per App that utilize PrimeNG theming. If the look and feel of some PrimeNG components is not matching the expectations, developers should use theme overrides to change them.
 
 More about how to override the theme elements can be found in [theming documentation](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html).
+
+Remove addInitializeModuleGuard()
+====================
+In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
+
+## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
+
+* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
+* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
+* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
+* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
+
+| |  AngularAcceleratorModule already provides TranslationConnectionService |
+| ------------------------------------------------------------------------- |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+@NgModule({
+  imports: [
+    RouterModule.forRoot(addInitializeModuleGuard(routes)),
+  ],
+})
+export class AppModule {}
+```
+
+After
+
+```typescript
+import { provideTranslationConnectionService } from '@onecx/angular-utils';
+
+@NgModule({
+  imports: [
+    RouterModule.forRoot(routes),
+  ],
+  providers: [
+    provideTranslationConnectionService(),
+  ],
+})
+export class AppModule {}
+```
 
 Remove @onecx/keycloak-auth
 ====================
@@ -26116,6 +26168,88 @@ Use the following checklist after generation:
 
 After reviewing and customizing the generated API mappings and controller implementation, continue with implementing business-specific logic and validating the generated BFF against the frontend application.
 
+Use AI in OneCX Local Environment
+====================
+The OneCX Local Environment supports AI Chat functionalities, allowing users to interact with AI-powered features for enhanced user experiences.  
+This document provides an overview of how to enable and use AI Chat.
+
+## [](#prerequisites)Prerequisites
+
+Before using AI Chat, ensure you have the following prerequisites in place:
+
+Environment Set up
+
+A working OneCX Local Environment set up.  
+If you haven’t done this yet, follow the instructions in the [Setting up](setup.html) documentation.
+
+AI Provider SSL Certificate (optional)
+
+Depends on your IT landscape, you need a valid certificate for the AI service.  
+Follow the instructions in the documentation [Custom Certificates](internal/custom-certificates.html).
+
+Provider API Key
+
+This key is required to access AI functionalities within OneCX. You can obtain an API Key from your AI service provider.  
+Per default, only this AI provider is used: [ollama.one-cx.org](https://ollama.one-cx.org).
+
+MCP Server SSL Certificate (optional)
+
+Depends on your IT landscape, you need a valid certificate for the MCP Server.  
+Follow the instructions in the documentation [Custom Certificates](internal/custom-certificates.html).
+
+MCP Server API Key (optional)
+
+This key is optional to access MCP Server functionalities within OneCX.  
+Per default, only this MCP Server is configured: [onecx-docs-ai-dev.dev.one-cx.org/mcp](https://onecx-docs-ai-dev.dev.one-cx.org/mcp).  
+This is the OneCX Documentation MCP Server, whereby no API Key is required for this server.
+
+Start Environment
+
+A started OneCX Local Environment with the **all** profile enabled.  
+Refer to the [Start OneCX with all profile](scripts/start.html#start-all-services) documentation for instructions on starting the environment with the appropriate profile.
+
+## [](#set-up-ai-functionalities)Set up AI Functionalities
+
+To prepare the AI Functionalities, follow these steps:
+
+1. Prepare trust store  
+Set up the trust store with the necessary certificates for secure communication with the AI service:  
+```bash  
+./setup-truststore.sh  
+```
+2. Start OneCX with **all** profile  
+During the startup process, the necessary AI services will be started.  
+```bash  
+./start-onecx.sh -p all  
+```
+3. Import AI data using the following script with options, **\-s** is mandatory.  
+You will be prompted to enter your **API Key** (see TIP below):  
+```bash  
+./import-onecx.sh -d ai -x -s  
+```  
+![Import AI Data](_images/scripts/script_import-onecx.sh_ai.png)  
+Figure 1\. Import AI data
+4. Verify that the AI services are running correctly by checking the logs of the relevant Docker containers.
+
+| |  To avoid entering values interactively on every import, you can provide a file named **ai-config** within the root directory of onecx-local-env.It uses a simple key=value format and supports the following properties: apiKey=your-api-key llmUrl=https://your-llm-url type=ANTHROPIC modelIdentifier=your-model-id Valid values for type are: ANTHROPIC, OPENAI, OLLAMA.Any value not present in the file will be prompted interactively. The legacy **api-key** file (containing only the API Key) is still supported for backwards compatibility, but **ai-config** is preferred. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#using-ai-chat)Using AI Chat
+
+Once AI Functionalities are prepared, you can start using AI Chat within your OneCX applications.  
+
+Click on the **Open AI Chat** button in the top bar to open the AI Chat panel.
+
+![Open AI Chat](_images/ai/onecx-ai_topbar-action.png) 
+
+Figure 2\. Open AI Chat
+
+You can then start interacting with the AI by typing your queries or messages in the chat panel.
+
+![First AI Contact](_images/ai/onecx-ai_chat-panel-hallo.png) 
+
+Figure 3\. First AI Contact
+
 OneCX Local Environment
 ====================
 **onecx-local-env** is the local development environment for OneCX. It is based on Docker/Docker Compose, and enables developers to quickly run a local instance for development and testing purposes.
@@ -26203,88 +26337,6 @@ The following pages cover some internal aspects of the OneCX Local Environment:
 * [Adding Custom Certificates](internal/custom-certificates.html)
 * [Additional Utilities used](internal/utils.html)
 * [Command Line Interface](../onecx-local-env-cli/index.html)
-
-Use AI in OneCX Local Environment
-====================
-The OneCX Local Environment supports AI Chat functionalities, allowing users to interact with AI-powered features for enhanced user experiences.  
-This document provides an overview of how to enable and use AI Chat.
-
-## [](#prerequisites)Prerequisites
-
-Before using AI Chat, ensure you have the following prerequisites in place:
-
-Environment Set up
-
-A working OneCX Local Environment set up.  
-If you haven’t done this yet, follow the instructions in the [Setting up](setup.html) documentation.
-
-AI Provider SSL Certificate (optional)
-
-Depends on your IT landscape, you need a valid certificate for the AI service.  
-Follow the instructions in the documentation [Custom Certificates](internal/custom-certificates.html).
-
-Provider API Key
-
-This key is required to access AI functionalities within OneCX. You can obtain an API Key from your AI service provider.  
-Per default, only this AI provider is used: [ollama.one-cx.org](https://ollama.one-cx.org).
-
-MCP Server SSL Certificate (optional)
-
-Depends on your IT landscape, you need a valid certificate for the MCP Server.  
-Follow the instructions in the documentation [Custom Certificates](internal/custom-certificates.html).
-
-MCP Server API Key (optional)
-
-This key is optional to access MCP Server functionalities within OneCX.  
-Per default, only this MCP Server is configured: [onecx-docs-ai-dev.dev.one-cx.org/mcp](https://onecx-docs-ai-dev.dev.one-cx.org/mcp).  
-This is the OneCX Documentation MCP Server, whereby no API Key is required for this server.
-
-Start Environment
-
-A started OneCX Local Environment with the **all** profile enabled.  
-Refer to the [Start OneCX with all profile](scripts/start.html#start-all-services) documentation for instructions on starting the environment with the appropriate profile.
-
-## [](#set-up-ai-functionalities)Set up AI Functionalities
-
-To prepare the AI Functionalities, follow these steps:
-
-1. Prepare trust store  
-Set up the trust store with the necessary certificates for secure communication with the AI service:  
-```bash  
-./setup-truststore.sh  
-```
-2. Start OneCX with **all** profile  
-During the startup process, the necessary AI services will be started.  
-```bash  
-./start-onecx.sh -p all  
-```
-3. Import AI data using the following script with options, **\-s** is mandatory.  
-You will be prompted to enter your **API Key** (see TIP below):  
-```bash  
-./import-onecx.sh -d ai -x -s  
-```  
-![Import AI Data](_images/scripts/script_import-onecx.sh_ai.png)  
-Figure 1\. Import AI data
-4. Verify that the AI services are running correctly by checking the logs of the relevant Docker containers.
-
-| |  To avoid entering values interactively on every import, you can provide a file named **ai-config** within the root directory of onecx-local-env.It uses a simple key=value format and supports the following properties: apiKey=your-api-key llmUrl=https://your-llm-url type=ANTHROPIC modelIdentifier=your-model-id Valid values for type are: ANTHROPIC, OPENAI, OLLAMA.Any value not present in the file will be prompted interactively. The legacy **api-key** file (containing only the API Key) is still supported for backwards compatibility, but **ai-config** is preferred. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#using-ai-chat)Using AI Chat
-
-Once AI Functionalities are prepared, you can start using AI Chat within your OneCX applications.  
-
-Click on the **Open AI Chat** button in the top bar to open the AI Chat panel.
-
-![Open AI Chat](_images/ai/onecx-ai_topbar-action.png) 
-
-Figure 2\. Open AI Chat
-
-You can then start interacting with the AI by typing your queries or messages in the chat panel.
-
-![First AI Contact](_images/ai/onecx-ai_chat-panel-hallo.png) 
-
-Figure 3\. First AI Contact
 
 Running OneCX locally
 ====================
@@ -28395,90 +28447,6 @@ Figure 1\. Successful stopping with cleanup
 ./stop-onecx.sh -p all -c
 ```
 
-Update local Docker images
-====================
-To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
-
-The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
-
-Command to display the available options:
-
-```bash
-./update-images.sh -h
-```
-
-| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#available-options)Available Options
-
-The script accepts several optional options to customize its behavior. Some options can be combined.
-
-The available options are:
-
-\-a
-
-Update all images, ignoring name filter (if option **\-n** is also used).  
-If used in combination with **\-c** then all orphaned images and stopped containers are removed.
-
-\-c
-
-Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
-Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
-Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-\-h
-
-Displays help information about the script and its available options. If used then all other options are ignored.
-
-\-n <text>
-
-Name filter, update images which have <text> into image name
-
-## [](#examples)Examples
-
-### [](#update-traefik-image)Update Traefik Image
-
-The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
-
-```bash
-./update-images.sh  -n traefik -c
-```
-
-![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
-
-Figure 1\. Successful update with name filter and cleanup
-
-### [](#cleanup-only)Cleanup only
-
-Started without any name filter will remove all orphaned images. No additional confirmation is required.
-
-![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
-
-Figure 2\. Excerpt from the list of orphaned images
-
-```bash
-./update-images.sh  -c
-```
-
-The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
-
-![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
-
-Figure 3\. Image deletion failed
-
-![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
-
-Figure 4\. Image deletion successful after stopping the container
-
-### [](#update-all-images-and-cleanup)Update all images and cleanup
-
-With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
-
-```bash
-./update-images.sh  -a -c
-```
-
 Integrate Microfrontends into OneCX
 ====================
 The script **toggle-mfes.sh** integrates a locally running microfrontend into the OneCX environment, allowing it to interact with other microfrontends. This process is also reversible.
@@ -28658,6 +28626,90 @@ In this example, the OneCX Workspace microfrontend is running both in Docker Com
 ![script toggle mfes.sh priotize routes](../_images/scripts/script_toggle-mfes.sh_priotize-routes.png) 
 
 Figure 8\. Example routing for OneCX Workspace microservices
+
+Update local Docker images
+====================
+To run a local OneCX instance, Docker images with the latest version are downloaded and used. Over time, these images become outdated, meaning that even if a newer version is available, the old version is still being used locally. Check versions with script [check-images.sh](check-images.html).
+
+The **update-images.sh** script is used to renew local Docker images and removing orphaned images. It can be run from the root directory of the **onecx-local-env** repository.
+
+Command to display the available options:
+
+```bash
+./update-images.sh -h
+```
+
+| |  Before updating the images, it is recommended to check the current versions of the local Docker images using the script [check-images.sh](check-images.html) and stopping the local OneCX instance using [stop-onecx.sh](stop.html) to prevent potential issues with running containers during the update process.Run the script with the parameter **\-c** to clean up orphaned images - can be done in combination with updating. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined.
+
+The available options are:
+
+\-a
+
+Update all images, ignoring name filter (if option **\-n** is also used).  
+If used in combination with **\-c** then all orphaned images and stopped containers are removed.
+
+\-c
+
+Cleaned up orphaned images which are tagged with **<none>** or with status **Exited**.  
+Can be used in combination with **\-a** (all images are affected) or with **\-n** (only images matching the name filter are affected).  
+Basically, the deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-n <text>
+
+Name filter, update images which have <text> into image name
+
+## [](#examples)Examples
+
+### [](#update-traefik-image)Update Traefik Image
+
+The Docker which have **traefik** in image name are pulled from remote registry and updated locally. In case some orphaned images are found then these are removed too.
+
+```bash
+./update-images.sh  -n traefik -c
+```
+
+![script update images.sh traefik updated](../_images/scripts/script_update-images.sh_traefik-updated.png) 
+
+Figure 1\. Successful update with name filter and cleanup
+
+### [](#cleanup-only)Cleanup only
+
+Started without any name filter will remove all orphaned images. No additional confirmation is required.
+
+![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
+
+Figure 2\. Excerpt from the list of orphaned images
+
+```bash
+./update-images.sh  -c
+```
+
+The deletion is only possible if the image is not in use. If so then stop the appropriate container first and try again.
+
+![script update images.sh rm image failed](../_images/scripts/script_update-images.sh_rm-image-failed.png) 
+
+Figure 3\. Image deletion failed
+
+![script update images.sh rm image successful](../_images/scripts/script_update-images.sh_rm-image-successful.png) 
+
+Figure 4\. Image deletion successful after stopping the container
+
+### [](#update-all-images-and-cleanup)Update all images and cleanup
+
+With option **\-a** all images are updated, ignoring name filter. With option **\-c** all orphaned images are removed. No additional confirmation is required.
+
+```bash
+./update-images.sh  -a -c
+```
 
 Migrate to v2
 ====================
@@ -31326,10 +31378,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Help Backend Service
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -31433,6 +31481,10 @@ app:
         description: OneCX Help Backend Service
         name: OneCX Help SVC
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -35105,7 +35157,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
+
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -35183,9 +35237,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
-
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -41413,26 +41465,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
-| quarkus-qute                           | 3.33.1                                                                                             |                                                                                                                                                  |         |
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-service-redirect/pkgs/container/onecx-service-redirect)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -41477,6 +41509,26 @@ app:
   image:
     repository: "onecx/onecx-service-redirect"
 ```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| quarkus-qute                           | 3.33.1                                                                                             |                                                                                                                                                  |         |
 
 undefined
 ====================
@@ -41715,10 +41767,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Document Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-svc/pkgs/container/onecx-document-management-svc)
@@ -41797,6 +41845,10 @@ app:
     enabled: true
   product: false
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -42015,10 +42067,6 @@ cd onecx-document-management-dev
 docker compose stop
 ```
 
-undefined
-====================
-
-
 OneCX Document Backend for Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-bff/pkgs/container/onecx-document-management-bff)
@@ -42114,6 +42162,10 @@ app:
             defaultClientScopes: [ ocx-doc:all, ocx-doc:read, ocx-doc:write, ocx-pm:read, ocx-fs:write, ocx-fs:read, ocx-fs:delete ]
   product: false
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
