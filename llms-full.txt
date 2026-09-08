@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -6489,14 +6489,6 @@ In OneCX toast messages display is handled via [PortalMessageService](../../onec
 
 Details about the usage can be found in the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html).
 
-undefined
-====================
-**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
-
-In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
-
-This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
-
 Module Federation in OneCX
 ====================
 **Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
@@ -6542,6 +6534,14 @@ The following documents describe how to configure and use Module Federation in O
 
 | |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
 
 Module Federation Dependency Sharing in OneCX
 ====================
@@ -8043,6 +8043,71 @@ The [WorkspaceService](../../../onecx-portal-ui-libs/libraries/angular-integrati
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
+OneCX Multi-language Translations Usage
+====================
+## [](#overview)Overview
+
+This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
+
+## [](#prerequisites)Prerequisites
+
+Before proceeding, ensure that the multi-language setup is complete.
+
+## [](#usage)Usage
+
+It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
+
+### [](#templates-usage)Templates Usage
+
+Use translations via **translate** pipe.
+
+component.html
+
+```html
+<p>{{ 'HELLO' | translate }}</p>
+```
+
+### [](#translate-service-usage)TranslateService Usage
+
+Use translations via **TranslateService**.
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+
+this.translate.get('WELCOME').subscribe((translated: string) => {
+    console.log('Translated message:', translated);
+});
+```
+
+### [](#with-parameters)With Parameters
+
+Use translations with parameters. Example:
+
+en.json
+
+```json
+{
+  "GREETING": "Hello, {{name}}! Welcome back."
+}
+```
+
+component.html
+
+```html
+<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
+```
+
+component.ts
+
+```typescript
+import { TranslateService } from '@ngx-translate/core';
+this.translate.get('GREETING', params).subscribe((translated: string) => {
+    console.log('Translated with params:', translated);
+});
+```
+
 OneCX Multi-language Translations
 ====================
 ## [](#overview)Overview
@@ -8224,71 +8289,6 @@ To verify that the setup is complete, ensure the following:
 ## [](#next-steps)Next Steps
 
 After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
-
-OneCX Multi-language Translations Usage
-====================
-## [](#overview)Overview
-
-This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
-
-## [](#prerequisites)Prerequisites
-
-Before proceeding, ensure that the multi-language setup is complete.
-
-## [](#usage)Usage
-
-It is possible to use functionalities from `@ngx-translate` library to implement translations in the application.
-
-### [](#templates-usage)Templates Usage
-
-Use translations via **translate** pipe.
-
-component.html
-
-```html
-<p>{{ 'HELLO' | translate }}</p>
-```
-
-### [](#translate-service-usage)TranslateService Usage
-
-Use translations via **TranslateService**.
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-
-this.translate.get('WELCOME').subscribe((translated: string) => {
-    console.log('Translated message:', translated);
-});
-```
-
-### [](#with-parameters)With Parameters
-
-Use translations with parameters. Example:
-
-en.json
-
-```json
-{
-  "GREETING": "Hello, {{name}}! Welcome back."
-}
-```
-
-component.html
-
-```html
-<p>{{ 'GREETING' | translate:{ name: 'Alice' } }}</p>
-```
-
-component.ts
-
-```typescript
-import { TranslateService } from '@ngx-translate/core';
-this.translate.get('GREETING', params).subscribe((translated: string) => {
-    console.log('Translated with params:', translated);
-});
-```
 
 OneCX Multi-language Translations
 ====================
@@ -9060,109 +9060,6 @@ This library works smoothly with vite applications.
 
 The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
-@onecx/react-webcomponents
-====================
-## [](#overview)Overview
-
-`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
-
-## [](#exports)Public Exports
-
-The package exports:
-
-* `createViteAppWebComponent`
-* `useAppHref`
-* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
-* `withSyncedRouter`
-
-## [](#vite)Vite
-
-The `createViteAppWebComponent` function is a utility that converts a React component or React App into a custom web component. This allows React components to be used in environments that do not natively support React, such as vanilla JavaScript projects or frameworks that work with standard web components. Relies on the browser’s custom elements API for registering and using web components.
-
-The function leverages the `@r2wc/react-to-web-component` library to facilitate the conversion and registration of the web component.
-
-```js
-const createViteAppWebComponent = (
-  app: React.ComponentType,
-  elementName: string
-) => {
-  // Implementation
-};
-```
-
-* app: A React component to be converted into a web component.
-* elementName: The name of the custom element to be registered (e.g. my-custom-element).
-
-Example for React component
-
-```js
-import React from 'react';
-import { createViteAppWebComponent } from '@onecx/react-webcomponents';
-
-// Define a simple React component
-const MyReactComponent = () => {
-  return <div>Hello, World!</div>;
-};
-
-// Convert the React component into a web component and register it
-createViteAppWebComponent(MyReactComponent, 'my-custom-element');
-
-// Now, you can use the custom element in your HTML:
-// <my-custom-element></my-custom-element>
-```
-
-Example for Vite App
-
-```js
-import App from './app';
-import { createViteAppWebComponent } from '@onecx/react-webcomponents';
-
-createViteAppWebComponent(App, 'my-custom-app');
-```
-
-where
-
-```js
-const AppRouter = () => {
-  const { href } = useAppHref();
-  return (
-    <Router>
-      <Routes>
-        <Route path={href} element={<Home />} />
-        <Route path={href + '/about'} element={<About />} />
-      </Routes>
-    </Router>
-  );
-};
-
-export function App() {
-  return (
-      <AppStateProvider>
-        <ConfigurationProvider>
-          <ThemeProvider>
-            <UserProvider>
-              <AppRouter />
-              <Components />
-            </UserProvider>
-          </ThemeProvider>
-        </ConfigurationProvider>
-      </AppStateProvider>
-  );
-}
-export default App;
-```
-
-## [](#routing-utils)Routing Utils
-
-The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
-
-The library also provides routing integration helpers:
-
-* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
-* `SyncedLocationContext` exposes the current location state.
-* `useSyncedLocation` reads the synced location state from context.
-* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
-
 @onecx/react-utils
 ====================
 ## [](#overview)Overview
@@ -9352,6 +9249,109 @@ For coordinated navigation flows across multiple remotes, you can wire the lower
 
 The `withApp` HOC composes common providers (app state, configuration, user, theme) and sets up the style scoping helpers for micro-frontends.
 
+@onecx/react-webcomponents
+====================
+## [](#overview)Overview
+
+`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `createViteAppWebComponent`
+* `useAppHref`
+* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
+* `withSyncedRouter`
+
+## [](#vite)Vite
+
+The `createViteAppWebComponent` function is a utility that converts a React component or React App into a custom web component. This allows React components to be used in environments that do not natively support React, such as vanilla JavaScript projects or frameworks that work with standard web components. Relies on the browser’s custom elements API for registering and using web components.
+
+The function leverages the `@r2wc/react-to-web-component` library to facilitate the conversion and registration of the web component.
+
+```js
+const createViteAppWebComponent = (
+  app: React.ComponentType,
+  elementName: string
+) => {
+  // Implementation
+};
+```
+
+* app: A React component to be converted into a web component.
+* elementName: The name of the custom element to be registered (e.g. my-custom-element).
+
+Example for React component
+
+```js
+import React from 'react';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+// Define a simple React component
+const MyReactComponent = () => {
+  return <div>Hello, World!</div>;
+};
+
+// Convert the React component into a web component and register it
+createViteAppWebComponent(MyReactComponent, 'my-custom-element');
+
+// Now, you can use the custom element in your HTML:
+// <my-custom-element></my-custom-element>
+```
+
+Example for Vite App
+
+```js
+import App from './app';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+createViteAppWebComponent(App, 'my-custom-app');
+```
+
+where
+
+```js
+const AppRouter = () => {
+  const { href } = useAppHref();
+  return (
+    <Router>
+      <Routes>
+        <Route path={href} element={<Home />} />
+        <Route path={href + '/about'} element={<About />} />
+      </Routes>
+    </Router>
+  );
+};
+
+export function App() {
+  return (
+      <AppStateProvider>
+        <ConfigurationProvider>
+          <ThemeProvider>
+            <UserProvider>
+              <AppRouter />
+              <Components />
+            </UserProvider>
+          </ThemeProvider>
+        </ConfigurationProvider>
+      </AppStateProvider>
+  );
+}
+export default App;
+```
+
+## [](#routing-utils)Routing Utils
+
+The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
+
+The library also provides routing integration helpers:
+
+* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
+* `SyncedLocationContext` exposes the current location state.
+* `useSyncedLocation` reads the synced location state from context.
+* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
+
 Configure Authentication
 ====================
 Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
@@ -9524,27 +9524,6 @@ const config = withModuleFederationPlugin({
 
 See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
 
-Required Setup
-====================
-Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
-
-This tier applies to both paths of building a OneCX UI:
-
-* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
-* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
-
-| |  If a step isn’t listed here, it belongs to a different tier. A Recommended tier (steps an app **should** complete to behave correctly, not just to run) and an Optional tier (steps an app **may** adopt with no correctness impact if skipped) are planned alongside this Required tier as part of the same three-tier Setup structure. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#required-setup-pages)Pages
-
-* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
-* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
-   * [Module Approach](expose-remote-module/module-approach.html)  
-   * [Component Approach](expose-remote-module/component-approach.html)
-* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
-* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
-
 Platform &amp; Package Compatibility Requirements
 ====================
 Before an application can be loaded by the OneCX shell, it must satisfy a baseline of platform and package compatibility constraints.
@@ -9588,6 +9567,27 @@ __Table 4\. Compatible package versions for Angular 21 (libs version 8.x)__
 Use the caret (`^`) range for all shared package versions in `package.json`, except `rxjs`, which should use tilde (`~`).
 
 See [Configure Remote Package Sharing](configure-remote-package-sharing.html) for the list of packages that must be shared and the recommended utility for applying OneCX sharing settings.
+
+Required Setup
+====================
+Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
+
+This tier applies to both paths of building a OneCX UI:
+
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
+* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
+
+| |  If a step isn’t listed here, it belongs to a different tier. A Recommended tier (steps an app **should** complete to behave correctly, not just to run) and an Optional tier (steps an app **may** adopt with no correctness impact if skipped) are planned alongside this Required tier as part of the same three-tier Setup structure. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#required-setup-pages)Pages
+
+* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
+* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
+   * [Module Approach](expose-remote-module/module-approach.html)  
+   * [Component Approach](expose-remote-module/component-approach.html)
+* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
+* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
 
 AppConfigService and environment variables (runtime configuration)
 ====================
@@ -10969,6 +10969,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
+
 AutoComplete for suggestions with array of type string
 ====================
 ## [](#goal)Goal: Add AutoComplet String
@@ -11204,14 +11212,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
-
-AutoComplete search criteria input field
-====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
-
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -17290,6 +17290,141 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
+Configure Search Add-ons
+====================
+Besides the search criteria and results, the generated React search page contains several add-ons that you may want to adapt: the breadcrumb, the header actions (chart toggle and export), the permission gating and the translations.
+
+## [](#action-s12)ACTION S12 - Breadcrumb
+
+The header section component wires a default breadcrumb. Adjust the home target and items to match your portal base route (the `href` MFE base).
+
+| Directory | src/components/<feature>                       |
+| --------- | ---------------------------------------------- |
+| File      | <resource>-search-header-section.component.tsx |
+
+ACTION S12 in `<resource>-search-header-section.component.tsx` 
+
+```tsx
+    // ACTION S12: wire the breadcrumb home/items to your portal base route (the `href` MFE base) if needed
+    breadcrumbHome={{ icon: 'pi pi-home', url: '/' }}
+    breadcrumbItems={[{ label: t(`${SEARCH_PREFIX}.BREADCRUMB`) }]}
+```
+
+Point `breadcrumbHome.url` to your application base route and adjust the items as needed.
+
+## [](#action-s13)ACTION S13 - Permission gating
+
+The search page is wrapped in a `PortalPage` that is gated on the `<RESOURCE>#SEARCH` permission. Users without that permission do not see the page content.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S13 in `<resource>-search.page.tsx` 
+
+```tsx
+    // ACTION S13: the page is gated on the SEARCH permission; the `standalone` flag skips gating for standalone apps
+    <PortalPage
+      permission="<RESOURCE>#SEARCH"
+      ariaLabel={t('<RESOURCE>_SEARCH.ARIA_LABEL')}
+    >
+```
+
+Generate with `--standalone` to skip permission gating for standalone apps (the `permission` prop is then omitted).
+
+| |  The matching permissions are added to helm/values.yaml during generation. Make sure the permission exists in your auth system. |
+| --------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#action-s9)ACTION S9 - Results chart
+
+The header provides a "Show chart" / "Hide chart" action. The generated handler only toggles visibility; implement the actual chart rendering.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S9 in `<resource>-search.page.tsx` 
+
+```tsx
+  const handleToggleChart = () => {
+    // ACTION S9: render the results chart; this only toggles visibility for now
+    setChartVisible((visible) => !visible);
+  };
+```
+
+Render your chart component based on the `chartVisible` state and the current `results`.
+
+## [](#action-s10)ACTION S10 - CSV export
+
+The "Export all" header action is stubbed. Implement the CSV export of the current results.
+
+| Directory | src/pages/<feature>/<resource>-search |
+| --------- | ------------------------------------- |
+| File      | <resource>-search.page.tsx            |
+
+ACTION S10 in `<resource>-search.page.tsx` 
+
+```tsx
+  const handleExportAll = () => {
+    // ACTION S10: implement CSV export of the current results
+    if (typeof window !== 'undefined') {
+      window.alert('Export all is not implemented yet.');
+    }
+  };
+```
+
+Replace the placeholder with logic that serializes `results` to CSV and triggers a download.
+
+## [](#action-s8)ACTION S8 - Translations
+
+The generator merges i18n templates into your translation files. Every generated value is the placeholder `ACTION S8: ADD TRANSLATION`. Replace each placeholder with the actual text, and add keys for the criteria fields and result columns you introduced in [Search Criteria](search-criteria.html) and [Search Results](search-results.html).
+
+| Directory | src/assets/i18n (merged into en.json, de.json, …​) |
+| --------- | -------------------------------------------------- |
+| File      | generated from master.json                         |
+
+ACTION S8 - generated translation keys (excerpt) 
+
+```json
+{
+  "<RESOURCE>_SEARCH": {
+    "HEADER": "ACTION S8: ADD TRANSLATION",
+    "SUB_HEADER": "ACTION S8: ADD TRANSLATION",
+    "ARIA_LABEL": "ACTION S8: ADD TRANSLATION",
+    "EMPTY_RESULTS": "ACTION S8: ADD TRANSLATION",
+    "BREADCRUMB": "ACTION S8: ADD TRANSLATION",
+    "HEADER_ACTIONS": {
+      "EXPORT_ALL": "ACTION S8: ADD TRANSLATION",
+      "SHOW_CHART": "ACTION S8: ADD TRANSLATION",
+      "HIDE_CHART": "ACTION S8: ADD TRANSLATION"
+    },
+    "RESULTS": {
+      "ID": "ACTION S8: ADD TRANSLATION",
+      "ACTIONS": "ACTION S8: ADD TRANSLATION",
+      "COLUMN_GROUP": "ACTION S8: ADD TRANSLATION",
+      "COLUMN_SETTINGS": "ACTION S8: ADD TRANSLATION",
+      "NAME": "ACTION S8: ADD TRANSLATION"
+    },
+    "ERROR_MESSAGES": {
+      "SEARCH_RESULTS_LOADING_FAILED": "ACTION S8: ADD TRANSLATION"
+    },
+    "CRITERIA": {
+      "ACTIONS": {
+        "SEARCH": "ACTION S8: ADD TRANSLATION",
+        "RESET": "ACTION S8: ADD TRANSLATION"
+      },
+      "CHANGE_ME": {
+        "LABEL": "ACTION S8: ADD TRANSLATION",
+        "PLACEHOLDER": "ACTION S8: ADD TRANSLATION",
+        "ARIA_LABEL": "ACTION S8: ADD TRANSLATION"
+      }
+    }
+  }
+}
+```
+
+Replace the `CHANGE_ME` block with the keys for your actual criteria, and add a `RESULTS.<COLUMN>` key for each column.
+
 Map the API and Prepare Mock Data
 ====================
 The React search page fetches its data through a generated `<Resource>Api`, called from the `use<Resource>Search` hook. This page describes how to map the search criteria to the API request, how the search endpoint is defined in the OpenAPI file, and how to provide mock data while no real backend is available.
@@ -17510,141 +17645,6 @@ Figure 1\. Example output when the server is running and a request is made to th
 ## [](#using-the-mock-api)Using the Mock API
 
 Point your application’s BFF base URL to the mock server (e.g. `http://localhost:3000`) instead of the real backend, so the generated `<Resource>Api` calls the mock endpoints. Adjust the configured BFF/proxy target of your React UI app accordingly.
-
-Configure Search Add-ons
-====================
-Besides the search criteria and results, the generated React search page contains several add-ons that you may want to adapt: the breadcrumb, the header actions (chart toggle and export), the permission gating and the translations.
-
-## [](#action-s12)ACTION S12 - Breadcrumb
-
-The header section component wires a default breadcrumb. Adjust the home target and items to match your portal base route (the `href` MFE base).
-
-| Directory | src/components/<feature>                       |
-| --------- | ---------------------------------------------- |
-| File      | <resource>-search-header-section.component.tsx |
-
-ACTION S12 in `<resource>-search-header-section.component.tsx` 
-
-```tsx
-    // ACTION S12: wire the breadcrumb home/items to your portal base route (the `href` MFE base) if needed
-    breadcrumbHome={{ icon: 'pi pi-home', url: '/' }}
-    breadcrumbItems={[{ label: t(`${SEARCH_PREFIX}.BREADCRUMB`) }]}
-```
-
-Point `breadcrumbHome.url` to your application base route and adjust the items as needed.
-
-## [](#action-s13)ACTION S13 - Permission gating
-
-The search page is wrapped in a `PortalPage` that is gated on the `<RESOURCE>#SEARCH` permission. Users without that permission do not see the page content.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S13 in `<resource>-search.page.tsx` 
-
-```tsx
-    // ACTION S13: the page is gated on the SEARCH permission; the `standalone` flag skips gating for standalone apps
-    <PortalPage
-      permission="<RESOURCE>#SEARCH"
-      ariaLabel={t('<RESOURCE>_SEARCH.ARIA_LABEL')}
-    >
-```
-
-Generate with `--standalone` to skip permission gating for standalone apps (the `permission` prop is then omitted).
-
-| |  The matching permissions are added to helm/values.yaml during generation. Make sure the permission exists in your auth system. |
-| --------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#action-s9)ACTION S9 - Results chart
-
-The header provides a "Show chart" / "Hide chart" action. The generated handler only toggles visibility; implement the actual chart rendering.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S9 in `<resource>-search.page.tsx` 
-
-```tsx
-  const handleToggleChart = () => {
-    // ACTION S9: render the results chart; this only toggles visibility for now
-    setChartVisible((visible) => !visible);
-  };
-```
-
-Render your chart component based on the `chartVisible` state and the current `results`.
-
-## [](#action-s10)ACTION S10 - CSV export
-
-The "Export all" header action is stubbed. Implement the CSV export of the current results.
-
-| Directory | src/pages/<feature>/<resource>-search |
-| --------- | ------------------------------------- |
-| File      | <resource>-search.page.tsx            |
-
-ACTION S10 in `<resource>-search.page.tsx` 
-
-```tsx
-  const handleExportAll = () => {
-    // ACTION S10: implement CSV export of the current results
-    if (typeof window !== 'undefined') {
-      window.alert('Export all is not implemented yet.');
-    }
-  };
-```
-
-Replace the placeholder with logic that serializes `results` to CSV and triggers a download.
-
-## [](#action-s8)ACTION S8 - Translations
-
-The generator merges i18n templates into your translation files. Every generated value is the placeholder `ACTION S8: ADD TRANSLATION`. Replace each placeholder with the actual text, and add keys for the criteria fields and result columns you introduced in [Search Criteria](search-criteria.html) and [Search Results](search-results.html).
-
-| Directory | src/assets/i18n (merged into en.json, de.json, …​) |
-| --------- | -------------------------------------------------- |
-| File      | generated from master.json                         |
-
-ACTION S8 - generated translation keys (excerpt) 
-
-```json
-{
-  "<RESOURCE>_SEARCH": {
-    "HEADER": "ACTION S8: ADD TRANSLATION",
-    "SUB_HEADER": "ACTION S8: ADD TRANSLATION",
-    "ARIA_LABEL": "ACTION S8: ADD TRANSLATION",
-    "EMPTY_RESULTS": "ACTION S8: ADD TRANSLATION",
-    "BREADCRUMB": "ACTION S8: ADD TRANSLATION",
-    "HEADER_ACTIONS": {
-      "EXPORT_ALL": "ACTION S8: ADD TRANSLATION",
-      "SHOW_CHART": "ACTION S8: ADD TRANSLATION",
-      "HIDE_CHART": "ACTION S8: ADD TRANSLATION"
-    },
-    "RESULTS": {
-      "ID": "ACTION S8: ADD TRANSLATION",
-      "ACTIONS": "ACTION S8: ADD TRANSLATION",
-      "COLUMN_GROUP": "ACTION S8: ADD TRANSLATION",
-      "COLUMN_SETTINGS": "ACTION S8: ADD TRANSLATION",
-      "NAME": "ACTION S8: ADD TRANSLATION"
-    },
-    "ERROR_MESSAGES": {
-      "SEARCH_RESULTS_LOADING_FAILED": "ACTION S8: ADD TRANSLATION"
-    },
-    "CRITERIA": {
-      "ACTIONS": {
-        "SEARCH": "ACTION S8: ADD TRANSLATION",
-        "RESET": "ACTION S8: ADD TRANSLATION"
-      },
-      "CHANGE_ME": {
-        "LABEL": "ACTION S8: ADD TRANSLATION",
-        "PLACEHOLDER": "ACTION S8: ADD TRANSLATION",
-        "ARIA_LABEL": "ACTION S8: ADD TRANSLATION"
-      }
-    }
-  }
-}
-```
-
-Replace the `CHANGE_ME` block with the keys for your actual criteria, and add a `RESULTS.<COLUMN>` key for each column.
 
 Configure Search Criteria
 ====================
@@ -21722,42 +21722,6 @@ module.exports = {
 }
 ```
 
-Adjust Packages in Webpack Config
-====================
-In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
-
-## [](#%5Fupdate%5Fconfiguration)Update configuration
-
-* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
-
-### [](#%5Fexample)Example
-
-Before
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { singleton: true, requiredVersion: "auto" },
-    "rxjs": { singleton: true, requiredVersion: "auto" }
-  })
-});
-```
-
-After
-
-```javascript
-const config = withModuleFederationPlugin({
-  shared: share({
-    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
-    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
-    "primeng": { requiredVersion: "auto" },
-    "rxjs": { requiredVersion: "auto" }
-  })
-});
-```
-
 Add Webpack Plugin for PrimeNG
 ====================
 In OneCX version 6 uses PrimeNG 19 and requires applications to add a Webpack plugin. This change is required after upgrading to Angular 19.
@@ -21810,6 +21774,42 @@ module.exports = {
   ...webpackConfig,
   plugins: [...plugins, modifyPrimeNgPlugin]
 }
+```
+
+Adjust Packages in Webpack Config
+====================
+In OneCX v6, packages in the webpack configuration that depend on a specific Angular version should not have `singleton: true`.
+
+## [](#%5Fupdate%5Fconfiguration)Update configuration
+
+* In `'webpack.config.js'`, within `'withModuleFederationPlugin( …​ )'`, remove the `'singleton: true'` property from all packages.
+
+### [](#%5Fexample)Example
+
+Before
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { singleton: true, requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { singleton: true, requiredVersion: "auto" },
+    "rxjs": { singleton: true, requiredVersion: "auto" }
+  })
+});
+```
+
+After
+
+```javascript
+const config = withModuleFederationPlugin({
+  shared: share({
+    "@angular/core": { requiredVersion: "auto", includeSecondaries: true },
+    "@onecx/angular-auth": { requiredVersion: "auto", includeSecondaries: true },
+    "primeng": { requiredVersion: "auto" },
+    "rxjs": { requiredVersion: "auto" }
+  })
+});
 ```
 
 Adjust Standalone Mode
@@ -23868,6 +23868,23 @@ In version 7, updates in the PrimeNG Dynamic Dialog API (introduced in PrimeNG 2
 | |  If openDialog() returns Observable<null>, the dialog creation has failed. Check the browser console for PortalDialogService warnings or errors. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 
+Remove @onecx/shell-core
+====================
+In version 7 of the libraries, the `@onecx/shell-core` package has been removed. Shell layout components and `WorkspaceConfigBffService` have been moved to the `shell-ui` application. All `@onecx/shell-core` imports and any related usage must be removed from your application.
+
+**Actions**
+
+* Uninstall the deprecated package:
+
+```bash
+npm uninstall --save @onecx/shell-core
+```
+
+* Remove all imports and usage from the project
+
+| |  The moved components and services are now provided directly by the shell‑ui application and should be consumed from there. |
+| ----------------------------------------------------------------------------------------------------------------------------- |
+
 Remove <code>keycloak-js</code> from your application
 ====================
 The `keycloak-js` dependency in `@onecx/angular-auth` has been marked as **optional**. This means:
@@ -23892,23 +23909,6 @@ Keycloak initialization failed! Could not load keycloak-js library which is requ
 ```
 
 If you see this error, your application **still needs `keycloak-js`**, and you must reinstall it.
-
-Remove @onecx/shell-core
-====================
-In version 7 of the libraries, the `@onecx/shell-core` package has been removed. Shell layout components and `WorkspaceConfigBffService` have been moved to the `shell-ui` application. All `@onecx/shell-core` imports and any related usage must be removed from your application.
-
-**Actions**
-
-* Uninstall the deprecated package:
-
-```bash
-npm uninstall --save @onecx/shell-core
-```
-
-* Remove all imports and usage from the project
-
-| |  The moved components and services are now provided directly by the shell‑ui application and should be consumed from there. |
-| ----------------------------------------------------------------------------------------------------------------------------- |
 
 Upgrade NX Application to Angular 20
 ====================
@@ -30092,9 +30092,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
-
-## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -30171,7 +30169,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fbookmark%5Fui)OneCX Bookmark UI
+## [](#%5Fonecx%5Fbookmark%5Fui)onecx-bookmark-ui
+
+## [](#%5Fonecx%5Fbookmark%5Fui%5F2)OneCX Bookmark UI
 
 ### [](#%5Fwhat%5Fis%5Fbookmark%5Fmanagement)What is Bookmark Management
 
@@ -30353,10 +30353,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-data-orchestrator-operator/pkgs/container/onecx-data-orchestrator-operator)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -30437,6 +30433,10 @@ app:
         description: OneCX Data Orchestrator Operator
         name: OneCX Data Orchestrator Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -32247,6 +32247,10 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 * `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
 * `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
 
+undefined
+====================
+
+
 OneCX IAM Keycloak Client Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -32367,10 +32371,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-iam-kc-client-operator/pkgs/container/onecx-iam-kc-client-operator)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -32465,27 +32465,6 @@ app:
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                  | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-rest-client                    | [Link](https://quarkus.io/guides/rest-client)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client.adoc)                    | 3.33.1  |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                  | 3.33.1                                                                                                                                           |         |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)       | 3.0.0                                                                                                                                            |         |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
-| quarkus-operator-sdk-bundle-generator  | 7.7.3                                                                                          |                                                                                                                                                  |         |
-| quarkus-operator-sdk                   | 7.7.3                                                                                          |                                                                                                                                                  |         |
-| onecx-operator                         | 3.0.0                                                                                          |                                                                                                                                                  |         |
-| quarkus-keycloak-admin-rest-client     | 3.33.1                                                                                         |                                                                                                                                                  |         |
-
-undefined
-====================
  Configuration property fixed at build time - All other configuration properties are overridable at runtime
 
 | Configuration property                                                                                                                                                                                                                                                             | Type               | Default                            |
@@ -32507,6 +32486,27 @@ undefined
 | [onecx.iam.kc.client.config."config".default-scopes](#onecx-iam-kc-client-operator%5Fonecx-iam-kc-client-config-config-default-scopes) Default client scopes. Environment variable: ONECX\_IAM\_KC\_CLIENT\_CONFIG\_\_CONFIG\_\_DEFAULT\_SCOPES                                    | list of string     |                                    |
 | [onecx.iam.kc.client.config."config".optional-scopes](#onecx-iam-kc-client-operator%5Fonecx-iam-kc-client-config-config-optional-scopes) Optional client scopes. Environment variable: ONECX\_IAM\_KC\_CLIENT\_CONFIG\_\_CONFIG\_\_OPTIONAL\_SCOPES                                | list of string     |                                    |
 | [onecx.iam.kc.client.leader-election.lease-name](#onecx-iam-kc-client-operator%5Fonecx-iam-kc-client-leader-election-lease-name) Lease name Environment variable: ONECX\_IAM\_KC\_CLIENT\_LEADER\_ELECTION\_LEASE\_NAME                                                            | string             | onecx-iam-kc-client-operator-lease |
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                  | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                         | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
+| quarkus-rest-client                    | [Link](https://quarkus.io/guides/rest-client)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client.adoc)                    | 3.33.1  |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                  | 3.33.1                                                                                                                                           |         |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)       | 3.0.0                                                                                                                                            |         |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                              | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| quarkus-operator-sdk-bundle-generator  | 7.7.3                                                                                          |                                                                                                                                                  |         |
+| quarkus-operator-sdk                   | 7.7.3                                                                                          |                                                                                                                                                  |         |
+| onecx-operator                         | 3.0.0                                                                                          |                                                                                                                                                  |         |
+| quarkus-keycloak-admin-rest-client     | 3.33.1                                                                                         |                                                                                                                                                  |         |
 
 OneCX Parameter Management
 ====================
@@ -32725,6 +32725,35 @@ undefined
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
+| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0   |
+| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| quarkus-scheduler                      | 3.33.1                                                                                             |                                                                                                                                                  |         |
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-parameter-svc/pkgs/container/onecx-parameter-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -32813,35 +32842,6 @@ app:
         description: OneCX Parameter Backend Service
         name: OneCX Parameter SVC
 ```
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0   |
-| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
-| quarkus-scheduler                      | 3.33.1                                                                                             |                                                                                                                                                  |         |
 
 undefined
 ====================
@@ -39097,6 +39097,10 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
+undefined
+====================
+
+
 OneCX Welcome Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-svc/pkgs/container/onecx-welcome-svc)
@@ -39184,10 +39188,6 @@ app:
         description: OneCX Welcome Backend Service
         name: OneCX Welcome SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
