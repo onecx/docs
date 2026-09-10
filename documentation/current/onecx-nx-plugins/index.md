@@ -6,7 +6,7 @@ The OneCX UI App Generator is a powerful tool that simplifies the development of
 
 **To clearly explain** how the generator works and the necessary adjustments, this guide uses a practical example: an **application to manage Books**. The **Bookstore** application allows users to search for books, view details about them, and manage their properties.
 
-In case you want to take part of the development of the generator or want to use it locally without installing it globally from npm, see the [Development Guide](generator/development.html) for instructions on how to get the generator and set up the development environment.
+In case you want to take part of the development of the generator or want to use it locally without installing it globally from npm, see the [Development Guide](angular/development.html) for instructions on how to get the generator and set up the development environment.
 
 | |  **Package renamed in version 9.**Starting with version **9.0.0-rc.2**, the Angular generator package has been renamed from @onecx/nx-plugin to @onecx/angular-generator.Update your generator commands accordingly, e.g. use nx generate @onecx/angular-generator:feature …​ instead of nx generate @onecx/nx-plugin:feature …​.Older versions (v8 and below) continue to use the @onecx/nx-plugin package name. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -83,14 +83,14 @@ The generator offers a range of commands to gradually create various UI componen
 
 Here is an overview of the application parts that can be generated using the OneCX App Generator. Start from top to bottom, i.e. first generate the application, then the feature module, and then the pages. The generator will guide you through the necessary steps and parameters for each part.
 
-* [OneCX UI App](generator/create-app.html) ⇐ **start here**  
-   * [Feature Module](generator/create-feature.html)  
-         * [Entity Schema and OpenAPI](generator/create-schema.html)  
-         * [Search Component](generator/create-search.html)  
-         * [Details Component](generator/create-details.html)  
+* [OneCX UI App](angular/create-app.html) ⇐ **start here**  
+   * [Feature Module](angular/create-feature.html)  
+         * [Entity Schema and OpenAPI](angular/create-schema.html)  
+         * [Search Component](angular/create-search.html)  
+         * [Details Component](angular/create-details.html)  
          * Create/Update Dialog  
          * Delete Dialog  
-         * [Simple NgRx Page](generator/create-ngrx-page.html)
+         * [Simple NgRx Page](angular/create-ngrx-page.html)
 
 | |  Build the application step by step, roughly following the suggested order above. This iterative approach allows you to understand the structure of the generated code and make necessary adjustments along the way.After generating each part, take the time to review the generated code, run the application, and ensure that everything is working as expected before moving on to the next part (see below for build, lint, test the App). This iterative approach helps in identifying and fixing issues early in the development process, leading to a more robust and maintainable application. |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -144,11 +144,11 @@ Figure 3\. Excerpt of the test output (exemplary for **bookstore** application)
 
 In addition to the Angular generators, the OneCX App Generator provides generators for **React** UI applications. They follow the same iterative approach: generate a part, then adapt the places marked with **ACTION**.
 
-* [Create a Feature Module (React)](#generator/create-react-feature.adoc)  
+* [Create a Feature Module (React)](angular/create-feature.html)  
 Generates a feature entry page and registers feature-level routing.
-* [Create a React Search Page](#generator/create-react-search.adoc)  
+* [Create a React Search Page](angular/create-search.html)  
 A data-driven search page with criteria, results table, header actions and API integration.
-* [Create a Detail Component (React)](#generator/create-react-details.adoc)  
+* [Create a Detail Component (React)](angular/create-details.html)  
 Generates details page, hook/store, and related UI components for a resource.
-* [Create a React Page](#generator/create-react-page.adoc)  
+* [Create a React Page](#angular/create-page.adoc)  
 A minimal, ready-to-use page with header and content area.

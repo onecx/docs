@@ -11,7 +11,7 @@ nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
 **Placeholder**:
 
 * _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../generator/glossary.html#feature).
+* _<feature>_: see [here](../../angular/glossary.html#feature).
 
 | |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

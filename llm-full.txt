@@ -1320,290 +1320,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1976,6 +1692,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -3925,8 +3925,8 @@ We can set up the new Angular workspace by running:
 npx @onecx/create-workspace ngrx hello-world
 ```
 
-| |  Details to generating a new OneCX Angular workspace can be found [here](../../onecx-nx-plugins/generator/create-app.html). |
-| ----------------------------------------------------------------------------------------------------------------------------- |
+| |  Details to generating a new OneCX Angular workspace can be found [here](#documentation:onecx-nx-plugins:generator/create-app.adoc). |
+| -------------------------------------------------------------------------------------------------------------------------------------- |
 
 Navigate into the newly created hello-world directory and install the packages with `npm install`.
 
@@ -3940,8 +3940,8 @@ This will be generated by running the following command:
 nx generate @onecx/nx-plugin:feature hello
 ```
 
-| |  Details to generating a feature module can be found [here](../../onecx-nx-plugins/generator/create-feature.html). |
-| -------------------------------------------------------------------------------------------------------------------- |
+| |  Details to generating a feature module can be found [here](#documentation:onecx-nx-plugins:generator/create-feature.adoc). |
+| ----------------------------------------------------------------------------------------------------------------------------- |
 
 #### [](#adding-search-page)Add a Search Page
 
@@ -3951,8 +3951,8 @@ Additionally we can add a search feature, that includes a table and allows users
 nx generate @onecx/nx-plugin:search hello
 ```
 
-| |  Details to generating a search page can be found [here](../../onecx-nx-plugins/generator/create-search.html). |
-| ---------------------------------------------------------------------------------------------------------------- |
+| |  Details to generating a search page can be found [here](#documentation:onecx-nx-plugins:generator/create-search.adoc). |
+| ------------------------------------------------------------------------------------------------------------------------- |
 
 #### [](#adding-details-page)Add a Details Page
 
@@ -3973,8 +3973,8 @@ Additionally we can add a create and update dialog for creating and updating ite
 nx generate @onecx/nx-plugin:create-update hello
 ```
 
-| |  Details to generating a create-update dialog can be found [here](../../onecx-nx-plugins/generator/create-update-dialog.html). |
-| -------------------------------------------------------------------------------------------------------------------------------- |
+| |  Details to generating a create-update dialog can be found [here](#documentation:onecx-nx-plugins:generator/create-update-dialog.adoc). |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
 
 The application can now be built, tested and started by running `npm run build`, `npm run test` and `npm start`.
 
@@ -7577,174 +7577,6 @@ Module Federation and Share Scopes
 ====================
 Remote package sharing and share scopes are part of Required Setup. See [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html).
 
-NgRX
-====================
-This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
-
-OneCx uses NgRx to manage the state of an applet. The communication with the store is done by smart components, usually by the page components.
-
-## [](#guidelines-for-ngrx)Guidelines for NgRx
-
-* An action is only dispatched at one place.
-* Actions are never dispatched conditionally.
-* For every component that is getting data from the store there is an interface for the viewmodel that is called like the component class but with postfix "ViewModel".
-* For every component that is getting data from the store there is a selector for the viewmodel that is called like the viewmodel interface but with the prefix "select".
-* Every component that is getting data from the store selects only the viewmodel via the viewmodel selector. The observable that is storing the result is called `viewModel$`.
-* Every HTML file of a component that is getting data from the store has an outer ng-container tag that is using the ngrxLet directive e.g. `*ngrxLet="viewModel$ as vm"`.
-* The store never stores data that can be computed from other data in the store. This is done in selectors.
-* Selectors are only accessing the data on top-level of the part of the store that is past to it.
-* Every feature module has its own feature store.
-* The store is the model of the applet and is modeled like that. Data that is relevant for all pages in the feature are stored on top-level. Data that is only relevant for one page is stored in a subsection of the store which is called like the page.
-* All HTTP calls are done in effects.
-* Routing or changing the URL parameters via the angular router is done in effects.
-* Selectors, reducers and effects are tested.
-* For reducers there is at least a test for the initial state and for one state that is not the initial state.
-* Effects are tested via marble testing.
-* Selector tests are testing the projector function of the selectors.
-
-## [](#project-structure)Project structure
-
-* [See example for NgRx project](https://github.com/onecx-apps/ping-angular-app-ui)The following examples shows a potential folder structure, that might be extended based on the need.
-
-| |  Folders should only be created and used if they have content. \[Example Angular NgRx structure\] |
-| --------------------------------------------------------------------------------------------------- |
-
-├── src
-│   ├── app
-│   │   ├── featuremodule1      // one of feature modules, might have many of them
-│   │   │    ├── components     // optional - components shared between pages of this feature module
-│   │   │    │    ├── featurecomponent1
-│   │   │    │    │    ├── featurecomponent1.component.html
-│   │   │    │    │    ├── featurecomponent1.component.scss
-│   │   │    │    │    ├── featurecomponent1.component.spec.ts
-│   │   │    │    │    ├── featurecomponent1.component.ts
-│   │   │    ├── directives     // optional - directives used in specific feature module
-│   │   │    ├── pages
-│   │   │    │    ├── page1       // every page gets a subfolder, might have many of them
-│   │   │    │    │     ├── page1subcomponent1    // one of subcomponent for page, optional + might have many of them
-│   │   │    │    │     │     ├── page1subcomponent1.component.html
-│   │   │    │    │     │     ├── page1subcomponent1.component.scss
-│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
-│   │   │    │    │     │     ├── page1subcomponent1.component.ts
-│   │   │    │    │     │     ├── page1subcomponent1.viewmodel.ts
-│   │   │    │    │     ├── dialogs
-│   │   │    │    │     │     ├── page1dialog1    // dialog that is only used by this page, optional + might have many of them
-│   │   │    │    │     │     │     ├── page1dialog1.component.html
-│   │   │    │    │     │     │     ├── page1dialog1.component.scss
-│   │   │    │    │     │     │     ├── page1dialog1.component.spec.ts
-│   │   │    │    │     │     │     ├── page1dialog1.component.ts
-│   │   │    │    │     │     │     ├── page1dialog1.viewmodel.ts
-│   │   │    │    │     ├── page1.component.html
-│   │   │    │    │     ├── page1.component.scss
-│   │   │    │    │     ├── page1.component.spec.ts
-│   │   │    │    │     ├── page1.component.ts
-│   │   │    │    │     ├── page1.reducer.ts
-│   │   │    │    │     ├── page1.reducer.spec.ts
-│   │   │    │    │     ├── page1.selectors.ts
-│   │   │    │    │     ├── page1.selectors.spec.ts
-│   │   │    │    │     ├── page1.state.ts
-│   │   │    │    │     ├── page1.effects.spec.ts
-│   │   │    │    │     ├── page1.effects.ts
-│   │   │    │    │     ├── page1.actions.ts
-│   │   │    │    │     ├── page1.viewmodel.ts
-│   │   │    ├── dialogs // dialogs which are used across pages, optional
-│   │   │    │    ├── dialog1       // every dialog gets a subfolder, might have many of them
-│   │   │    │    │     ├── dialog1subcomponent1    // one of subcomponent for dialog, optional + might have many of them
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.html
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.scss
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.spec.ts
-│   │   │    │    │     │     ├── dialog1subcomponent1.component.ts
-│   │   │    │    │     │     ├── dialog1subcomponent1.viewmodel.ts
-│   │   │    │    │     ├── dialog1.component.html
-│   │   │    │    │     ├── dialog1.component.scss
-│   │   │    │    │     ├── dialog1.component.spec.ts
-│   │   │    │    │     ├── dialog1.component.ts
-│   │   │    │    │     ├── dialog1.reducer.ts
-│   │   │    │    │     ├── dialog1.reducer.spec.ts
-│   │   │    │    │     ├── dialog1.selectors.ts
-│   │   │    │    │     ├── dialog1.selectors.spec.ts
-│   │   │    │    │     ├── dialog1.state.ts
-│   │   │    │    │     ├── dialog1.effects.spec.ts
-│   │   │    │    │     ├── dialog1.effects.ts
-│   │   │    │    │     ├── dialog1.actions.ts
-│   │   │    │    │     ├── dialog1.viewmodel.ts
-│   │   │    ├── featuremodule1.module.ts
-│   │   │    ├── featuremodule1.reducers.ts
-│   │   │    ├── featuremodule1.reducers.spec.ts
-│   │   │    ├── featuremodule1.routes.ts
-│   │   │    ├── featuremodule1.selectors.ts
-│   │   │    ├── featuremodule1.selectors.spec.ts
-│   │   │    ├── featuremodule1.state.ts
-│   │   ├── shared // (technical) components and directives used in multiple feature modules
-│   │   │    ├── components
-│   │   │    │     ├── sharedcomponent1
-│   │   │    │     │     ├── sharedcomponent1.component.html
-│   │   │    │     │     ├── sharedcomponent1.component.scss
-│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
-│   │   │    │     │     ├── sharedcomponent1.component.ts
-│   │   │    ├── directives
-│   │   │    │     ├── directive1.ts
-│   │   │    │     ├── directive1.spec.ts
-│   │   │    ├── generated      //generated from openApi
-│   │   │    │    ├── models
-│   │   │    │    ├── services
-│   │   │    ├── shared.module.ts
-│   │   ├── app-routing.module.ts
-│   │   ├── app.component.html
-│   │   ├── app.component.scss
-│   │   ├── app.component.ts
-│   │   ├── app.module.ts
-│   │   ├── app.state.ts
-│   │   ├── app.reducers.ts
-│   │   ├── app.reducers.spec.ts
-│   │   ├── app.selectors.ts
-│   │   ├── app.selectors.spec.ts
-│   ├── assets
-│   │   │   ├── i18n
-│   │   │   ├── fonts
-│   │   │   ├── images
-│   │   │   ├── scss
-│   │   │   ├── yamls
-│   ├── environments
-│   │   │   ├── dev
-│   │   │   ├── prod
-
-## [](#subcomponents)Subcomponents
-
-Usually subcomponents have a single input for the viewmodel called `vm`. This viewmodel is a member of the components viewmodel and is build via selectors. If a subcomponent has also a subsubcomponent, the viewmodel of the subcomponent has a member containing the viewmodel of the subsubcomponent.
-
-## [](#dialogs)Dialogs
-
-There are two kinds of dialogs:
-
-* dialogs only used in one page
-* dialogs used in multiple pages
-
-Both dialog types have in common that:
-
-* they are opened in effects
-* the result is handled in the effects and is converted into an action
-* they have a viewmodel
-* they are opened with `PortalDialogService.openDialog(…​)`
-* they are communicating with the code that opened the dialog by implementing the interface `DialogResult`
-* Implementing `DialogButtonClicked` can help setting the dialog result before the dialog closes
-
-### [](#dialogs-used-in-one-page)Dialogs used in one page
-
-The components used for dialogs are subcomponents of the page they are used in. Theses subcomponents are placed in a subfolder called 'dialogs'. They do not have a separate section in the store because they are sharing the data of the page they are belonging to. The viewmodel can be passed via an input which is called 'vm'. The viewmodel is read from the store via a viewmodel selector in the effects or is build with data from the action which is triggering the opening of the dialog.
-
-The dialogs can also dispatch actions but only if they are not used to react on the closing of the dialog. Reacting to the closing is always done via the Observable returned by `openDialog(…​)`
-
-### [](#dialogs-used-in-mulitple-pages)Dialogs used in multiple pages
-
-The structure and inner workings of a dialog that is used in many pages is similar to the structure of a page. They have their own section in the store, own effects, own selectors,…​ Dialogs that are used by multiple pages are always dispatching an action that is informing about the opening of the dialog in the constructor of the dialog component. The viewmodel is read from the store inside of the component via a selector like it is done for a page.
-
-## [](#further-information-about-ngrx)Further information about NgRx
-
-For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
-
-Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
-
 Lazy loading tabs
 ====================
 ## [](#goal)Goal: Load tabs dynamically
@@ -7931,6 +7763,174 @@ _Adapt in File:_ `<feature>-details.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+NgRX
+====================
+This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
+
+OneCx uses NgRx to manage the state of an applet. The communication with the store is done by smart components, usually by the page components.
+
+## [](#guidelines-for-ngrx)Guidelines for NgRx
+
+* An action is only dispatched at one place.
+* Actions are never dispatched conditionally.
+* For every component that is getting data from the store there is an interface for the viewmodel that is called like the component class but with postfix "ViewModel".
+* For every component that is getting data from the store there is a selector for the viewmodel that is called like the viewmodel interface but with the prefix "select".
+* Every component that is getting data from the store selects only the viewmodel via the viewmodel selector. The observable that is storing the result is called `viewModel$`.
+* Every HTML file of a component that is getting data from the store has an outer ng-container tag that is using the ngrxLet directive e.g. `*ngrxLet="viewModel$ as vm"`.
+* The store never stores data that can be computed from other data in the store. This is done in selectors.
+* Selectors are only accessing the data on top-level of the part of the store that is past to it.
+* Every feature module has its own feature store.
+* The store is the model of the applet and is modeled like that. Data that is relevant for all pages in the feature are stored on top-level. Data that is only relevant for one page is stored in a subsection of the store which is called like the page.
+* All HTTP calls are done in effects.
+* Routing or changing the URL parameters via the angular router is done in effects.
+* Selectors, reducers and effects are tested.
+* For reducers there is at least a test for the initial state and for one state that is not the initial state.
+* Effects are tested via marble testing.
+* Selector tests are testing the projector function of the selectors.
+
+## [](#project-structure)Project structure
+
+* [See example for NgRx project](https://github.com/onecx-apps/ping-angular-app-ui)The following examples shows a potential folder structure, that might be extended based on the need.
+
+| |  Folders should only be created and used if they have content. \[Example Angular NgRx structure\] |
+| --------------------------------------------------------------------------------------------------- |
+
+├── src
+│   ├── app
+│   │   ├── featuremodule1      // one of feature modules, might have many of them
+│   │   │    ├── components     // optional - components shared between pages of this feature module
+│   │   │    │    ├── featurecomponent1
+│   │   │    │    │    ├── featurecomponent1.component.html
+│   │   │    │    │    ├── featurecomponent1.component.scss
+│   │   │    │    │    ├── featurecomponent1.component.spec.ts
+│   │   │    │    │    ├── featurecomponent1.component.ts
+│   │   │    ├── directives     // optional - directives used in specific feature module
+│   │   │    ├── pages
+│   │   │    │    ├── page1       // every page gets a subfolder, might have many of them
+│   │   │    │    │     ├── page1subcomponent1    // one of subcomponent for page, optional + might have many of them
+│   │   │    │    │     │     ├── page1subcomponent1.component.html
+│   │   │    │    │     │     ├── page1subcomponent1.component.scss
+│   │   │    │    │     │     ├── page1subcomponent1.component.spec.ts
+│   │   │    │    │     │     ├── page1subcomponent1.component.ts
+│   │   │    │    │     │     ├── page1subcomponent1.viewmodel.ts
+│   │   │    │    │     ├── dialogs
+│   │   │    │    │     │     ├── page1dialog1    // dialog that is only used by this page, optional + might have many of them
+│   │   │    │    │     │     │     ├── page1dialog1.component.html
+│   │   │    │    │     │     │     ├── page1dialog1.component.scss
+│   │   │    │    │     │     │     ├── page1dialog1.component.spec.ts
+│   │   │    │    │     │     │     ├── page1dialog1.component.ts
+│   │   │    │    │     │     │     ├── page1dialog1.viewmodel.ts
+│   │   │    │    │     ├── page1.component.html
+│   │   │    │    │     ├── page1.component.scss
+│   │   │    │    │     ├── page1.component.spec.ts
+│   │   │    │    │     ├── page1.component.ts
+│   │   │    │    │     ├── page1.reducer.ts
+│   │   │    │    │     ├── page1.reducer.spec.ts
+│   │   │    │    │     ├── page1.selectors.ts
+│   │   │    │    │     ├── page1.selectors.spec.ts
+│   │   │    │    │     ├── page1.state.ts
+│   │   │    │    │     ├── page1.effects.spec.ts
+│   │   │    │    │     ├── page1.effects.ts
+│   │   │    │    │     ├── page1.actions.ts
+│   │   │    │    │     ├── page1.viewmodel.ts
+│   │   │    ├── dialogs // dialogs which are used across pages, optional
+│   │   │    │    ├── dialog1       // every dialog gets a subfolder, might have many of them
+│   │   │    │    │     ├── dialog1subcomponent1    // one of subcomponent for dialog, optional + might have many of them
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.html
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.scss
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.spec.ts
+│   │   │    │    │     │     ├── dialog1subcomponent1.component.ts
+│   │   │    │    │     │     ├── dialog1subcomponent1.viewmodel.ts
+│   │   │    │    │     ├── dialog1.component.html
+│   │   │    │    │     ├── dialog1.component.scss
+│   │   │    │    │     ├── dialog1.component.spec.ts
+│   │   │    │    │     ├── dialog1.component.ts
+│   │   │    │    │     ├── dialog1.reducer.ts
+│   │   │    │    │     ├── dialog1.reducer.spec.ts
+│   │   │    │    │     ├── dialog1.selectors.ts
+│   │   │    │    │     ├── dialog1.selectors.spec.ts
+│   │   │    │    │     ├── dialog1.state.ts
+│   │   │    │    │     ├── dialog1.effects.spec.ts
+│   │   │    │    │     ├── dialog1.effects.ts
+│   │   │    │    │     ├── dialog1.actions.ts
+│   │   │    │    │     ├── dialog1.viewmodel.ts
+│   │   │    ├── featuremodule1.module.ts
+│   │   │    ├── featuremodule1.reducers.ts
+│   │   │    ├── featuremodule1.reducers.spec.ts
+│   │   │    ├── featuremodule1.routes.ts
+│   │   │    ├── featuremodule1.selectors.ts
+│   │   │    ├── featuremodule1.selectors.spec.ts
+│   │   │    ├── featuremodule1.state.ts
+│   │   ├── shared // (technical) components and directives used in multiple feature modules
+│   │   │    ├── components
+│   │   │    │     ├── sharedcomponent1
+│   │   │    │     │     ├── sharedcomponent1.component.html
+│   │   │    │     │     ├── sharedcomponent1.component.scss
+│   │   │    │     │     ├── sharedcomponent1.component.spec.ts
+│   │   │    │     │     ├── sharedcomponent1.component.ts
+│   │   │    ├── directives
+│   │   │    │     ├── directive1.ts
+│   │   │    │     ├── directive1.spec.ts
+│   │   │    ├── generated      //generated from openApi
+│   │   │    │    ├── models
+│   │   │    │    ├── services
+│   │   │    ├── shared.module.ts
+│   │   ├── app-routing.module.ts
+│   │   ├── app.component.html
+│   │   ├── app.component.scss
+│   │   ├── app.component.ts
+│   │   ├── app.module.ts
+│   │   ├── app.state.ts
+│   │   ├── app.reducers.ts
+│   │   ├── app.reducers.spec.ts
+│   │   ├── app.selectors.ts
+│   │   ├── app.selectors.spec.ts
+│   ├── assets
+│   │   │   ├── i18n
+│   │   │   ├── fonts
+│   │   │   ├── images
+│   │   │   ├── scss
+│   │   │   ├── yamls
+│   ├── environments
+│   │   │   ├── dev
+│   │   │   ├── prod
+
+## [](#subcomponents)Subcomponents
+
+Usually subcomponents have a single input for the viewmodel called `vm`. This viewmodel is a member of the components viewmodel and is build via selectors. If a subcomponent has also a subsubcomponent, the viewmodel of the subcomponent has a member containing the viewmodel of the subsubcomponent.
+
+## [](#dialogs)Dialogs
+
+There are two kinds of dialogs:
+
+* dialogs only used in one page
+* dialogs used in multiple pages
+
+Both dialog types have in common that:
+
+* they are opened in effects
+* the result is handled in the effects and is converted into an action
+* they have a viewmodel
+* they are opened with `PortalDialogService.openDialog(…​)`
+* they are communicating with the code that opened the dialog by implementing the interface `DialogResult`
+* Implementing `DialogButtonClicked` can help setting the dialog result before the dialog closes
+
+### [](#dialogs-used-in-one-page)Dialogs used in one page
+
+The components used for dialogs are subcomponents of the page they are used in. Theses subcomponents are placed in a subfolder called 'dialogs'. They do not have a separate section in the store because they are sharing the data of the page they are belonging to. The viewmodel can be passed via an input which is called 'vm'. The viewmodel is read from the store via a viewmodel selector in the effects or is build with data from the action which is triggering the opening of the dialog.
+
+The dialogs can also dispatch actions but only if they are not used to react on the closing of the dialog. Reacting to the closing is always done via the Observable returned by `openDialog(…​)`
+
+### [](#dialogs-used-in-mulitple-pages)Dialogs used in multiple pages
+
+The structure and inner workings of a dialog that is used in many pages is similar to the structure of a page. They have their own section in the store, own effects, own selectors,…​ Dialogs that are used by multiple pages are always dispatching an action that is informing about the opening of the dialog in the constructor of the dialog component. The viewmodel is read from the store inside of the component via a selector like it is done for a page.
+
+## [](#further-information-about-ngrx)Further information about NgRx
+
+For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
+
+Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
 
 NgRx
 ====================
@@ -8136,28 +8136,6 @@ userService.getPermissions().pipe((
 ))
 ```
 
-PrimeNG
-====================
-## [](#overview)Overview
-
-PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
-
-## [](#theming-with-primeng)Theming with PrimeNG
-
-PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
-
-## [](#useful-links)Useful Links
-
-* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
-* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
-* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
-* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
-* OneCX PrimeNG Integration Guide: [Theming with PrimeNG](theming.html)
-
-## [](#onecx-integration)OneCX Integration
-
-PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on how to use PrimeNG within OneCX, refer to the {OneCX PrimeNG Integration Guide}\[Theming with PrimeNG\].
-
 OneCX PrimeNG Theming
 ====================
 ## [](#overview)Overview
@@ -8240,6 +8218,28 @@ provideThemeConfig({
   }
 })
 ```
+
+PrimeNG
+====================
+## [](#overview)Overview
+
+PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
+
+## [](#theming-with-primeng)Theming with PrimeNG
+
+PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
+
+## [](#useful-links)Useful Links
+
+* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
+* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
+* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
+* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
+* OneCX PrimeNG Integration Guide: [Theming with PrimeNG](theming.html)
+
+## [](#onecx-integration)OneCX Integration
+
+PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on how to use PrimeNG within OneCX, refer to the {OneCX PrimeNG Integration Guide}\[Theming with PrimeNG\].
 
 OneCX Multi-language Translations
 ====================
@@ -8655,86 +8655,6 @@ The navigation guards are now synchronized between all microfrontends. This mean
 #### [](#initial-microfrontend-load)Initial microfrontend load
 
 During the initial load of the application, it is likely that there are existing microfrontends that already approved the navigation that led to the current route. There is a scenario where the microfrontend that is being loaded initially has a guard that rejects the current navigation. In this case, the navigation will be aborted, and the application will revert to the previous state before the initial load.
-
-@onecx/react-auth
-====================
-## [](#overview)Overview
-
-This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
-
-## [](#axios-factory)axiosFactory Function
-
-The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
-
-```javascript
-export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
-  baseURL
-) => {
-  // Implementation
-};
-```
-
-* baseURL: An optional parameter specifying the base URL for HTTP requests.
-* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
-* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
-
-## [](#example-usage)Example Usage
-
-```javascript
-// Create an axios instance with a base URL
-const apiClient = axiosFactory('https://api.example.com');
-
-// Make a GET request
-apiClient.get('/data')
-  .then(response => {
-    console.log('Data received:', response.data);
-  })
-  .catch(error => {
-    console.error('Error fetching data:', error);
-  });
-
-// Make a POST request with authorization headers
-apiClient.post('/submit', { name: 'John Doe' })
-  .then(response => {
-    console.log('Submission successful:', response.data);
-  })
-  .catch(error => {
-    console.error('Error submitting data:', error);
-  });
-```
-
-## [](#auth-proxy-service)Auth Proxy Service
-
-The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
-
-Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
-
-```ts
-if (!window.onecxAuth?.authServiceProxy) {
-  // handle missing auth proxy (e.g., show fallback or defer logic)
-  return;
-}
-```
-
-```ts
-const { authServiceProxy } = window.onecxAuth;
-
-// Ensure token is still valid before a guarded action
-await authServiceProxy.v1.updateTokenIfNeeded();
-
-// Read user / permissions (depending on shell implementation)
-const user = await authServiceProxy.v1.getUser();
-const permissions = await authServiceProxy.v1.getPermissions();
-```
-
-Example usage with axiosFactory:
-
-```ts
-const apiClient = axiosFactory('/api');
-
-await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
-const response = await apiClient.get('/profile');
-```
 
 @onecx/react-integration-interface
 ====================
@@ -9211,183 +9131,85 @@ __Table 13\. Workspace Hook methods__
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
 
-@onecx/react-remote-components
+@onecx/react-auth
 ====================
 ## [](#overview)Overview
 
-`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
+This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
 
-## [](#data-sources)Data Sources
+## [](#axios-factory)axiosFactory Function
 
-The library listens to portal topics for remote components and permissions:
+The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
 
-* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
-* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
-
-## [](#exports)Public Exports
-
-The package exports:
-
-* `SlotComponent`
-* `SlotProvider`, `useSlot`
-* `PermissionProvider`, `usePermission`
-* `withSlot`
-
-The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
-
-```js
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteWebcomponent': './src/app/bootstrap.ts',
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
+```javascript
+export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
+  baseURL
+) => {
+  // Implementation
 };
 ```
 
-For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+* baseURL: An optional parameter specifying the base URL for HTTP requests.
+* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
+* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
 
-### [](#init)Initialization
+## [](#example-usage)Example Usage
 
-Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+```javascript
+// Create an axios instance with a base URL
+const apiClient = axiosFactory('https://api.example.com');
 
-```js
-init({
-  name: 'test-ui',
-  remotes: [],
-  shared: {
-    react: {},
-    'react-dom': {},
-    'react-router-dom': {},
-    rxjs: {},
-    '@module-federation/enhanced': {},
-    '@module-federation/runtime': {},
-    '@module-federation/runtime-core': {},
-    '@onecx/accelerator': {},
-    '@onecx/integration-interface': {},
-  },
-});
+// Make a GET request
+apiClient.get('/data')
+  .then(response => {
+    console.log('Data received:', response.data);
+  })
+  .catch(error => {
+    console.error('Error fetching data:', error);
+  });
+
+// Make a POST request with authorization headers
+apiClient.post('/submit', { name: 'John Doe' })
+  .then(response => {
+    console.log('Submission successful:', response.data);
+  })
+  .catch(error => {
+    console.error('Error submitting data:', error);
+  });
 ```
 
-### [](#register)Register Remote
+## [](#auth-proxy-service)Auth Proxy Service
 
-To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
 
-```js
-registerRemotes(
-  [{
-    name: ExamplAppId,
-    entry: '/mfe/example',
-    type:
-      technology === 'Angular' ||
-      technology === 'WebComponentModule'
-        ? 'module'
-        : 'script',
-  }],
-  { force: true }
-);
+Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
+
+```ts
+if (!window.onecxAuth?.authServiceProxy) {
+  // handle missing auth proxy (e.g., show fallback or defer logic)
+  return;
+}
 ```
 
-| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
-| ------------------------------------------------------------------------------------------------------------- |
+```ts
+const { authServiceProxy } = window.onecxAuth;
 
-### [](#fetching)Fetch Remote
+// Ensure token is still valid before a guarded action
+await authServiceProxy.v1.updateTokenIfNeeded();
 
-Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
-
-```js
-loadRemote(`${appId}/${exposedModule}`, {
-        from: 'runtime',
-      });
+// Read user / permissions (depending on shell implementation)
+const user = await authServiceProxy.v1.getUser();
+const permissions = await authServiceProxy.v1.getPermissions();
 ```
 
-It is asynchronous function so we need to wait for it to be done.
+Example usage with axiosFactory:
 
-## [](#usage)Usage
+```ts
+const apiClient = axiosFactory('/api');
 
-To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
-
-## [](#contexts-hooks)Contexts and Hooks
-
-When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
-
-```tsx
-<PermissionProvider>
-  <SlotProvider>
-    <YourApp />
-  </SlotProvider>
-</PermissionProvider>
+await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
+const response = await apiClient.get('/profile');
 ```
-
-`useSlot` and `usePermission` throw an error when used outside their respective providers.
-
-### [](#HOC)withSlot
-
-This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
-
-```js
-export const withSlot = <P extends object>(
-  WrappedComponent: ComponentType<P>
-): FC<P> => {
-  const hocComponent = (props: P) => (
-    <PermissionProvider>
-      <SlotProvider>
-        <WrappedComponent {...props} />
-      </SlotProvider>
-    </PermissionProvider>
-  );
-
-  return hocComponent;
-};
-
-export default withSlot(Testing);
-```
-
-### [](#SlotComponent)SlotComponent
-
-This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
-
-Additional props:
-
-* `inputs`: object passed to the remote component as inputs/properties
-* `outputs`: callbacks bound to the remote component as outputs
-* `skeleton`: placeholder rendered while components are loading
-
-```tsx
-<SlotComponent
-  name="vite-example"
-  inputs={{ title: 'Remote title' }}
-  outputs={{ onSelect: (value) => console.log(value) }}
-  skeleton={<div>Loading...</div>}
-/>
-```
-
-For example
-
-```html
-<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
-```
-
-It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
-
-```js
-const Testing = () => (
-  <div>
-    <h1>Testing</h1>
-    <SlotComponent name="vite-example" />
-  </div>
-);
-export default withSlot(Testing)
-```
-
-## [](#vite)Vite
-
-This library works smoothly with vite applications.
-
-## [](#nextjs)Next.js
-
-The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
 
 @onecx/react-utils
 ====================
@@ -9578,6 +9400,190 @@ For coordinated navigation flows across multiple remotes, you can wire the lower
 
 The `withApp` HOC composes common providers (app state, configuration, user, theme) and sets up the style scoping helpers for micro-frontends.
 
+@onecx/react-remote-components
+====================
+## [](#overview)Overview
+
+`@onecx/react-remote-components` provides helpers for rendering remote portal components inside React apps. It connects to the `RemoteComponentsTopic`, loads remote entries via Module Federation, and renders components inside named slots.
+
+## [](#data-sources)Data Sources
+
+The library listens to portal topics for remote components and permissions:
+
+* `RemoteComponentsTopic` provides slot-to-component mappings and remote component metadata.
+* `PermissionsRpcTopic` is used by `PermissionProvider` to resolve permissions for each remote component.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `SlotComponent`
+* `SlotProvider`, `useSlot`
+* `PermissionProvider`, `usePermission`
+* `withSlot`
+
+The functionality of this library is based on module-federation. To provide a connection between applications running on different frameworks, we use module-federation 2.0, which focuses on runtime functionality. But it works just as well with a more static/webpack approach. We basically use a mix of both worlds. To expose the component we use static approach as it fits our case:
+
+```js
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteWebcomponent': './src/app/bootstrap.ts',
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+For retrieving OneCX portal components, we need to take a slightly different approach. Making it work statically, as it currently is, would be difficult due to the complexity of the portal. Right now we have webpack based with Angular mf there, which means it uses internal scope. It also has traefik, which makes it even more complex. So the approach we had to take was to use a framework-agnostic type of connection. Therefore we used module-federation 2.0\. The whole process can be divided into 3 steps:
+
+### [](#init)Initialization
+
+Initialization is usually added to the \_app.tsx file and it also creates a _FEDERATION_ object in the window. This object is very useful because it contains all information about each registered remote. You can find there information about remotes, shared libs, caches, preloads etc. Because of the shared libs info, it will be also much easier to detect which remote has older or newer version of any library, and for that reason migrating will be much easier.
+
+```js
+init({
+  name: 'test-ui',
+  remotes: [],
+  shared: {
+    react: {},
+    'react-dom': {},
+    'react-router-dom': {},
+    rxjs: {},
+    '@module-federation/enhanced': {},
+    '@module-federation/runtime': {},
+    '@module-federation/runtime-core': {},
+    '@onecx/accelerator': {},
+    '@onecx/integration-interface': {},
+  },
+});
+```
+
+### [](#register)Register Remote
+
+To register remotes we should use another function from the same `@module-federation/enhanced/runtime` library. It simply registers a remote in the _FEDERATION_ object. You could also turn on 'force' option, which basically means you can dynamically overwrite a remote.
+
+```js
+registerRemotes(
+  [{
+    name: ExamplAppId,
+    entry: '/mfe/example',
+    type:
+      technology === 'Angular' ||
+      technology === 'WebComponentModule'
+        ? 'module'
+        : 'script',
+  }],
+  { force: true }
+);
+```
+
+| |  To make it work with traefik in entry, you need to put relative path as above. Otherwise it will not work. |
+| ------------------------------------------------------------------------------------------------------------- |
+
+### [](#fetching)Fetch Remote
+
+Last step is to actually load the remote. In our webcomponent-based approach, it essentially means to fetch the remote, which will create a webcomponent that we can use inside our applications. It can be done using this function:
+
+```js
+loadRemote(`${appId}/${exposedModule}`, {
+        from: 'runtime',
+      });
+```
+
+It is asynchronous function so we need to wait for it to be done.
+
+## [](#usage)Usage
+
+To use other components of OneCX portal, you need only 2 functionalities: HOC 'withSlot' and 'SlotComponent'.
+
+## [](#contexts-hooks)Contexts and Hooks
+
+When you need direct access to the slot or permission APIs, mount the providers and use hooks explicitly:
+
+```tsx
+<PermissionProvider>
+  <SlotProvider>
+    <YourApp />
+  </SlotProvider>
+</PermissionProvider>
+```
+
+`useSlot` and `usePermission` throw an error when used outside their respective providers.
+
+### [](#HOC)withSlot
+
+This HOC uses providers that you need to fetch the desired component under the hood, so the developer is able to use only `withSlot` on export.
+
+```js
+export const withSlot = <P extends object>(
+  WrappedComponent: ComponentType<P>
+): FC<P> => {
+  const hocComponent = (props: P) => (
+    <PermissionProvider>
+      <SlotProvider>
+        <WrappedComponent {...props} />
+      </SlotProvider>
+    </PermissionProvider>
+  );
+
+  return hocComponent;
+};
+
+export default withSlot(Testing);
+```
+
+### [](#SlotComponent)SlotComponent
+
+This component is a container with a `name` property. It resolves slot mappings from `RemoteComponentsTopic`, loads the remote module using Module Federation, and mounts the remote web component into the slot container. Each mounted element receives `data-style-id` and `data-style-isolation` attributes for styling isolation.
+
+Additional props:
+
+* `inputs`: object passed to the remote component as inputs/properties
+* `outputs`: callbacks bound to the remote component as outputs
+* `skeleton`: placeholder rendered while components are loading
+
+```tsx
+<SlotComponent
+  name="vite-example"
+  inputs={{ title: 'Remote title' }}
+  outputs={{ onSelect: (value) => console.log(value) }}
+  skeleton={<div>Loading...</div>}
+/>
+```
+
+For example
+
+```html
+<ocx-user-siderbar-menu-component></ocx-user-siderbar-menu-component>
+```
+
+It fetches web components using information from the `RemoteComponentsTopic`, registers them, and renders them inside the slot.
+
+```js
+const Testing = () => (
+  <div>
+    <h1>Testing</h1>
+    <SlotComponent name="vite-example" />
+  </div>
+);
+export default withSlot(Testing)
+```
+
+## [](#vite)Vite
+
+This library works smoothly with vite applications.
+
+## [](#nextjs)Next.js
+
+The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
+Adapt Routing
+====================
+An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
+
+See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
+
 @onecx/react-webcomponents
 ====================
 ## [](#overview)Overview
@@ -9681,12 +9687,6 @@ The library also provides routing integration helpers:
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
-Adapt Routing
-====================
-An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
-
-See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
-
 Apply Theming
 ====================
 An application integrated with OneCX still loads and runs even if it doesn’t use OneCX theme variables, but it renders with a theme that doesn’t match the rest of the shell. In OneCX, each workspace can use a different theme for its pages, and the shell makes the active theme’s CSS variables available on every page automatically — the application should use those variables in its own styles instead of hard-coded values.
@@ -9701,15 +9701,6 @@ An application integrated with OneCX still loads and runs even if its own or its
 
 * [Angular Applications](expose-component-styles/angular.html) — exposing an application’s `styles.css` and the stylesheets of OneCX libraries it depends on.
 * [React Applications](expose-component-styles/react.html) — guidance for exposing an application’s `styles.css`.
-
-Expose Library Assets
-====================
-An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
-
-## [](#expose-library-assets-pages)Pages
-
-* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
-* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Recommended Setup
 ====================
@@ -9729,6 +9720,15 @@ This tier applies to both paths of building a OneCX UI:
 * [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
+
+Expose Library Assets
+====================
+An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
+
+## [](#expose-library-assets-pages)Pages
+
+* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
+* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Configure Authentication
 ====================
@@ -9906,27 +9906,6 @@ const config = withModuleFederationPlugin({
 
 See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
 
-Required Setup
-====================
-Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
-
-This tier applies to both paths of building a OneCX UI:
-
-* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
-* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
-
-| |  If a step isn’t listed here, it belongs to a different tier. See [Recommended Setup](../recommended/index.html) for steps an app **should** complete to behave correctly, not just to run. An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Required tier as part of the same three-tier Setup structure. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#required-setup-pages)Pages
-
-* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
-* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
-   * [Module Approach](expose-remote-module/module-approach.html)  
-   * [Component Approach](expose-remote-module/component-approach.html)
-* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
-* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
-
 Platform &amp; Package Compatibility Requirements
 ====================
 Before an application can be loaded by the OneCX shell, it must satisfy a baseline of platform and package compatibility constraints.
@@ -9970,6 +9949,27 @@ __Table 4\. Compatible package versions for Angular 21 (libs version 8.x)__
 Use the caret (`^`) range for all shared package versions in `package.json`, except `rxjs`, which should use tilde (`~`).
 
 See [Configure Remote Package Sharing](configure-remote-package-sharing.html) for the list of packages that must be shared and the recommended utility for applying OneCX sharing settings.
+
+Required Setup
+====================
+Required Setup covers the steps every application **must** complete to function in the OneCX shell at all. Skipping any of them results in a broken integration (the app fails to load, cannot route, or cannot authenticate), not merely a degraded one.
+
+This tier applies to both paths of building a OneCX UI:
+
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist. See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
+* **Creating a new app from scratch** — use this checklist as the target end-state for a freshly generated application.
+
+| |  If a step isn’t listed here, it belongs to a different tier. See [Recommended Setup](../recommended/index.html) for steps an app **should** complete to behave correctly, not just to run. An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Required tier as part of the same three-tier Setup structure. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#required-setup-pages)Pages
+
+* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
+* [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
+   * [Module Approach](expose-remote-module/module-approach.html)  
+   * [Component Approach](expose-remote-module/component-approach.html)
+* [Configure Remote Package Sharing](configure-remote-package-sharing.html) — how to assign the app and its shared dependencies to the correct Module Federation share scope.
+* [Configure Authentication](configure-authentication.html) — how to ensure requests carry the shell’s authentication header.
 
 AppConfigService and environment variables (runtime configuration)
 ====================
@@ -14262,6 +14262,163 @@ undefined
 ====================
 
 
+Generator Utils
+====================
+This page documents the helper utilities available in the `generator-utils` library and how to use them when authoring OneCX generators (Angular / React).
+
+The library exports a small set of utilities commonly used by generators:
+
+* `deepMerge` — deep-merge objects
+* `renderJsonFile` — render EJS template and parse JSON
+* `readYaml`, `writeYaml`, `updateYaml` — YAML helpers based on Nx `Tree`
+* `safeReplace` — robust file replacement helper for generator templates
+* `GeneratorStepError` — standard error type for generator steps
+* `HelmValuesUtil` and `PermissionSectionUtil` — helpers to compose Helm `values.yaml`
+* `OpenAPIDefault` — small model describing an OpenAPI operation default
+
+## [](#build-test)Build & Test
+
+To build the library:
+
+```bash
+nx build generator-utils
+```
+
+Run unit tests:
+
+```bash
+nx test generator-utils
+```
+
+## [](#api-reference)API Reference
+
+### [](#deepmerge)deepMerge
+
+Recursively merges plain objects and concatenates arrays. Later values replace earlier values for the same key. This is useful for combining nested configuration objects, such as Helm values fragments.
+
+`deepMerge` syntax
+
+```typescript
+export function deepMerge(...objects: unknown[]): object
+```
+
+### Example
+
+```typescript
+const merged = deepMerge({a: [1]}, {a: [2], b: {c: 3}});
+// merged: { a: [1, 2], b: { c: 3 } }
+```
+
+### [](#renderjsonfile)renderJsonFile
+
+Renders a JSON file containing EJS template syntax and returns the parsed object. The file path is also passed to EJS so that included templates can be resolved relative to the file.
+
+`renderJsonFile` syntax
+
+```typescript
+export function renderJsonFile(
+  filePath: string,
+  options: Record<string, unknown>
+): unknown
+```
+
+### Example
+
+```typescript
+const obj = renderJsonFile('templates/messages.json.ejs', { name: 'Book' });
+```
+
+### [](#yaml-helpers-readyaml-writeyaml-updateyaml)YAML helpers (readYaml / writeYaml / updateYaml)
+
+Read, write and update YAML files through an Nx `Tree`. `readYaml` throws when the file does not exist or cannot be parsed. `updateYaml` reads the YAML, passes it to the updater and writes the returned value back to the same path.
+
+`readYaml`, `writeYaml` and `updateYaml` syntax
+
+```typescript
+export function readYaml<T extends object = object>(tree: Tree, path: string): T
+export function writeYaml<T extends object = object>(
+  tree: Tree,
+  path: string,
+  value: T
+): void
+export function updateYaml<T extends object = object, U extends object = T>(
+  tree: Tree,
+  path: string,
+  updater: (value: T) => U
+): void
+```
+
+### Example
+
+```ts
+updateYaml(tree, 'charts/values.yaml', (v) => ({ ...v, app: { enabled: true } }));
+```
+
+### [](#safereplace)safeReplace
+
+Performs guarded textual replacements in a file. It validates that each pattern is present and avoids duplicating replacement content. If a replacement cannot be applied, it writes a comment to the file describing what failed so the author can continue manually.
+
+`safeReplace` syntax
+
+```typescript
+export function safeReplace(
+  goal: string,
+  file: string,
+  find: string | RegExp | (string | RegExp)[],
+  replaceWith: string | string[],
+  tree: Tree
+): void
+```
+
+### Example
+
+```ts
+safeReplace(
+  'Insert route',
+  'src/app/app-routing.module.ts',
+  /\/\* ROUTES_PLACEHOLDER \*\//,
+  'const routes = [ ... ];',
+  tree
+);
+```
+
+### [](#generatorsteperror)GeneratorStepError
+
+Standard error type used by generator steps. `errorParameters.stopExecution`defaults to `false` and can be used by calling code to decide whether to abort generation or continue with best-effort behaviour.
+
+`GeneratorStepError` syntax
+
+```typescript
+export class GeneratorStepError extends Error {
+  constructor(message: string, parameters?: GeneratorStepErrorParameters)
+}
+```
+
+### Example
+
+```ts
+throw new GeneratorStepError('Missing schema file', { stopExecution: true });
+```
+
+### [](#helmvaluesutil-and-permissionsectionutil)HelmValuesUtil and PermissionSectionUtil
+
+Helper to manipulate Helm `values.yaml` content in a programmatic way. The utility parses YAML into an object, provides helpers to add permission entries and finally serializes back to YAML. It supports inserting comments via a special `comment` key which is rendered as `#` on finalize().
+
+Key methods include:
+
+* `new HelmValuesUtil(yamlString)` — create helper from YAML string
+* `permissions()` — access permission-specific section builder
+* `full()` — operate on full YAML content
+* `finalize()` — serialize to YAML string (comments restored)
+
+### Example
+
+```ts
+const util = new HelmValuesUtil(fs.readFileSync('values.yaml', 'utf8'));
+util.permissions().set('my-feature', { enabled: true }, { existStrategy: 'replace', comment: 'added by generator' }).done();
+const out = util.finalize();
+```
+
 OneCX UI App Generator
 ====================
 The OneCX UI App Generator is a powerful tool that simplifies the development of UI applications within the OneCX framework. It automates the creation of key UI components, ensuring consistency and adherence to best practices.
@@ -14270,7 +14427,7 @@ The OneCX UI App Generator is a powerful tool that simplifies the development of
 
 **To clearly explain** how the generator works and the necessary adjustments, this guide uses a practical example: an **application to manage Books**. The **Bookstore** application allows users to search for books, view details about them, and manage their properties.
 
-In case you want to take part of the development of the generator or want to use it locally without installing it globally from npm, see the [Development Guide](generator/development.html) for instructions on how to get the generator and set up the development environment.
+In case you want to take part of the development of the generator or want to use it locally without installing it globally from npm, see the [Development Guide](angular/development.html) for instructions on how to get the generator and set up the development environment.
 
 | |  **Package renamed in version 9.**Starting with version **9.0.0-rc.2**, the Angular generator package has been renamed from @onecx/nx-plugin to @onecx/angular-generator.Update your generator commands accordingly, e.g. use nx generate @onecx/angular-generator:feature …​ instead of nx generate @onecx/nx-plugin:feature …​.Older versions (v8 and below) continue to use the @onecx/nx-plugin package name. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14347,14 +14504,14 @@ The generator offers a range of commands to gradually create various UI componen
 
 Here is an overview of the application parts that can be generated using the OneCX App Generator. Start from top to bottom, i.e. first generate the application, then the feature module, and then the pages. The generator will guide you through the necessary steps and parameters for each part.
 
-* [OneCX UI App](generator/create-app.html) ⇐ **start here**  
-   * [Feature Module](generator/create-feature.html)  
-         * [Entity Schema and OpenAPI](generator/create-schema.html)  
-         * [Search Component](generator/create-search.html)  
-         * [Details Component](generator/create-details.html)  
+* [OneCX UI App](angular/create-app.html) ⇐ **start here**  
+   * [Feature Module](angular/create-feature.html)  
+         * [Entity Schema and OpenAPI](angular/create-schema.html)  
+         * [Search Component](angular/create-search.html)  
+         * [Details Component](angular/create-details.html)  
          * Create/Update Dialog  
          * Delete Dialog  
-         * [Simple NgRx Page](generator/create-ngrx-page.html)
+         * [Simple NgRx Page](angular/create-ngrx-page.html)
 
 | |  Build the application step by step, roughly following the suggested order above. This iterative approach allows you to understand the structure of the generated code and make necessary adjustments along the way.After generating each part, take the time to review the generated code, run the application, and ensure that everything is working as expected before moving on to the next part (see below for build, lint, test the App). This iterative approach helps in identifying and fixing issues early in the development process, leading to a more robust and maintainable application. |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -14408,13 +14565,13 @@ Figure 3\. Excerpt of the test output (exemplary for **bookstore** application)
 
 In addition to the Angular generators, the OneCX App Generator provides generators for **React** UI applications. They follow the same iterative approach: generate a part, then adapt the places marked with **ACTION**.
 
-* [Create a Feature Module (React)](#generator/create-react-feature.adoc)  
+* [Create a Feature Module (React)](angular/create-feature.html)  
 Generates a feature entry page and registers feature-level routing.
-* [Create a React Search Page](#generator/create-react-search.adoc)  
+* [Create a React Search Page](angular/create-search.html)  
 A data-driven search page with criteria, results table, header actions and API integration.
-* [Create a Detail Component (React)](#generator/create-react-details.adoc)  
+* [Create a Detail Component (React)](angular/create-details.html)  
 Generates details page, hook/store, and related UI components for a resource.
-* [Create a React Page](#generator/create-react-page.adoc)  
+* [Create a React Page](#angular/create-page.adoc)  
 A minimal, ready-to-use page with header and content area.
 
 Create a UI App
@@ -15204,8 +15361,8 @@ The required configuration files for the enabled validation checks will be gener
 
 Create a Detail Page (React)
 ====================
-| |  This page documents the React detail generator.For Angular, see [Create a Detail Component](../generator/create-details.html). |
-| --------------------------------------------------------------------------------------------------------------------------------- |
+| |  This page documents the React detail generator.For Angular, see [Create a Detail Component](#../generator/create-details.adoc). |
+| ---------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#generate-a-detail-component)Generate a Detail Component
 
@@ -15254,8 +15411,8 @@ Default route path with ID parameter for the detail page, see routing configurat
 
 The next steps involve adapting the detail page to your specific requirements and integrating it into other parts of the application. All parts that need to be adapted after the generation are described in the following sections.
 
-* [Configure Detail Properties (React)](react-details/detail-properties-react.html)
-* [Configure Detail Tests (React)](react-details/detail-tests-react.html)
+* [Configure Detail Properties (React)](#./react/details/detail-properties-react.adoc)
+* [Configure Detail Tests (React)](#./react/details/detail-tests-react.adoc)
 
 All places that need to be adapted are marked with an action box like this one
 
@@ -15305,6 +15462,71 @@ The detail page is generated with a basic layout and structure, which can be fur
 
 Figure 4\. Detail UI after generation
 
+Create a React UI App
+====================
+What is a UI App?
+
+Unresolved include directive in modules/onecx-nx-plugins/pages/react/create-app.adoc - include::../partials/\_glossary.adoc\[\]
+
+| |  The UI App created with the OneCX App Generator is only the base of a functional UI application. You will need to further develop and customize the application to meet your specific requirements and business logic. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#generate-a-react-ui-app)Generate a React UI App
+
+The React generator supports different templates and configurations. The creation of a new workspace takes a while, as the generator sets up a complete React application with all necessary dependencies and configurations.
+
+Generate the React UI App with following commands
+
+```bash
+npx <namespace>/create-workspace react <product>
+cd <product>
+npm install
+----
+```
+
+with:
+
+| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| _<flavor>_    | ngrx (or angular).                                                                                                                     |
+| _<product>_   | The technical base name of the application (product) for a certain business case.E.g. bookstore for an application named "Book Store". |
+
+The generator creates a new directory with the specified product name and sets up the OneCX React UI App according to the chosen template. Please note that the product name from your command is used as base of some essential application parts as following:
+
+### [](#key-naming-conventions)Key Naming Conventions
+
+* `onecx-<product>-ui`  
+Project name  
+Remote name for module federation  
+Helm chart name for deployment and microservice registration in OneCX
+* `OneCX<product>Module`  
+Module name
+* `ocx-<product>-component`  
+Tag name for integration the web component into the DOM
+* `onecx-apps/onecx-<product>-ui`  
+Repository name for docker image repository
+* `/mfe/<product>/`  
+Base path for the microfrontend application, used within OneCX for integration purposes
+
+Next step may [create a feature module](create-feature.html).
+
+| |  The generated app contains the dependency for the OneCX React Generator (@onecx/react-generator).This allows you to easily add new features, components, and services within your app’s user interface using the OneCX React Generator functions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Unresolved include directive in modules/onecx-nx-plugins/pages/react/create-app.adoc - include::\_integrate-into-onecx.adoc\[\]
+
+## [](#example)Example
+
+The following commands create a new workspace directory named "bookstore" with the necessary structure and configurations for a OneCX React UI App. The generator sets up a complete [React](https://reactjs.org/) application with all necessary dependencies and configurations.
+
+Create a UI App named "bookstore" (product)
+
+```bash
+npx @onecx/create-workspace react bookstore
+cd bookstore
+npm install
+```
+
 Create a Feature Module (React)
 ====================
 What is a Feature Module?
@@ -15315,8 +15537,8 @@ It is designed to promote code reusability, maintainability, and separation of c
 | |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-| |  This page documents the React feature generator.For Angular, see [Create a Feature Module](../generator/create-feature.html). |
-| -------------------------------------------------------------------------------------------------------------------------------- |
+| |  This page documents the React feature generator.For Angular, see [Create a Feature Module](#../generator/create-feature.adoc). |
+| --------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#generate-a-feature-module)Generate a Feature Module
 
@@ -15343,7 +15565,7 @@ If you answer **No**, the generator will use the preset resource name to derive 
 If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
 
 The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
-Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a React search page](create-react-search.html).
+Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a React search page](create-search.html).
 
 ### [](#key-naming-conventions)Key Naming Conventions
 
@@ -15416,8 +15638,8 @@ Empty Page
 
 The React page generator creates a minimal, ready-to-use page with a header and a content area. It is the right starting point for utility pages such as settings, about or dashboard pages that do not need search or API integration.
 
-| |  This page describes the **React** page generator (react-page). For a data-driven search page, see [Create a React Search Page](create-react-search.html). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| |  This page describes the **React** page generator (react-page). For a data-driven search page, see [Create a React Search Page](create-search.html). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 ## [](#generate-a-react-page)Generate a React Page
 
@@ -15541,8 +15763,8 @@ Search Page and Entity/Resource
 The Search Page is a specific type of page that provides a user interface for searching and displaying results based on a certain entity or resource.  
 The entity or resource represents the data model that the search page interacts with. Therefore, the resource is the base parameter for the generation of a React search page.
 
-| |  This page describes the **React** search generator (react-search). For the Angular variant, see [Create a Search Component](../generator/create-search.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| |  This page describes the **React** search generator (react-search). For the Angular variant, see [Create a Search Component](#../generator/create-search.adoc). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#generate-a-react-search-page)Generate a React Search Page
 
@@ -15621,11 +15843,11 @@ The generator also registers the page in the feature barrel `src/pages/<feature>
 
 The next steps involve adapting the search page to your specific requirements. All parts that need to be adapted after the generation are described in the following sections.
 
-1. [Configure Search Criteria](react-search/search-criteria.html)
-2. [Configure Search Results](react-search/search-results.html)
-3. [Configure Search Add-ons](react-search/search-add-ons.html)
-4. [Configure Search Tests](react-search/search-tests.html)
-5. [Map the API and Prepare Mock Data](react-search/mock-api.html)
+1. [Configure Search Criteria](#./react/search/search-criteria.adoc)
+2. [Configure Search Results](#./react/search/search-results.adoc)
+3. [Configure Search Add-ons](#./react/search/search-add-ons.adoc)
+4. [Configure Search Tests](#./react/search/search-tests.adoc)
+5. [Map the API and Prepare Mock Data](#./react/search/mock-api.adoc)
 
 All places that need to be adapted are marked with an action box like this one
 
@@ -15663,7 +15885,7 @@ You can further configure the search criteria, search results, header actions an
 ### [](#start-backend-service)Start Backend Service
 
 To have the search page working, you need a backend service running that provides the necessary API endpoints for the search functionality.  
-In case you don’t have a real backend service available, you can prepare mock data and use it with the generated search page, see [Map the API and Prepare Mock Data](react-search/mock-api.html).
+In case you don’t have a real backend service available, you can prepare mock data and use it with the generated search page, see [Map the API and Prepare Mock Data](#./react/search/mock-api.adoc).
 
 ### [](#preview)Preview
 
@@ -15679,18 +15901,71 @@ React Generators
 ====================
 In addition to the Angular generators, the OneCX App Generator provides generators for **React** UI applications. They follow the same iterative approach: generate a part, then adapt the places marked with **ACTION**.
 
+## [](#quickstart-generate-an-app)Quickstart: Generate an app
+
+Requirements: Node, Nx, and the plugin installed locally.
+
+1. Build the workspace and the generator:
+
+npm install
+npm run build
+
+1. Generate a sample app (example):
+
+npx nx g @onecx/react-generator:react my-sample-app
+
+1. Inspect generated Helm snippet at `helm/values.yaml` in the generated project.
+
+Example generated snippet:
+
+product:
+  info:
+    name: MySampleApp
+app:
+  operator:
+    microfrontend:
+      specs:
+        - exposedModule: './OneCXMySampleAppModule'
+          shareScope: 'react_19'
+          remoteName: 'ocx-my-sample-app'
+          tagName: 'ocx-my-sample-app-entrypoint'
+          type: MODULE
+    microservice:
+      spec:
+        type: ui
+
+See the Shared Generator Guide for conventions and template variables: [Shared Generator Guide](#../generator/shared-generator-guide.adoc)
+
 The current working directory must be the root of an existing OneCX React UI Application.
 
 ## [](#available-generators)Available Generators
 
-* [Create a React Feature Module](create-react-feature.html)  
+* [Create a React Feature Module](create-feature.html)  
 Generates a feature entry page and registers feature-level routing.
-* [Create a React Detail Component](create-react-details.html)  
+* [Create a React Detail Component](create-details.html)  
 Generates details page, hook/store, and related UI components for a resource.
-* [Create a React Search Page](create-react-search.html)  
+* [Create a React Search Page](create-search.html)  
 A data-driven search page with criteria, results table, header actions and API integration.
-* [Create a React Page](create-react-page.html)  
+* [Create a React Page](create-page.html)  
 A minimal, ready-to-use page with header and content area.
+
+Templates Reference
+====================
+This partial lists generator template files and the common variables they expose.
+
+## [](#%5Freact%5Fgenerator%5Ftemplates%5Fselected)React generator templates (selected)
+
+* `files/helm/values.yaml.template` — produces Helm values used by OneCX operator. Variables: `className`, `fileName`, `remoteModuleName`, `tagName`, `shareScope`.
+* `files/vite.config.ts.template` — Vite configuration for the generated app; may reference exposed module path.
+* `files/src/bootstrap.ts.template` — Bootstrapping code that registers web component entrypoint using `tagName`.
+
+## [](#%5Fvariable%5Fconventions)Variable conventions
+
+* `className`: PascalCase module/class name inserted into module exports.
+* `fileName`: kebab-case project identifier used in `remoteName` and `tagName`.
+* `shareScope`: optional value for module federation share scope (e.g., `react_19`).
+
+If you add new templates, update this partial and link it from the Shared Generator Guide.
 
 undefined
 ====================
@@ -17320,7 +17595,7 @@ nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
 **Placeholder**:
 
 * _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../generator/glossary.html#feature).
+* _<feature>_: see [here](../../angular/glossary.html#feature).
 
 | |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -17331,8 +17606,8 @@ Configure Detail View (React)
 ====================
 After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
 
-| |  This section covers the React implementation. For Angular, see [Configure Detail View (Angular)](../../generator/details/detail-properties.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| |  This section covers the React implementation. For Angular, see [Configure Detail View (Angular)](#../../generator/details/detail-properties.adoc). |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#action-d1)ACTION D1
 
@@ -17728,8 +18003,8 @@ resetFormData({
 
 Configure Detail Tests (React)
 ====================
-| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](../../generator/details/detail-tests.html). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](#../../generator/details/detail-tests.adoc). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#action-d11)ACTION D11
 
@@ -19831,21 +20106,6 @@ URL normalization aims to avoid accidental mismatches:
 
 If `url` is not parseable as a URL, a trimmed string with a trailing slash removed is used.
 
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
-
 OneCX GroupByCountDiagram
 ====================
 ## [](#overview)Overview
@@ -20032,6 +20292,21 @@ __Table 4\. ObjectDetailItem interface__
 | \`actionItemAriaLabelKey?   | string    | Translation key for the the aria label of the detail action button.                        |
 | \`actionItemAriaLabel?      | string    | Text for the aria label of the detail action button.                                       |
 | \[.line-through\]\`tooltip? | string    | Deprecated. Use valueTooltip instead.                                                      |
+
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX SearchHeader
 ====================
@@ -26484,20 +26759,6 @@ Feature Applications
 | [Test](../onecx-test/index.html)                               | Provide special functionality for testing service                                                   |
 | [Welcome Management](../onecx-welcome/index.html)              | Customizing the start page for users                                                                |
 
-About some internal Matters
-====================
-This section provides internal details about the OneCX Local Environment.  
-This information is intended for users who want to understand the inner workings of the local environment or need to troubleshoot specific issues.
-
-The following pages cover some internal aspects of the OneCX Local Environment:
-
-* [Loading initial Data](internal/onecx-data.html)
-* [Networking: Actors & Components](internal/networking.html)
-* [Docker Compose Profiles](internal/profiles.html)
-* [Adding Custom Certificates](internal/custom-certificates.html)
-* [Additional Utilities used](internal/utils.html)
-* [Command Line Interface](../onecx-local-env-cli/index.html)
-
 Running OneCX locally
 ====================
 This guide provides a quick overview of the steps required to run a local OneCX environment. It includes instructions on starting the environment, accessing OneCX in a browser, and stopping the environment when finished.
@@ -26573,6 +26834,20 @@ Example: Stop all OneCX Theme Services
 ```bash
 docker compose down onecx-theme-svc onecx-theme-bff onecx-theme-ui
 ```
+
+About some internal Matters
+====================
+This section provides internal details about the OneCX Local Environment.  
+This information is intended for users who want to understand the inner workings of the local environment or need to troubleshoot specific issues.
+
+The following pages cover some internal aspects of the OneCX Local Environment:
+
+* [Loading initial Data](internal/onecx-data.html)
+* [Networking: Actors & Components](internal/networking.html)
+* [Docker Compose Profiles](internal/profiles.html)
+* [Adding Custom Certificates](internal/custom-certificates.html)
+* [Additional Utilities used](internal/utils.html)
+* [Command Line Interface](../onecx-local-env-cli/index.html)
 
 Scripts for more Ease
 ====================
@@ -35317,7 +35592,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
+
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -35395,9 +35672,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)onecx-product-store-ui
-
-## [](#%5Fonecx%5Fproduct%5Fstore%5Fui%5F2)OneCX Product Store UI
+## [](#%5Fonecx%5Fproduct%5Fstore%5Fui)OneCX Product Store UI
 
 ### [](#%5Fwhat%5Fis%5Fthe%5Fproduct%5Fstore)What is the Product Store?
 
@@ -41216,10 +41491,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-api-bff/pkgs/container/onecx-workspace-api-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -41303,6 +41574,10 @@ app:
         description: OneCX Workspace API Backend for Frontend
         name: OneCX Workspace API BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -42329,6 +42604,33 @@ undefined
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
+| quarkus-rest-client                    | [Link](https://quarkus.io/guides/rest-client)                                                      | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client.adoc)                    | 3.27.1     |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.27.1     |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-bff/pkgs/container/onecx-document-management-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -42422,30 +42724,3 @@ app:
             defaultClientScopes: [ ocx-doc:all, ocx-doc:read, ocx-doc:write, ocx-pm:read, ocx-fs:write, ocx-fs:read, ocx-fs:delete ]
   product: false
 ```
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 4.6.0      |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 4.6.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 4.6.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 4.6.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 4.6.0      |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.27.1     |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.27.1                                                                                                                                           |            |
-| quarkus-rest-client                    | [Link](https://quarkus.io/guides/rest-client)                                                      | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client.adoc)                    | 3.27.1     |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.27.1     |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.13.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.13.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.27.1                                                                                                                                           |            |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.27.1     |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.27.1     |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.27.1     |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.27.1     |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/4.6.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 4.6.0      |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/2.3.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 2.3.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 2.3.0                                                                                                                                            |            |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.27.1     |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.27.1     |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.27.1     |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.27.1     |
