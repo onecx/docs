@@ -4,7 +4,16 @@ A collection of essential terms and concepts in the context of the **OneCX SVC G
 
 ## [](#backend-svc)Backend Service (SVC)
 
-A Backend Service is a microservice application responsible for handling business logic, data management, and integration within the OneCX platform. It is typically generated using the OneCX App Generator and built on modern frameworks such as Quarkus. Within the OneCX ecosystem, a Backend Service acts as the **backend layer** that processes requests from UI Apps and other services. It exposes REST APIs, manages persistence, and implements domain-specific logic. A service can function independently or as part of a larger microservices architecture, communicating with other components to deliver complete business capabilities.
+A Backend Service is an autonomous microservice application responsible for handling core business logic, data management, and system integrations.  
+It acts as **the structural backend layer** that processes data, manages persistence, and exposes capabilities through standardized interfaces such as REST or GraphQL APIs. A backend service can function fully independently or interoperate within a larger, distributed microservices architecture, communicating with other components to deliver comprehensive business capabilities.
+
+## [](#backend-svc-onecx)Backend Services in OneCX
+
+Within a platform architecture like OneCX, a Backend Service fulfills exactly this classical role: it intercepts, validates, and processes requests sent from frontend applications (UI Apps) or adjacent services. To standardize development and accelerate time-to-market, specific blueprints and tools are utilized:
+
+**Scaffolding & Generation:** The initial project structure, configurations, and boilerplate code are automatically scaffolded using the OneCX App/SVC Generator.
+
+**Technology Stack:** It is built on top of modern, cloud-native frameworks—predominantly Quarkus—to guarantee high performance, fast startup times, and low memory consumption.
 
 ## [](#resource)Entity / Resource
 
