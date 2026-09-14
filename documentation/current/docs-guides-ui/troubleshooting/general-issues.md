@@ -1,0 +1,33 @@
+# General Issues
+
+These are the general, cross-cutting causes of most UI integration problems. Check them before assuming the issue is specific to a particular error.
+
+## [](#package-sharing)Package sharing
+
+Common issues arise when the shell and the application do not agree on what is shared. Review the required module federation setup in [Expose a Remote Module](../setup/required/expose-remote-module.html) and the share-scope setup in [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html).
+
+When checking your `webpack.config.js` or `module-federation.config.js`, verify the following explicitly:
+
+* all required packages are shared
+* the correct `shareScope` is applied for the app and for the shared dependencies
+* package version ranges are mutually compatible with the shell’s provided versions
+
+If one of these points is wrong, the app can load with missing providers, incompatible runtime behavior, or a shell/app mismatch that only appears after remote loading.
+
+## [](#clean-install-build)Clean install and build
+
+Sometimes, issues can be resolved by performing a clean install and build of the application. This involves removing caches, recreating dependencies, clearing the npm cache, and reinstalling all packages.
+
+Do a clean install and build of the app:
+
+* Remove caches (like the `.angular` and `.nx` folder)
+* Recreate dependencies (`node_modules` and `package-lock.json`)
+* Run the following command to clear the npm cache:
+
+  npm cache clean --force
+
+* Install all packages:
+
+  npm install
+
+* Build and run the app

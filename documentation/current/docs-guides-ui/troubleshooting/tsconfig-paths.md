@@ -1,0 +1,21 @@
+# TSConfig Paths
+
+This page covers troubleshooting for TypeScript path alias (`tsconfig paths`) errors. For more information on how to configure tsconfig paths, refer to [Configure tsconfig paths documentation](../ui-additional/configure-tsconfig-paths.html).
+
+## [](#cannot-find-module-build-error)Error: Cannot find module (build error)
+
+**Problem**: If Webpack cannot resolve an import such as `@custom-path/…​`, errors like `Cannot find module '@custom-path'` may occur.
+
+**Solution**: To fix this, please configure Webpack to understand TypeScript path aliases. See [Webpack path aliases configuration](../ui-additional/configure-tsconfig-paths.html#tsconfig-paths-plugin).
+
+## [](#cannot-find-module-after-paths-configuration)Error: Cannot find module or type errors (for imports that worked before paths configuration)
+
+**Problem**: Conflicts can show up as `Module not found: Error: Can’t resolve …​` or as TypeScript resolving to the wrong file.
+
+**Solution**: Use unique, descriptive aliases that do not overlap with existing package names.
+
+## [](#cannot-find-module-editor-error)Cannot find module or its corresponding type declarations (editor error on import)
+
+**Problem**: Imports must match the alias pattern (wildcard vs specific). If they don’t, TypeScript reports `Cannot find module …​` (for example `@custom-path` vs `@custom-path/custom.component`).
+
+**Solution**: Use the correct alias type. See [Types of tsconfig paths](../ui-additional/configure-tsconfig-paths.html#tsconfig-paths-types).

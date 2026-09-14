@@ -7,7 +7,7 @@ Here a selection of important resources to get you started:
 * [Local Environment](../onecx-local-env/index.html)
 * [Quarkus](quarkus.html)
 * [UI App Generator](../onecx-nx-plugins/index.html)
-* [UI Troubleshooting](../docs-guides-ui/troubleshooting.html)
+* [UI Troubleshooting](../docs-guides-ui/troubleshooting/index.html)
 
 ## [](#purpose-value)Purpose & Value
 
