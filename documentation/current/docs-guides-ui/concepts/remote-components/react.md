@@ -1,0 +1,54 @@
+# Remote Components in React Applications
+
+This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
+
+## [](#exposing-a-react-remote-component)Exposing a Remote Component
+
+A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
+
+```javascript
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+## [](#hosting-a-slot-in-react)Hosting a Slot
+
+To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
+
+```tsx
+import { withSlot, SlotComponent } from '@onecx/react-remote-components';
+
+const Example = () => (
+  <div>
+    <SlotComponent
+      name="onecx-shell-header-actions"
+      inputs={{ title: 'Remote title' }}
+      outputs={{ onSelect: (value) => console.log(value) }}
+      skeleton={<div>Loading...</div>}
+    />
+  </div>
+);
+
+export default withSlot(Example);
+```
+
+`SlotComponent` accepts:
+
+| Prop     | Type      | Description                                                          |
+| -------- | --------- | -------------------------------------------------------------------- |
+| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
+| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
+| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
+| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
+
+Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
+
+## [](#related)Related
+
+* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
+* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
