@@ -11,7 +11,7 @@ Predefined Permissions for the Entity/Resource
 The generator creates a set of predefined permissions for the entity/resource on feature generation:  
 CREATE, EDIT, DELETE, SEARCH, VIEW, IMPORT, EXPORT, and BACK
 
-Refer to [permissions in Angular](../../docs-guides-ui/angular/permissions/permissions.html) for more information.
+Refer to [permissions in Angular](#documentation:docs-guides-ui:angular/permissions/permissions.adoc) for more information.
 
 ## [](#action-p)ACTION P
 

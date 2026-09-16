@@ -88,6 +88,4 @@ The shell keeps the access token valid transparently: both the Angular HTTP inte
 
 * [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
 * [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
-
-| |  A reciprocal cross-link to the **Permissions Handling** feature page will be added once that page exists — whichever ticket lands second. |
-| -------------------------------------------------------------------------------------------------------------------------------------------- |
+* [Permissions Handling](../features/permissions.html) — rendering UI conditionally based on the permissions the shell exposes for the current user.

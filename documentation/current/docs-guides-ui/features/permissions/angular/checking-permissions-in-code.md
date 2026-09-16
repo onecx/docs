@@ -1,0 +1,141 @@
+# Checking Permissions in Code
+
+## [](#overview)Overview
+
+For logic outside a template — route or component guards, services, computed visibility — use the `PermissionService` from the `@onecx/angular-utils` library. It validates the same permissions the [Conditional rendering](conditional-rendering.html)\[conditional rendering\] directives use, but as an API you can call from TypeScript. It caches its results, so repeated checks stay cheap and do not re-query the source on every render.
+
+Under the hood the `PermissionService` resolves the current user’s permissions through the `HAS_PERMISSION_CHECKER` injection token, falling back to the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) when no custom checker is provided. You can swap in your own checker when you control how permissions are resolved.
+
+## [](#permission-service)`PermissionService`
+
+The `PermissionService` is the recommended way to validate access in code. It reads through the `HAS_PERMISSION_CHECKER` token and falls back to the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service), so it works with a custom checker or the default.
+
+It is registered as part of the `@onecx/angular-utils` providers — either the full `provideAngularUtils()` bundle or `providePermissionService()` on its own. If you have not registered the `angular-utils` providers yet, add them once in your application:
+
+example.ts
+
+```typescript
+import { providePermissionService } from '@onecx/angular-utils'
+
+// e.g. in the application's root providers
+[providePermissionService()]
+```
+
+### [](#haspermission)`hasPermission`
+
+`hasPermission(permissionKey)` returns an observable that emits `true` only when the current user holds every permission in `permissionKey` — a single string or a `string[]`. Results are cached, so checking the same permission more than once (for example across a re-render) does not re-query the source.
+
+example.ts
+
+```typescript
+import { inject } from '@angular/core'
+import { PermissionService } from '@onecx/angular-utils'
+
+const permissionService = inject(PermissionService)
+
+// Check for a single permission
+const canDelete$ = permissionService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions (all must be present)
+const canManage$ = permissionService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#getpermissions)`getPermissions`
+
+`getPermissions()` returns an observable of the current user’s full list of permission keys. It emits the list from the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) when that service is available, or `undefined` when only a custom checker is provided.
+
+example.ts
+
+```typescript
+import { inject } from '@angular/core'
+import { PermissionService } from '@onecx/angular-utils'
+
+const permissionService = inject(PermissionService)
+
+// Pipe the permission list as it resolves
+permissionService.getPermissions().pipe(
+  // map/filter the permission list for the current user
+)
+```
+
+## [](#permission-checker)`HAS_PERMISSION_CHECKER`
+
+The `HAS_PERMISSION_CHECKER` injection token lets you replace the default permission source with your own. Both the `PermissionService` and the [Conditional rendering](conditional-rendering.html)\[conditional rendering\] directives read through this token first, and only fall back to the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) when no checker is provided.
+
+A checker implements the `HasPermissionChecker` interface:
+
+example.ts
+
+```typescript
+interface HasPermissionChecker {
+  hasPermission(permissionKey: string | string[]): Promise<boolean>
+  getPermissions?(): Observable<string[]>
+}
+```
+
+Two ready-made providers are available from `@onecx/angular-utils`:
+
+* `providePermissionChecker()` — provides the `HAS_PERMISSION_CHECKER` token backed by the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
+* `provideAlwaysGrantPermissionChecker()` — provides a checker that always grants, which disables the permission system on the UI side. Useful for tests and local development where real permissions are not available.
+
+To plug in your own source, provide the token directly with an implementation of the interface:
+
+example.ts
+
+```typescript
+import { HAS_PERMISSION_CHECKER, HasPermissionChecker } from '@onecx/angular-utils'
+
+class MyPermissionChecker implements HasPermissionChecker {
+  // Resolve the permission list from your own backend, feature flag, or test fixture
+  hasPermission(permissionKey: string | string[]): Promise<boolean> {
+    const keys = Array.isArray(permissionKey) ? permissionKey : [permissionKey]
+    // keys.every((key) => permissions.includes(key))
+    return Promise.resolve(true)
+  }
+}
+
+// e.g. in the application's root providers
+[{ provide: HAS_PERMISSION_CHECKER, useClass: MyPermissionChecker }]
+```
+
+## [](#user-service)User Service
+
+The [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) from the Angular Integration Interface is the default backing source for both the `PermissionService` and the permission checker. Use it directly when you need the raw permission list or a promise-based check without the caching layer.
+
+### [](#haspermission-raw)`hasPermission`
+
+`hasPermission(permissionKey)` resolves to `true` only when the current user holds every permission in `permissionKey` — a single string or a `string[]` — and to `true` when nothing is passed.
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+
+// Check for a single permission
+const canDelete = await userService.hasPermission('USER#DELETE')
+
+// Check for multiple permissions (all must be present)
+const canManage = await userService.hasPermission(['USER#EDIT', 'USER#EXPORT'])
+```
+
+### [](#getpermissions-raw)`getPermissions`
+
+`getPermissions()` returns the current user’s full list of permissions as an observable, for the context of the application.
+
+example.ts
+
+```typescript
+const userService = inject(UserService)
+
+// Pipe the permission list as it resolves
+userService.getPermissions().pipe(
+  // map/filter the permission list for the current user
+)
+```
+
+## [](#related)Related
+
+* [Permissions Handling](../../permissions.html)\[Permissions Handling\] — the feature overview, how permissions reach an application, and the `<RESOURCE>#<ACTION>` convention.
+* [Conditional rendering](conditional-rendering.html)\[Conditional rendering\] — the `*ocxIfPermission` / `*ocxIfNotPermission` directives for permission-based UI inside templates.
+* [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the full `@onecx/angular-integration-interface` reference.
+* [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — the `usePermission` hook / `PermissionProvider` equivalent for React applications.
