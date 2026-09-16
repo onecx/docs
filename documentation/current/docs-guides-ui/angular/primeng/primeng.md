@@ -14,8 +14,8 @@ PrimeNG supports theming, allowing developers to customize the look and feel of 
 * Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
 * GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
 * Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
-* OneCX PrimeNG Integration Guide: [Theming with PrimeNG](theming.html)
+* PrimeNG Theming Customization: [PrimeNG Theming Customization](../../features/primeng/theming-customization.html)
 
 ## [](#onecx-integration)OneCX Integration
 
-PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on how to use PrimeNG within OneCX, refer to the {OneCX PrimeNG Integration Guide}\[Theming with PrimeNG\].
+PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on customizing PrimeNG theming within OneCX, refer to the [PrimeNG Theming Customization](../../features/primeng/theming-customization.html).
