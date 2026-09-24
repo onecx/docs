@@ -109,6 +109,9 @@ Click here to view entries to be added to the **hosts** file
 127.0.0.1 onecx-file-storage-svc
 127.0.0.1 onecx-help-svc
 127.0.0.1 onecx-help-bff
+127.0.0.1 onecx-human-task-svc
+127.0.0.1 onecx-human-task-bff
+127.0.0.1 onecx-human-task-n8n-adapter
 127.0.0.1 onecx-iam-bff
 127.0.0.1 onecx-iam-svc
 127.0.0.1 onecx-notification-svc
@@ -127,13 +130,13 @@ Click here to view entries to be added to the **hosts** file
 127.0.0.1 onecx-tenant-bff
 127.0.0.1 onecx-theme-svc
 127.0.0.1 onecx-theme-bff
+127.0.0.1 onecx-user-profile-avatar-svc
+127.0.0.1 onecx-user-profile-svc
+127.0.0.1 onecx-user-profile-bff
 127.0.0.1 onecx-welcome-svc
 127.0.0.1 onecx-welcome-bff
 127.0.0.1 onecx-workspace-svc
 127.0.0.1 onecx-workspace-bff
-127.0.0.1 onecx-user-profile-avatar-svc
-127.0.0.1 onecx-user-profile-svc
-127.0.0.1 onecx-user-profile-bff
 ```
 
 | |  If you are using Windows with WSL, ensure that changes to the Windows Hosts file are correctly propagated to WSL. By default, and unless disabled via the generateHosts option (see [WSL network settings](https://learn.microsoft.com/en-us/windows/wsl/wsl-config#network-settings)), WSL automatically generates its Hosts file based on the contents of the Windows Hosts file. If this does not happen, or if automatic Hosts file generation has been disabled, you can manually update the WSL Hosts file by modifying the Linux Hosts file at the path described above. |
