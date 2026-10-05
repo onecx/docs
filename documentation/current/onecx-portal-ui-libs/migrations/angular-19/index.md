@@ -48,10 +48,8 @@ To simplify the migration process, it is recommended to complete the following s
 
 * [Remove @onecx/keycloak-auth](remove-keycloak-auth.html)
 * [Update Component Imports](update-component-imports.html)
-* [Replace Removed Components](switch-to-new-components.html)
 * [Adjust Packages in Webpack Config](adjust-packages-in-webpack-config.html)
 * [Remove MenuService](remove-menuservice.html)
-* [Update Translations](update-translations.html)
 
 After these steps are completed, it is recommended to build the application to ensure that there are no remaining issues before proceeding with the Angular 19 upgrade:
 
@@ -74,7 +72,10 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Required Package Updates](update-packages.html)
 * [Update FilterType Value](update-filtertype-value.html)
 * [Update ConfigurationService Usage](update-configuration-service-usage.html)
+* [Update Translations](update-translations.html)
 * [Update Component Imports after Migration](update-component-import-post-migration.html)
+* [Replace Removed Components](switch-to-new-components.html)
+* [Additional Breaking Changes](additional-breaking-changes.html)
 * [Update Portal API Configuration object parameters](update-portal-api-configuration.html)
 * [Remove @onecx/portal-layout-styles](remove-portal-layout-styles.html)
 * [Remove addInitializeModuleGuard()](remove-add-initialize-module-guard.html)
