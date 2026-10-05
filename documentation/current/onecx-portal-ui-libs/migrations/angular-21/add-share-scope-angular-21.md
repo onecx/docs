@@ -33,3 +33,7 @@ app:
 
 | |  A strict and consistent shareScope value allows Angular 21 applications to share Angular 21 package instances across host and remotes. Use exactly the same value across connected apps of the same technology/runtime. |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#module-federation-package-swap)Module Federation Package Swap
+
+In v8, `@angular-architects/module-federation` is replaced by `@module-federation/enhanced` and `@module-federation/runtime-core`. If your application’s `webpack.config.js` (or equivalent) still depends on `@angular-architects/module-federation`, update your module federation configuration to the new packages in addition to setting `shareScope` above; see [Update Webpack Config](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html) for the full configuration walkthrough.

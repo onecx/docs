@@ -17,7 +17,10 @@ The following symbols are no longer exported from `@onecx/angular-auth`:
 * `DisabledAuthService`
 * `AuthService`
 
-In v8 these implementation APIs are provided by `@onecx/shell-auth`.
+In v8, `AuthServiceWrapper` and `provideAuthService` are provided by \`@onecx/shell-auth’s public API.
+
+| |  KeycloakAuthService, DisabledAuthService, and the AuthService interface still exist as source files within @onecx/shell-auth, but are **not** re-exported from its public index.ts. They are internal implementation details of AuthServiceWrapper and have no supported import path in v8\. Do not attempt to import them directly; consume shell authentication only through AuthServiceWrapper / provideAuthService. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 ## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
 

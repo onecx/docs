@@ -4,10 +4,10 @@ This guide describes how to upgrade an NX-based OneCX application to Angular 21\
 
 ## [](#%5Fupdate%5Fonecxnx%5Fplugin)Update @onecx/nx-plugin
 
-Update `@onecx/nx-plugin` to latest 8.x.y available.
+Update `@onecx/nx-plugin` to the version listed in [Required Package Updates](update-v8-packages.html) (`@onecx/nx-plugin` is versioned independently of the `@onecx/*` libs in this repository, so it does not follow the libs `^8.0.0` scheme).
 
 ```bash
-npm install @onecx/nx-plugin@^8
+npm install @onecx/nx-plugin@^22.1.3
 ```
 
 ## [](#%5Fupdate%5Fnx%5Fand%5Fangular%5Fpackages)Update NX and Angular packages
@@ -57,3 +57,6 @@ After completing all migration steps, remove migration-only dependencies that ar
 ```bash
 npm uninstall @onecx/nx-migration-utils @nx/devkit
 ```
+
+| |  @onecx/nx-migration-utils is removed entirely in v8 (the package itself is no longer published); this uninstall is mandatory, not optional cleanup. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ |

@@ -37,7 +37,7 @@ cd onecx-ai-refactoring-agents && git pull
 
 **Usage**
 
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+To migrate from Angular 20 to Angular 21, use the following command in your AI assistant:
 
 ```bash
 /migrate-21
