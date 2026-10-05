@@ -259,7 +259,7 @@ The following table outlines the compatibility between OneCX library versions an
 For further details on version compatibility, refer to the following resources:
 
 * [OneCX Compatibility Documentation](../onecx-portal-ui-libs/onecx-compatibility.html)
-* [Troubleshooting for Shell Issues](../onecx-docs-dev/troubleshooting.html#shell-related)
+* [Troubleshooting for Shell Issues](#onecx-docs-dev:guides/troubleshooting.adoc#shell-related)
 
 #### [](#react-libs-version-compatibility)React - Libs Version Compatibility
 
@@ -275,4 +275,4 @@ The following table outlines the compatibility between OneCX library versions an
 For further details on version compatibility, refer to the following resources:
 
 * [OneCX Compatibility Documentation](../onecx-portal-ui-libs/onecx-compatibility.html)
-* [Troubleshooting for Shell Issues](../onecx-docs-dev/troubleshooting.html#shell-related)
+* [Troubleshooting for Shell Issues](#onecx-docs-dev:guides/troubleshooting.adoc#shell-related)

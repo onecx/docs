@@ -9,7 +9,7 @@ Have lower Angular package version than the Shell or respective preloader
 Impact: Broken environment
 
 * Check the Shell version and ensure your App uses an equal or lower Angular version.
-* Please refer to this [Troubleshooting Guide shell related section](../onecx-docs-dev/troubleshooting.html#shell-related) on how to use DevTools to inspect shared packages.
+* Please refer to this [Troubleshooting Guide shell related section](#documentation:onecx-docs-dev:guides/troubleshooting.adoc#shell-related) on how to use DevTools to inspect shared packages.
 
 Constructed using @onecx/angular-webcomponents
 
@@ -94,14 +94,14 @@ Sharing is done with '^'
 Impact: We should share as much as possible
 
 * Use caret '^' for all shared package versions in package.json (except rxjs, which should use '\~').
-* Refer to the [Troubleshooting Guide installed packages section](../onecx-docs-dev/troubleshooting.html#installed-packages) for correct range and examples.
+* Refer to the [Troubleshooting Guide installed packages section](#documentation:onecx-docs-dev:guides/troubleshooting.adoc#installed-packages) for correct range and examples.
 
 Angular, PrimeNG, NGRX and OneCX packages are shared
 
 Impact: Broken application
 
 * In webpack.config.js, share all required packages
-* Refer to the [Troubleshooting Guide webpack config section](../onecx-docs-dev/troubleshooting.html#webpack-configuration) for correct sharing syntax and examples.
+* Refer to the [Troubleshooting Guide webpack config section](#documentation:onecx-docs-dev:guides/troubleshooting.adoc#webpack-configuration) for correct sharing syntax and examples.
 
 Share @onecx/angular-utils library
 
