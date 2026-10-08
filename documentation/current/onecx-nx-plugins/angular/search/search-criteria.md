@@ -17,7 +17,7 @@ Steps to add Search Criteria
 Add Criteria to Search Request
 
 The `Search<Feature>Request` component in the OpenAPI YAML file must be adapted by adding the desired search criteria as properties.  
-More details in [NgRx Search Criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html).
+More details in [NgRx Search Criteria](../../../docs-guides-ui/features/ngrx/search-criteria/search-criteria.html).
 
 ### Template: Generated Search Criteria
 
@@ -98,7 +98,7 @@ npm run apigen
 Add Search Criteria in TypeScript Schema
 
 The criteria you added in "Action S1" now have to be added to the TypeScript schema. Assure the keys and types match the ones you defined in the OpenAPI specification.  
-More details in [NgRx Search Criteria](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#parameters).
+More details in [NgRx Search Criteria](../../../docs-guides-ui/features/ngrx/search-criteria/search-criteria.html#parameters).
 
 ### Template: Generated Criteria
 
@@ -141,7 +141,7 @@ Where **bookTitle** is the criteria added to the `SearchBookRequest`.
 Add search criteria in HTML
 
 To make the search criteria usable for the user, you need to add corresponding HTML input fields to the search component’s HTML file.  
-More details in [Search Criteria HTML](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#html) and [Example input fields](../../../docs-guides-ui/angular/ngrx/search-criteria/search-criteria.html#examples-for-different-input-fields).
+More details in [Search Criteria HTML](../../../docs-guides-ui/features/ngrx/search-criteria/search-criteria.html#html) and [Example input fields](../../../docs-guides-ui/features/ngrx/search-criteria/search-criteria.html#examples-for-different-input-fields).
 
 ### Template: Generated Search Criteria in HTML
 

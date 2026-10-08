@@ -35,12 +35,10 @@ Beyond what NgRx itself provides, OneCX applications follow a shared set of conv
 * All HTTP calls, and any routing or URL-parameter changes, are performed in effects — never directly in components or reducers.
 * Selectors, reducers, and effects are unit tested (including at least one test of a reducer’s initial state and one non-initial state, and marble tests for effects).
 
-These conventions, along with the full guidelines, project structure, and the dialogs pattern, are described in detail on [NgRx Guidelines](../angular/ngrx/guidelines.html). The [NgRx](../angular/ngrx/ngrx.html) page covers NgRx itself — its core packages, getting-started steps, and OneCX-specific examples (lazy-loaded tabs, search criteria) — as well as links to the official documentation.
+These conventions, along with the full guidelines, project structure, and the dialogs pattern, are described in detail on [NgRx Guidelines](../features/ngrx/guidelines.html). The [NgRx](../features/ngrx.html) page covers NgRx itself — its core packages and links to the official documentation — and indexes the setup guide and OneCX-specific examples (lazy-loaded tabs, search criteria).
 
 ## [](#related)Related
 
-* [NgRx](../angular/ngrx/ngrx.html) — introduction to the NgRx library, its packages, and getting-started steps.
-* [NgRx Guidelines](../angular/ngrx/guidelines.html) — the full OneCX conventions, project structure, and worked examples referenced above.
-
-| |  A reciprocal cross-link to the **NgRx State Management** feature page will be added once that page exists — whichever ticket lands second. |
-| --------------------------------------------------------------------------------------------------------------------------------------------- |
+* [NgRx](../features/ngrx.html) — introduction to NgRx, when to use it, and an index of the NgRx pages.
+* [NgRx Setup](../features/ngrx/setup.html) — installing NgRx and the `@onecx/ngrx-*` libraries and wiring OneCX platform state into the store.
+* [NgRx Guidelines](../features/ngrx/guidelines.html) — the full OneCX conventions, project structure, worked examples referenced above, and the OneCX utility libraries.
