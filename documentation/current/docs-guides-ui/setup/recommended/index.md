@@ -4,7 +4,7 @@ Recommended Setup covers the steps an application **should** complete to behave 
 
 This tier applies to both paths of building a OneCX UI:
 
-* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist after completing [Required Setup](../required/index.html). See [Migrate Angular App to OneCX](../../angular/app-to-onecx.html) for the migration path itself; it cross-links back into these pages rather than restating their steps.
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist after completing [Required Setup](../required/index.html). For the migration path itself, see [Migrate a vanilla Angular app to OneCX](../../migration/vanilla-to-onecx-angular.html), which cross-links back into these pages rather than restating their steps; the migration guide is Angular-specific and a React migration guide is not yet available.
 * **Creating a new app from scratch** — use this checklist, alongside Required Setup, as the target end-state for a freshly generated application.
 
 | |  If a step isn’t listed here, it belongs to a different tier. Steps every app **must** complete to function at all belong to [Required Setup](../required/index.html). An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Recommended tier as part of the same three-tier Setup structure. |

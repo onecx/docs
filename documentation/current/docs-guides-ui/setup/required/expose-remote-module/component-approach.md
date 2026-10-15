@@ -2,6 +2,8 @@
 
 This page covers exposing a single Angular component as a Remote Component webcomponent, bootstrapped via `@onecx/angular-webcomponents`.
 
+The examples use the `REMOTE_COMPONENT_CONFIG` token and `RemoteComponentConfig` type from `@onecx/angular-utils`, which are available from OneCX UI libraries v6 (Angular 19) onward and replace the `BASE_URL` token removed in v6\. On earlier versions the remote component received a base URL string through the `BASE_URL` token instead. For the migration, see [Replace BASE\_URL injection token](../../../../onecx-portal-ui-libs/migrations/angular-19/update-base-url.html).
+
 ## [](#angular-component-bootstrap-files)Bootstrap Files
 
 Webpack exposes the component’s bootstrap file as the Module Federation entry point. The bootstrap file bootstraps asynchronously by dynamically importing the component’s bootstrap module, which uses `bootstrapRemoteComponent()` from `@onecx/angular-webcomponents` to bootstrap the component while handling common Angular issues with Module Federation (Remote Component router connection, NgZone sharing, and platform sharing) and registers it as a Custom Element.
@@ -35,7 +37,8 @@ import { AngularAuthModule } from '@onecx/angular-auth';
 import { bootstrapRemoteComponent } from '@onecx/angular-webcomponents';
 import { UserService } from '@onecx/angular-integration-interface';
 import { ExampleComponent } from './example.component';
-import { BASE_URL, provideTranslateServiceForRoot } from '@onecx/angular-remote-components';
+import { provideTranslateServiceForRoot } from '@onecx/angular-remote-components';
+import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from '@onecx/angular-utils';
 
 bootstrapRemoteComponent(
   ExampleComponent,
@@ -43,7 +46,7 @@ bootstrapRemoteComponent(
   environment.production,
   [
     provideHttpClient(withInterceptorsFromDi()),
-    { provide: BASE_URL, useValue: new ReplaySubject<string>(1) },
+    { provide: REMOTE_COMPONENT_CONFIG, useValue: new ReplaySubject<RemoteComponentConfig>(1) },
     provideTranslateServiceForRoot({ isolate: true }),
     importProvidersFrom(AngularAuthModule, BrowserModule, BrowserAnimationsModule),
     {
@@ -66,11 +69,10 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { UserService } from '@onecx/angular-integration-interface';
 import {
   AngularRemoteComponentsModule,
-  BASE_URL,
   ocxRemoteComponent,
   ocxRemoteWebcomponent,
-  RemoteComponentConfig,
 } from '@onecx/angular-remote-components';
+import { REMOTE_COMPONENT_CONFIG, RemoteComponentConfig } from '@onecx/angular-utils';
 import { ReplaySubject } from 'rxjs';
 
 @Component({
@@ -86,7 +88,7 @@ export class ExampleComponent implements ocxRemoteComponent, ocxRemoteWebcompone
   permissions: string[] = [];
 
   constructor(
-    @Inject(BASE_URL) private readonly baseUrl: ReplaySubject<string>,
+    @Inject(REMOTE_COMPONENT_CONFIG) private readonly remoteComponentConfig: ReplaySubject<RemoteComponentConfig>,
     private readonly userService: UserService,
     private readonly translateService: TranslateService,
     private readonly exampleService: ExampleAPIService
@@ -99,7 +101,7 @@ export class ExampleComponent implements ocxRemoteComponent, ocxRemoteWebcompone
   }
 
   ocxInitRemoteComponent(config: RemoteComponentConfig): void {
-    this.baseUrl.next(config.baseUrl);
+    this.remoteComponentConfig.next(config);
     this.permissions = config.permissions;
     this.exampleService.configuration = new Configuration({
       basePath: Location.joinWithSlash(config.baseUrl, environment.apiPrefix)
@@ -117,7 +119,7 @@ Key component features:
 
 Component Initialization
 
-The component implements `ocxRemoteWebcomponent` (required) and `ocxRemoteComponent` (optional). When `ocxRemoteComponentConfig` is set by the Slot Component, it should update `BASE_URL`, update permissions, and update service base URLs.
+The component implements `ocxRemoteWebcomponent` (required) and `ocxRemoteComponent` (optional). When `ocxRemoteComponentConfig` is set by the Slot Component, it should update `REMOTE_COMPONENT_CONFIG`, update permissions, and update service base URLs.
 
 RemoteComponentConfig Structure
 

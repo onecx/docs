@@ -4,7 +4,7 @@
 
 In OneCX multi-language support is available via translations using `@ngx-translate` library.
 
-A [OneCX compatible application](../app-to-onecx.html) can be set up for multi-language translation to support multiple languages in the application.
+A [OneCX compatible application](../../migration/vanilla-to-onecx-angular.html) can be set up for multi-language translation to support multiple languages in the application.
 
 ## [](#setup)Setup
 

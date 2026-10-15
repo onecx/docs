@@ -2,7 +2,7 @@
 
 ## [](#overview)Overview
 
-This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../app-to-onecx.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
+This document provides guidance on how to use multi-language translations in a [**OneCX compatible**](../../migration/vanilla-to-onecx-angular.html) application after setting it up using the [multi-language setup document](multi-language-setup.html).
 
 ## [](#prerequisites)Prerequisites
 
