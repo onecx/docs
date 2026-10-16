@@ -142,19 +142,26 @@ The Slot Group Component automatically monitors size changes and publishes resiz
 * **Event Type:** `SLOT_GROUP_RESIZED` (from `@onecx/integration-interface`)
 * **Debounce Time:** 100ms
 * **Payload:**  
-   * `slotName`: The name of the slot group  
-   * `slotDetails`: Object containing `width` and `height` properties
+   * `slotGroupName`: The name of the slot group  
+   * `slotGroupDetails`: Object containing `width` and `height` properties
 
 **Implementation:**
 
-The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published through the `EventsPublisher` TopicPublisher, making them available to all micro frontends in the shell.
+The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published on the `ResizedEventsTopic`, making them available to all micro frontends in the shell.
 
 ```typescript
+import { ResizedEventsTopic, ResizedEventType } from '@onecx/integration-interface'
+import { filter } from 'rxjs'
+
+const resizedEventsTopic = new ResizedEventsTopic()
+
 // Remote components can subscribe to resize events
-eventsPublisher.subscribe(EventType.SLOT_GROUP_RESIZED, (event) => {
-  console.log('Slot group resized:', event.payload.slotName);
-  console.log('New dimensions:', event.payload.slotDetails);
-});
+resizedEventsTopic
+  .pipe(filter((event) => event.type === ResizedEventType.SLOT_GROUP_RESIZED))
+  .subscribe((event) => {
+    console.log('Slot group resized:', event.payload.slotGroupName);
+    console.log('New dimensions:', event.payload.slotGroupDetails);
+  });
 ```
 
 #### [](#onecx-extensions-slot)OneCX Extensions Slot
@@ -276,3 +283,15 @@ For further details on version compatibility, refer to the following resources:
 
 * [OneCX Compatibility Documentation](../onecx-portal-ui-libs/onecx-compatibility.html)
 * [Troubleshooting for Shell Issues](#onecx-docs-dev:guides/troubleshooting.adoc#shell-related)
+
+### [](#upgrading-the-shell)Upgrading the Shell
+
+Upgrading the OneCX Shell means moving to a newer OneCX library major version in step with the Angular version it supports. Use the Angular - Libs Version Compatibility table above to choose the target library version, then follow the library migration guide for your target Angular version.
+
+#### [](#library-migration-guides)Library Migration Guides
+
+OneCX ships a migration guide for each Angular major-version transition. Complete the steps in the guide that matches the Angular version you are upgrading to:
+
+* [Migrate from Angular 18 to Angular 19 (libs v6)](../onecx-portal-ui-libs/migrations/angular-19/index.html)
+* [Migrate from Angular 19 to Angular 20 (libs v7)](../onecx-portal-ui-libs/migrations/angular-20/index.html)
+* [Migrate from Angular 20 to Angular 21 (libs v8)](../onecx-portal-ui-libs/migrations/angular-21/index.html)

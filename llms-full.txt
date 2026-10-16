@@ -6690,6 +6690,69 @@ These conventions, along with the full guidelines, project structure, and the di
 * [NgRx Setup](../features/ngrx/setup.html) — installing NgRx and the `@onecx/ngrx-*` libraries and wiring OneCX platform state into the store.
 * [NgRx Guidelines](../features/ngrx/guidelines.html) — the full OneCX conventions, project structure, worked examples referenced above, and the OneCX utility libraries.
 
+Style Isolation
+====================
+In OneCX, every application’s styles are confined to the DOM region that application renders into. This page is a technology-agnostic overview of the rules OneCX places on application styles and why they exist; it does not cover how to publish `styles.css` in the first place — that mechanic is owned by [Assets](assets.html) and, per technology, by the Recommended Setup **Expose Component Styles** page.
+
+## [](#why-style-isolation)Why style isolation matters
+
+A single OneCX page can render content from many applications at once: the shell’s own interface (its header, navigation, and menus), the active microfrontend, and any number of remote components from other applications, all in the same document. If every application’s stylesheet applied globally, a rule written by one team could silently repaint another team’s UI, the shell’s navigation, or vice versa — the kind of cross-application breakage that is hard to trace back to its source.
+
+To prevent this, OneCX confines each application’s styles to only the DOM elements that belong to that application. An application’s stylesheet renders that application correctly, and has no visible effect anywhere else on the page — including on other microfrontends, other remote components, and the shell itself.
+
+## [](#how-isolation-is-enforced)How isolation is enforced
+
+Style isolation is not a convention applications are trusted to follow — the platform enforces it structurally. When the shell loads an application’s `styles.css`, it wraps the stylesheet in a CSS scoping boundary tied to the DOM region that application’s content occupies on the page. Any selector in that stylesheet is only ever evaluated against elements inside that region; it cannot match, and therefore cannot affect, anything outside it (the shell’s own interface, another microfrontend, another remote component). If an application’s content is itself hosting a remote component from a **different** application, that boundary also stops at the nested content’s edge, so a parent application’s styles cannot leak down into a remote component it merely embeds.
+
+One consequence of this is that a `:root` selector in `styles.css` does not do what it would in a standalone page. Instead of targeting the document root, it is automatically rewritten to target the boundary of the application’s own DOM region — so CSS custom properties an application defines under `:root` are available throughout its own content, but are not visible to, and do not override, any other application’s or the shell’s custom properties.
+
+## [](#the-styles-css-contract)The styles.css contract
+
+`styles.css` is the **only** sanctioned location for an application’s own styles. It is the single file the platform loads on the application’s behalf and confines to the application’s DOM region. How `styles.css` is exposed and loaded is described on [Assets](assets.html). Any CSS an application needs beyond its components' own scoped styles belongs in it, and nowhere else:
+
+* Do not rely on stylesheets injected outside of this mechanism (for example a `<link>` or `<style>` tag added directly to the document by application code) to style your application — the platform has no way to confine or clean up styles it did not load itself.
+* Do not assume rules in `styles.css` apply outside your application’s own DOM region. The platform actively confines them to it.
+
+## [](#what-belongs-in-styles-css)What belongs in styles.css
+
+Rules in `styles.css` should only ever describe the appearance of elements that belong to your own application: your components' host elements, elements they render, and CSS custom properties your application defines for its own use. Selectors can be as broad as an element or attribute selector (for example `button { …​ }`) — broad selectors are safe here because the platform automatically confines them to your application’s DOM region; they simply never match anything outside it.
+
+## [](#anti-patterns-to-avoid)Anti-patterns to avoid
+
+Because `styles.css` rules are confined to your application’s own DOM region, any rule written to reach **outside** that region has no effect — it is not a matter of style but simply does not do anything, which makes these patterns confusing to debug rather than merely discouraged:
+
+* **Targeting document-level elements**, such as `body` or `html`. These elements sit outside every application’s DOM region, so such rules never match.
+* **Using the universal selector (`*`) deliberately** to apply an application-wide reset inside your own DOM region. The selector still matches only your application’s descendants, so it can affect the whole application but cannot affect the shell or another application.
+* **Targeting classes or IDs you do not own** — for example a selector that happens to match a class name used by another application’s components, the shell’s own interface, or a shared library, in the hope of overriding its appearance. Even if the name matches, the rule is confined to your own DOM region and will not reach that content.
+* **Relying on `styles.css` to theme other applications or the shell.** Cross-application appearance (colors, fonts, spacing that should be consistent platform-wide) is a [theming](theming.html) concern, expressed through shared theme variables, not through application styles reaching into content you do not own.
+
+/* Anti-pattern: body and html are outside every application's DOM region */
+body {
+    background-color: #f5f5f5;
+}
+
+/* Correct: applies a reset across your application's own descendants only */
+* {
+    box-sizing: border-box;
+}
+
+/* Anti-pattern: has no effect even if the class name matches another
+   application's markup — the rule is confined to your own DOM region */
+.shared-card {
+    border: none;
+}
+
+/* Correct: styles your own component's elements */
+.my-app-summary-panel {
+    border: 1px solid var(--primary-color);
+}
+
+## [](#related)Related
+
+* [Assets](assets.html) — owns the **what** and **how** of exposing `styles.css` so the shell can load it; this page owns the **rules** for what belongs inside it once exposed.
+* [Theming](theming.html) — the mechanism for platform-wide, cross-application appearance (theme variables), as opposed to an individual application’s own styles.
+* [Style scoping implementation deep dive](https://github.com/onecx/onecx-portal-ui-libs/blob/main/dev-docs/styles/scoping.adoc) — implementation details for the shell’s CSS scoping boundary.
+
 Theming
 ====================
 In OneCX, theming controls how the content of a page looks. The OneCX shell, working together with the OneCX Theme Management application, provides the theme. A theme’s look is expressed as a set of CSS variables (design tokens) — OneCX’s own suite of theme variables. Each workspace can use a different theme, and the theme’s variables are exposed on every page — with different values depending on the workspace being accessed.
@@ -6800,69 +6863,6 @@ The example above sets the background color for each button element to the value
 To apply a theme to an application step by step, see [Apply Theming](../setup/recommended/apply-theming.html) and [Expose Component Styles](../setup/recommended/expose-component-styles.html).
 
 For details on customizing the OneCX PrimeNG theme, see the [PrimeNG Theming Customization](../features/primeng/theming-customization.html) feature page for how the OneCX theme maps to PrimeNG and how to apply optional token overrides.
-
-Style Isolation
-====================
-In OneCX, every application’s styles are confined to the DOM region that application renders into. This page is a technology-agnostic overview of the rules OneCX places on application styles and why they exist; it does not cover how to publish `styles.css` in the first place — that mechanic is owned by [Assets](assets.html) and, per technology, by the Recommended Setup **Expose Component Styles** page.
-
-## [](#why-style-isolation)Why style isolation matters
-
-A single OneCX page can render content from many applications at once: the shell’s own interface (its header, navigation, and menus), the active microfrontend, and any number of remote components from other applications, all in the same document. If every application’s stylesheet applied globally, a rule written by one team could silently repaint another team’s UI, the shell’s navigation, or vice versa — the kind of cross-application breakage that is hard to trace back to its source.
-
-To prevent this, OneCX confines each application’s styles to only the DOM elements that belong to that application. An application’s stylesheet renders that application correctly, and has no visible effect anywhere else on the page — including on other microfrontends, other remote components, and the shell itself.
-
-## [](#how-isolation-is-enforced)How isolation is enforced
-
-Style isolation is not a convention applications are trusted to follow — the platform enforces it structurally. When the shell loads an application’s `styles.css`, it wraps the stylesheet in a CSS scoping boundary tied to the DOM region that application’s content occupies on the page. Any selector in that stylesheet is only ever evaluated against elements inside that region; it cannot match, and therefore cannot affect, anything outside it (the shell’s own interface, another microfrontend, another remote component). If an application’s content is itself hosting a remote component from a **different** application, that boundary also stops at the nested content’s edge, so a parent application’s styles cannot leak down into a remote component it merely embeds.
-
-One consequence of this is that a `:root` selector in `styles.css` does not do what it would in a standalone page. Instead of targeting the document root, it is automatically rewritten to target the boundary of the application’s own DOM region — so CSS custom properties an application defines under `:root` are available throughout its own content, but are not visible to, and do not override, any other application’s or the shell’s custom properties.
-
-## [](#the-styles-css-contract)The styles.css contract
-
-`styles.css` is the **only** sanctioned location for an application’s own styles. It is the single file the platform loads on the application’s behalf and confines to the application’s DOM region. How `styles.css` is exposed and loaded is described on [Assets](assets.html). Any CSS an application needs beyond its components' own scoped styles belongs in it, and nowhere else:
-
-* Do not rely on stylesheets injected outside of this mechanism (for example a `<link>` or `<style>` tag added directly to the document by application code) to style your application — the platform has no way to confine or clean up styles it did not load itself.
-* Do not assume rules in `styles.css` apply outside your application’s own DOM region. The platform actively confines them to it.
-
-## [](#what-belongs-in-styles-css)What belongs in styles.css
-
-Rules in `styles.css` should only ever describe the appearance of elements that belong to your own application: your components' host elements, elements they render, and CSS custom properties your application defines for its own use. Selectors can be as broad as an element or attribute selector (for example `button { …​ }`) — broad selectors are safe here because the platform automatically confines them to your application’s DOM region; they simply never match anything outside it.
-
-## [](#anti-patterns-to-avoid)Anti-patterns to avoid
-
-Because `styles.css` rules are confined to your application’s own DOM region, any rule written to reach **outside** that region has no effect — it is not a matter of style but simply does not do anything, which makes these patterns confusing to debug rather than merely discouraged:
-
-* **Targeting document-level elements**, such as `body` or `html`. These elements sit outside every application’s DOM region, so such rules never match.
-* **Using the universal selector (`*`) deliberately** to apply an application-wide reset inside your own DOM region. The selector still matches only your application’s descendants, so it can affect the whole application but cannot affect the shell or another application.
-* **Targeting classes or IDs you do not own** — for example a selector that happens to match a class name used by another application’s components, the shell’s own interface, or a shared library, in the hope of overriding its appearance. Even if the name matches, the rule is confined to your own DOM region and will not reach that content.
-* **Relying on `styles.css` to theme other applications or the shell.** Cross-application appearance (colors, fonts, spacing that should be consistent platform-wide) is a [theming](theming.html) concern, expressed through shared theme variables, not through application styles reaching into content you do not own.
-
-/* Anti-pattern: body and html are outside every application's DOM region */
-body {
-    background-color: #f5f5f5;
-}
-
-/* Correct: applies a reset across your application's own descendants only */
-* {
-    box-sizing: border-box;
-}
-
-/* Anti-pattern: has no effect even if the class name matches another
-   application's markup — the rule is confined to your own DOM region */
-.shared-card {
-    border: none;
-}
-
-/* Correct: styles your own component's elements */
-.my-app-summary-panel {
-    border: 1px solid var(--primary-color);
-}
-
-## [](#related)Related
-
-* [Assets](assets.html) — owns the **what** and **how** of exposing `styles.css` so the shell can load it; this page owns the **rules** for what belongs inside it once exposed.
-* [Theming](theming.html) — the mechanism for platform-wide, cross-application appearance (theme variables), as opposed to an individual application’s own styles.
-* [Style scoping implementation deep dive](https://github.com/onecx/onecx-portal-ui-libs/blob/main/dev-docs/styles/scoping.adoc) — implementation details for the shell’s CSS scoping boundary.
 
 Translations
 ====================
@@ -7378,6 +7378,52 @@ Use this branch when the application is already a OneCX app and needs to be upgr
 * [Upgrade to Angular 20](../../onecx-portal-ui-libs/migrations/angular-20/index.html)
 * [Upgrade to Angular 21](../../onecx-portal-ui-libs/migrations/angular-21/index.html)
 
+Module Federation in OneCX
+====================
+**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
+
+In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
+
+This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
+
+## [](#prerequisites)Prerequisites
+
+Before visiting this guide, let’s visit following concepts:
+
+__Table 1\. Concepts__
+| Name                                                                               | Description                                                                                      |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| [Webpack](https://webpack.js.org/concepts/)                                        | Static module bundler for **JavaScript applications** that supports module federation            |
+| [Module Federation](https://module-federation.io/)                                 | Enables scalable, independently deployable frontend architecture with **runtime integration**    |
+| [Webcomponents](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                            |
+| [Microfrontends](https://micro-frontends.org/)                                     | Extends the concepts of micro services to the frontend world                                     |
+| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)             | An **innovative open-source platform** solution enabling seamless **microfrontends integration** |
+| [Types of Microfrontends in OneCX](types-of-microfrontends.html)                   | WebComponentModule, WebComponent script, webcomponent and Angular microfrontends                 |
+
+## [](#usage-of-module-federation-in-onecx)Usage of Module Federation in OneCX
+
+In OneCX, **Module Federation** is used to load microfrontends, expose reusable components, and for dependency sharing.
+
+Following are important concepts where module federation is involved:
+
+__Table 2\. Features__
+| Name                                             | Description                                           |
+| ------------------------------------------------ | ----------------------------------------------------- |
+| [Preloaders](mf-preloaders.html)                 | Preloaders register Module Federation share scopes    |
+| [Dependency Sharing](mf-dependancy-sharing.html) | Build-time and runtime negotiation of shared packages |
+| [Slot components](mf-slot-components.html)       | Load remote modules or components in slots            |
+
+## [](#onecx-recommendations)OneCX Recommendations
+
+The following documents describe how to configure and use Module Federation in OneCX.
+
+| Name                                                             | Description                                                    |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends |
+
+| |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Migrate a vanilla Angular app to OneCX
 ====================
 This page walks a fresh (non-OneCX) Angular app to the current OneCX end-state. It keeps the migration focused on the v8 baseline and links out to the setup pages instead of restating their steps. If the application has not yet been migrated to OneCX, first use the [legacy migration guide](../angular/app-to-onecx.html) to integrate it with the OneCX library version compatible with its current Angular version. Then follow the version-specific upgrade guides to reach the current OneCX version.
@@ -7454,52 +7500,6 @@ For more information on how OneCX loads microfrontends and utilizes web componen
 ## [](#troubleshooting)Troubleshooting
 
 See the [Troubleshooting](../troubleshooting/index.html) section for the preparation steps, common causes, and named errors to work through when the app does not load, route, or render as expected.
-
-Module Federation in OneCX
-====================
-**Module Federation** is a Webpack feature that enables the dynamic loading of separately built and deployed **JavaScript applications**.
-
-In **OneCX**, it enables different applications **microfrontends** to be developed, built and deployed independently while still sharing code and dependencies at **runtime**.
-
-This guide introduces module federation in **OneCX**, explains how to use and configure it in your applications.
-
-## [](#prerequisites)Prerequisites
-
-Before visiting this guide, let’s visit following concepts:
-
-__Table 1\. Concepts__
-| Name                                                                               | Description                                                                                      |
-| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| [Webpack](https://webpack.js.org/concepts/)                                        | Static module bundler for **JavaScript applications** that supports module federation            |
-| [Module Federation](https://module-federation.io/)                                 | Enables scalable, independently deployable frontend architecture with **runtime integration**    |
-| [Webcomponents](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                            |
-| [Microfrontends](https://micro-frontends.org/)                                     | Extends the concepts of micro services to the frontend world                                     |
-| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)             | An **innovative open-source platform** solution enabling seamless **microfrontends integration** |
-| [Types of Microfrontends in OneCX](types-of-microfrontends.html)                   | WebComponentModule, WebComponent script, webcomponent and Angular microfrontends                 |
-
-## [](#usage-of-module-federation-in-onecx)Usage of Module Federation in OneCX
-
-In OneCX, **Module Federation** is used to load microfrontends, expose reusable components, and for dependency sharing.
-
-Following are important concepts where module federation is involved:
-
-__Table 2\. Features__
-| Name                                             | Description                                           |
-| ------------------------------------------------ | ----------------------------------------------------- |
-| [Preloaders](mf-preloaders.html)                 | Preloaders register Module Federation share scopes    |
-| [Dependency Sharing](mf-dependancy-sharing.html) | Build-time and runtime negotiation of shared packages |
-| [Slot components](mf-slot-components.html)       | Load remote modules or components in slots            |
-
-## [](#onecx-recommendations)OneCX Recommendations
-
-The following documents describe how to configure and use Module Federation in OneCX.
-
-| Name                                                             | Description                                                    |
-| ---------------------------------------------------------------- | -------------------------------------------------------------- |
-| [Module federation configuration](module-federation-config.html) | Describes how to configure module federation in microfrontends |
-
-| |  Bootstrapping your application to be loaded via Module Federation (including how the shell router loads it), configuring a custom authentication service, and configuring share scopes are now covered under Required Setup: see [Expose a Remote Module](../setup/required/expose-remote-module.html), [Configure Authentication](../setup/required/configure-authentication.html), and [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html). |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -16381,24 +16381,6 @@ nx generate <namespaceOfTheGenerator>/angular-generator:delete <feature>
 | |  Next, the CLI will ask you whether you want to customize names for the generation. When answering yes, the next few questions will ask you about names for the API. This can be useful if you want to adapt to a legacy API. When modifying names, assure that you use the same custom names for all generated components of the feature (search, details, create-update, delete) for the data object name, and the api service name as these ones are shared. |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-Development: Get the Generator
-====================
-The following is only required if you want to contribute to the development of the generator or want to use the generator locally without installing it globally from npm. If you just want to use the generator, you can install it globally from npm and skip the following steps.
-
-1. Clone the **onecx-nx-plugins** repository into a folder on the local machine/inside WSL2  
-```bash  
-git clone https://github.com/onecx/onecx-nx-plugins.git  
-```
-2. Navigate into the cloned repository and install the dependencies  
-```bash  
-cd onecx-nx-plugins  
-npm install  
-```
-3. Build the OneCX App Generator  
-```bash  
-npm run build  
-```
-
 Glossary
 ====================
 A collection of essential terms and concepts in the context of the **OneCX UI App Generator**.
@@ -16442,6 +16424,24 @@ The `values.yaml` file is used by the OneCX permission operator during deploymen
 
 A Component is a reusable building block of the user interface in a UI Application. It encapsulates the structure, behavior, and presentation of a specific part of the UI, allowing developers to create modular and maintainable applications.  
 Components can represent anything from a simple button or form field to complex data-driven views.
+
+Development: Get the Generator
+====================
+The following is only required if you want to contribute to the development of the generator or want to use the generator locally without installing it globally from npm. If you just want to use the generator, you can install it globally from npm and skip the following steps.
+
+1. Clone the **onecx-nx-plugins** repository into a folder on the local machine/inside WSL2  
+```bash  
+git clone https://github.com/onecx/onecx-nx-plugins.git  
+```
+2. Navigate into the cloned repository and install the dependencies  
+```bash  
+cd onecx-nx-plugins  
+npm install  
+```
+3. Build the OneCX App Generator  
+```bash  
+npm run build  
+```
 
 Configure Permissions
 ====================
@@ -18229,226 +18229,6 @@ Example: Translations in `de.json`
   }
 ```
 
-Configure Search Results
-====================
-After generating the base search page, you need to configure how the search results are displayed to the user.  
-The following actions must be taken.
-
-## [](#action-s5)ACTION S5
-
-If not yet done, specify the base entity properties in the OpenAPI specification, see [Create an Entity Schema](../create-schema.html).
-
-## [](#action-s6)ACTION S6
-
-Specify Columns in Result table
-
-The next step is to configure the columns of the search results table. Here you can define which properties of your entity should be displayed in the results table, as well as their characteristics (e.g. if they are sortable or filterable).
-
-### Template: Generated Search Result Columns
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.columns.ts                               |
-
-ACTION S6 in `<resource>-search.columns.ts` 
-
-```javascript
-export const <resource>SearchColumns: DataTableColumn[] = [
-  {
-    columnType: ColumnType.STRING,
-    id: 'changeMe',
-    nameKey: '<RESOURCE>_SEARCH.RESULTS.CHANGE_ME',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.DEFAULT',
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.EXTENDED',
-      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  }
-  // ACTION S6: Define search results columns
-];
-```
-
-Where **changeMe** is a column added to the `<Resource>SearchColumns`.
-
----
-
-### Example: Book Search Result Columns
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.columns.ts                   |
-
-Example: Book Search Result Columns 
-
-```javascript
-export const bookSearchColumns: DataTableColumn[] = [
-  {
-    columnType: ColumnType.STRING,
-    id: 'bookTitle',
-    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TITLE',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      'BOOK_SEARCH.PREDEFINED_GROUP.DEFAULT',
-      'BOOK_SEARCH.PREDEFINED_GROUP.EXTENDED',
-      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  },
-  {
-    columnType: ColumnType.TRANSLATION_KEY,
-    id: 'bookType',
-    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TYPE',
-    filterable: true,
-    sortable: true,
-    predefinedGroupKeys: [
-      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
-    ]
-  }
-  // ACTION S6: Define search results columns
-]
-```
-
-Where **bookTitle** and **bookType** are columns added to the `BookSearchColumns`. The column **bookType** is only added to the predefined group **FULL**, so it will only be visible for users who select this group in the UI.
-
-Refer to the [DataTableColumn overview](../../../onecx-portal-ui-libs/components/interactive-data-view/data-table-column.html) for more information.
-
-## [](#action-s7)ACTION S7
-
-Mapping from Entity/Resource to Row Item
-
-The final step in configuring the search results is to create a mapping from the feature state to the row item used in the data table. This mapping is necessary to ensure that the correct data is displayed in the search results table.  
-This is also the place to add translation keys for columns with the type `TRANSLATION_KEY`, if required.
-
-### Template: Mapping from Entity to Row Item
-
-| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
-| --------- | ---------------------------------------------------------- |
-| File      | <resource>-search.selectors.ts                             |
-
-Adust Selector in `<resource>-search.selectors.ts` 
-
-```typescript
-export const selectResults = createSelector(
-  <resource>SearchSelectors.selectResults,
-  (results: <resource>[]): RowListGridData[] => {
-    return results.map((item) => ({
-      imagePath: '',
-      ...item,
-      // ACTION S7: Create a mapping of the items and their corresponding translation keys
-    }));
-  }
-);
-```
-
----
-
-### Example: Mapping Book Types
-
-| Directory | bookstore/src/app/book/pages/book-search |
-| --------- | ---------------------------------------- |
-| File      | book-search.selectors.ts                 |
-
-Example: Book Search Result Mapping 
-
-```javascript
-export const selectResults = createSelector(bookSearchSelectors.selectResults, (results: Book[]): RowListGridData[] => {
-  return results.map((item) => ({
-    imagePath: '',
-    ...item,
-    bookType: item.bookType
-      ? `BOOK_SEARCH.RESULTS.BOOK_TYPES.${item.bookType.toUpperCase()}`
-      : ''
-    // ACTION S7: Create a mapping of the items and their corresponding translation keys
-  }))
-})
-```
-
-This example shows how to map a property `bookType` to a translation key.
-
-## [](#action-s8)ACTION S8
-
-Add translations for search result data
-
-Ensure that all column headers and the mapped values in columns have the necessary translations added.
-
-### Template: Translations for Search Results
-
-| Directory | <root-of-ui-app>/src/app/assets/i18n |
-| --------- | ------------------------------------ |
-| Files     | en.json / de.json                    |
-
----
-
-### Example: Translations for Book Search Results
-
-| Directory | bookstore/src/app/assets/i18n |
-| --------- | ----------------------------- |
-| Files     | en.json / de.json             |
-
-Adjust translations in `en.json` 
-
-```json
-  "BOOK_SEARCH": {
-    ...
-    "RESULTS": {
-      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
-      "BOOK_TITLE": "Book Title",
-      "BOOK_TYPE": "Book Type",
-      "BOOK_TYPES": {
-        "CRIME": "Crime",
-        "DRAMA": "Drama",
-        "FANTASY": "Fantasy",
-        "PROSE": "Prose",
-        "SCIENCE": "Science"
-      }
-    },
-    ...
-```
-
-Refer to the [Multi-Language Guide](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
-
-Adjust translations in `de.json` 
-
-```json
-  "BOOK_SEARCH": {
-    ...
-    "RESULTS": {
-      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
-      "BOOK_TITLE": "Buchtitel",
-      "BOOK_TYPE": "Buchtyp",
-      "BOOK_TYPES": {
-        "CRIME": "Krimi",
-        "DRAMA": "Drama",
-        "FANTASY": "Fantasie",
-        "PROSE": "Prosa",
-        "SCIENCE": "Wissenschaft"
-      }
-    },
-  ...
-```
-
-undefined
-====================
-### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
-
-The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
-
-To run the generator, execute the following command:
-
-nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
-
-**Placeholder**:
-
-* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
-* _<feature>_: see [here](../../angular/glossary.html#feature).
-
-| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-After running the generator, you can modify all files to your needs.
-
 Configure Search Tests
 ====================
 ## [](#action-11)ACTION S11
@@ -18757,6 +18537,226 @@ Make sure to review the test results and address any issues that may arise to en
 ![test result search](../../_images/test_result_search.png) 
 
 Figure 1\. Test results
+
+Configure Search Results
+====================
+After generating the base search page, you need to configure how the search results are displayed to the user.  
+The following actions must be taken.
+
+## [](#action-s5)ACTION S5
+
+If not yet done, specify the base entity properties in the OpenAPI specification, see [Create an Entity Schema](../create-schema.html).
+
+## [](#action-s6)ACTION S6
+
+Specify Columns in Result table
+
+The next step is to configure the columns of the search results table. Here you can define which properties of your entity should be displayed in the results table, as well as their characteristics (e.g. if they are sortable or filterable).
+
+### Template: Generated Search Result Columns
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.columns.ts                               |
+
+ACTION S6 in `<resource>-search.columns.ts` 
+
+```javascript
+export const <resource>SearchColumns: DataTableColumn[] = [
+  {
+    columnType: ColumnType.STRING,
+    id: 'changeMe',
+    nameKey: '<RESOURCE>_SEARCH.RESULTS.CHANGE_ME',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.DEFAULT',
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.EXTENDED',
+      '<RESOURCE>_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  }
+  // ACTION S6: Define search results columns
+];
+```
+
+Where **changeMe** is a column added to the `<Resource>SearchColumns`.
+
+---
+
+### Example: Book Search Result Columns
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.columns.ts                   |
+
+Example: Book Search Result Columns 
+
+```javascript
+export const bookSearchColumns: DataTableColumn[] = [
+  {
+    columnType: ColumnType.STRING,
+    id: 'bookTitle',
+    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TITLE',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      'BOOK_SEARCH.PREDEFINED_GROUP.DEFAULT',
+      'BOOK_SEARCH.PREDEFINED_GROUP.EXTENDED',
+      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  },
+  {
+    columnType: ColumnType.TRANSLATION_KEY,
+    id: 'bookType',
+    nameKey: 'BOOK_SEARCH.RESULTS.BOOK_TYPE',
+    filterable: true,
+    sortable: true,
+    predefinedGroupKeys: [
+      'BOOK_SEARCH.PREDEFINED_GROUP.FULL',
+    ]
+  }
+  // ACTION S6: Define search results columns
+]
+```
+
+Where **bookTitle** and **bookType** are columns added to the `BookSearchColumns`. The column **bookType** is only added to the predefined group **FULL**, so it will only be visible for users who select this group in the UI.
+
+Refer to the [DataTableColumn overview](../../../onecx-portal-ui-libs/components/interactive-data-view/data-table-column.html) for more information.
+
+## [](#action-s7)ACTION S7
+
+Mapping from Entity/Resource to Row Item
+
+The final step in configuring the search results is to create a mapping from the feature state to the row item used in the data table. This mapping is necessary to ensure that the correct data is displayed in the search results table.  
+This is also the place to add translation keys for columns with the type `TRANSLATION_KEY`, if required.
+
+### Template: Mapping from Entity to Row Item
+
+| Directory | <root-of-ui-app>/src/app/<feature>/pages/<resource>-search |
+| --------- | ---------------------------------------------------------- |
+| File      | <resource>-search.selectors.ts                             |
+
+Adust Selector in `<resource>-search.selectors.ts` 
+
+```typescript
+export const selectResults = createSelector(
+  <resource>SearchSelectors.selectResults,
+  (results: <resource>[]): RowListGridData[] => {
+    return results.map((item) => ({
+      imagePath: '',
+      ...item,
+      // ACTION S7: Create a mapping of the items and their corresponding translation keys
+    }));
+  }
+);
+```
+
+---
+
+### Example: Mapping Book Types
+
+| Directory | bookstore/src/app/book/pages/book-search |
+| --------- | ---------------------------------------- |
+| File      | book-search.selectors.ts                 |
+
+Example: Book Search Result Mapping 
+
+```javascript
+export const selectResults = createSelector(bookSearchSelectors.selectResults, (results: Book[]): RowListGridData[] => {
+  return results.map((item) => ({
+    imagePath: '',
+    ...item,
+    bookType: item.bookType
+      ? `BOOK_SEARCH.RESULTS.BOOK_TYPES.${item.bookType.toUpperCase()}`
+      : ''
+    // ACTION S7: Create a mapping of the items and their corresponding translation keys
+  }))
+})
+```
+
+This example shows how to map a property `bookType` to a translation key.
+
+## [](#action-s8)ACTION S8
+
+Add translations for search result data
+
+Ensure that all column headers and the mapped values in columns have the necessary translations added.
+
+### Template: Translations for Search Results
+
+| Directory | <root-of-ui-app>/src/app/assets/i18n |
+| --------- | ------------------------------------ |
+| Files     | en.json / de.json                    |
+
+---
+
+### Example: Translations for Book Search Results
+
+| Directory | bookstore/src/app/assets/i18n |
+| --------- | ----------------------------- |
+| Files     | en.json / de.json             |
+
+Adjust translations in `en.json` 
+
+```json
+  "BOOK_SEARCH": {
+    ...
+    "RESULTS": {
+      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
+      "BOOK_TITLE": "Book Title",
+      "BOOK_TYPE": "Book Type",
+      "BOOK_TYPES": {
+        "CRIME": "Crime",
+        "DRAMA": "Drama",
+        "FANTASY": "Fantasy",
+        "PROSE": "Prose",
+        "SCIENCE": "Science"
+      }
+    },
+    ...
+```
+
+Refer to the [Multi-Language Guide](../../../docs-guides-ui/angular/translation/multi-language.html) for more information.
+
+Adjust translations in `de.json` 
+
+```json
+  "BOOK_SEARCH": {
+    ...
+    "RESULTS": {
+      "OUTPUT_FIELDS": "ACTION S8: Adjust translation keys for result columns",
+      "BOOK_TITLE": "Buchtitel",
+      "BOOK_TYPE": "Buchtyp",
+      "BOOK_TYPES": {
+        "CRIME": "Krimi",
+        "DRAMA": "Drama",
+        "FANTASY": "Fantasie",
+        "PROSE": "Prosa",
+        "SCIENCE": "Wissenschaft"
+      }
+    },
+  ...
+```
+
+undefined
+====================
+### [](#%5Fcreate%5Fan%5Fempty%5Fngrx%5Fpage)Create an empty NGRX-Page
+
+The fastest way to create an empty ngrx-page is to use the OneCX generator. Some projects have their own generator based on the OneCX generator. It should be clarified before starting if this is the case for the project the app is generated for.
+
+To run the generator, execute the following command:
+
+nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
+
+**Placeholder**:
+
+* _<namespaceOfTheGenerator>_: For the OneCX generator use @onecx. For a project specific generator, ask for the namespace of the generators.
+* _<feature>_: see [here](../../angular/glossary.html#feature).
+
+| |  Next, the CLI will ask you for the name of your page. Use a name without spaces and the "Component"-suffix, as this suffix will be added automatically. So if you want to create a BookDetailsComponent, only put in "BookDetails". |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+After running the generator, you can modify all files to your needs.
 
 Configure Detail View (React)
 ====================
@@ -21167,6 +21167,21 @@ This component displays data as a list or grid and allows you to switch between 
 
 To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
+OneCX DataListGrid
+====================
+## [](#overview)Overview
+
+DataListGrid provides way to render tabular data as a list of cards or in a grid.
+
+## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
+
+This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
+
+* `list` role on the container element
+* `listitem` role on each item element
+
+To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
+
 OneCX Consent
 ====================
 ## [](#overview)Overview
@@ -21349,21 +21364,6 @@ GroupByCountDiagramComponentState interface
         activeDiagramType?: DiagramType
     }
 ```
-
-OneCX DataListGrid
-====================
-## [](#overview)Overview
-
-DataListGrid provides way to render tabular data as a list of cards or in a grid.
-
-## [](#data-list-grid-a11y-overview)Data List Grid Accessibility
-
-This component displays data as a list or grid and allows you to switch between them. It uses the p-data-view component from the PrimeNG library to manage the view. The following roles have been added to the template in the component to improve accessibility:
-
-* `list` role on the container element
-* `listitem` role on each item element
-
-To ensure the component is accessible, please add `role="listitem"` to each `item` element rendered in the template. This helps screen readers properly identify and navigate through the list or grid items.
 
 OneCX PageHeader
 ====================
@@ -23403,6 +23403,52 @@ This document aims to showcase how to manage InteractiveDataView Component.
 
 * [DataTableColumn](data-table-column.html)
 
+@onecx/angular-utils/cdk
+====================
+`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
+
+## [](#installation)Installation
+
+`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
+
+```sh
+npm i @onecx/angular-utils
+```
+
+## [](#api)API
+
+### [](#onecx-overlay-container)OnecxOverlayContainer
+
+A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
+
+### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
+
+A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
+
+```typescript
+import { OverlayContainer } from '@angular/cdk/overlay'
+import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
+
+@NgModule({
+  providers: [
+    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
+  ]
+})
+export class RemoteModule {}
+```
+
 undefined
 ====================
 ## [](#sharedLibraryConfig)Shared Library Configuration
@@ -23568,52 +23614,6 @@ const sharedEntries = getOneCXSharedLibraryConfig(
   true,
   { packageFilterCallback: customPackageFilter }
 );
-```
-
-@onecx/angular-utils/cdk
-====================
-`@onecx/angular-utils/cdk` is a secondary entry point of `@onecx/angular-utils` that provides Angular CDK utilities.
-
-## [](#installation)Installation
-
-`@onecx/angular-utils/cdk` is a secondary entry point and is included in the `@onecx/angular-utils` package:
-
-```sh
-npm i @onecx/angular-utils
-```
-
-## [](#api)API
-
-### [](#onecx-overlay-container)OnecxOverlayContainer
-
-A custom Angular CDK `OverlayContainer` that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxOverlayContainer },
-  ]
-})
-export class RemoteModule {}
-```
-
-### [](#onecx-fullscreen-overlay-container)OnecxFullscreenOverlayContainer
-
-A custom Angular CDK overlay container that appends the overlay container element to the OneCX dynamic container instead of the document body.
-
-```typescript
-import { OverlayContainer } from '@angular/cdk/overlay'
-import { OnecxFullscreenOverlayContainer } from '@onecx/angular-utils/cdk'
-
-@NgModule({
-  providers: [
-    { provide: OverlayContainer, useClass: OnecxFullscreenOverlayContainer },
-  ]
-})
-export class RemoteModule {}
 ```
 
 undefined
@@ -24014,49 +24014,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Provide ThemeConfig](provide-theme-config.html)
 * [Update Webpack Config to Use Dynamic Shared Entries](update-webpack-config.html)
 
-Remove addInitializeModuleGuard()
-====================
-In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
-
-## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
-
-* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
-* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
-* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
-* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
-
-| |  AngularAcceleratorModule already provides TranslationConnectionService |
-| ------------------------------------------------------------------------- |
-
-### [](#%5Fexample)Example
-
-Before
-
-```typescript
-@NgModule({
-  imports: [
-    RouterModule.forRoot(addInitializeModuleGuard(routes)),
-  ],
-})
-export class AppModule {}
-```
-
-After
-
-```typescript
-import { provideTranslationConnectionService } from '@onecx/angular-utils';
-
-@NgModule({
-  imports: [
-    RouterModule.forRoot(routes),
-  ],
-  providers: [
-    provideTranslationConnectionService(),
-  ],
-})
-export class AppModule {}
-```
-
 Provide ThemeConfig
 ====================
 | |  These changes are required for apps using PrimeNG only. |
@@ -24101,6 +24058,49 @@ bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.pro
 In angular 19+ OneCX is creating its own theme presets per App that utilize PrimeNG theming. If the look and feel of some PrimeNG components is not matching the expectations, developers should use theme overrides to change them.
 
 More about how to override the theme elements can be found in [theming documentation](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html).
+
+Remove addInitializeModuleGuard()
+====================
+In OneCX v6, `addInitializeModuleGuard()` has been removed. Translations are now handled by `TranslationConnectionService`.
+
+## [](#%5Fupdate%5Fimports%5Fand%5Fproviders)Update imports and providers
+
+* Remove the `addInitializeModuleGuard()` guard wrapper from router configuration.
+* Register routes using `RouterModule.forRoot(routes)` and `RouterModule.forChild(routes)`.
+* If the module imports `AngularAcceleratorModule` from `@onecx/angular-accelerator`, no further changes are required.
+* Otherwise, add `provideTranslationConnectionService()` from `@onecx/angular-utils` to the module’s `providers` list.
+
+| |  AngularAcceleratorModule already provides TranslationConnectionService |
+| ------------------------------------------------------------------------- |
+
+### [](#%5Fexample)Example
+
+Before
+
+```typescript
+@NgModule({
+  imports: [
+    RouterModule.forRoot(addInitializeModuleGuard(routes)),
+  ],
+})
+export class AppModule {}
+```
+
+After
+
+```typescript
+import { provideTranslationConnectionService } from '@onecx/angular-utils';
+
+@NgModule({
+  imports: [
+    RouterModule.forRoot(routes),
+  ],
+  providers: [
+    provideTranslationConnectionService(),
+  ],
+})
+export class AppModule {}
+```
 
 Remove @onecx/keycloak-auth
 ====================
@@ -28567,6 +28567,231 @@ Click here to view entries to be added to the **hosts** file
 
 After completing the steps outlined in this guide, **onecx-local-env** is now ready to run OneCX locally. Check the instructions on how to start, access, and stop the local environment in the [Run OneCX](run-onecx.html) guide.
 
+Troubleshooting Common Errors
+====================
+This page provides information for how to troubleshoot common problems and errors.
+
+## [](#general-advice)General Advice
+
+* Make sure you are using the latest version of **onecx-local-env**.
+* Make sure your system meets the [prerequisites](setup.html#prerequisites) for running **onecx-local-env**.
+* If you encounter an error, carefully read the error message and any accompanying logs. They often provide valuable clues about the root cause of the issue.
+* Check the official OneCX documentation and community forums for similar issues and solutions.
+* If the problem persists, consider reaching out to OneCX support or community forums for assistance.
+* When reporting an issue, provide detailed information about your environment, the steps to reproduce the problem, and any relevant logs or error messages.
+
+## [](#common-pitfalls)Common Pitfalls
+
+* Insufficient System Resources: Ensure your system has enough CPU, memory, and disk space to run the OneCX Local Environment smoothly.
+* Network Issues: Verify that your network connection is stable and that there are no firewall or proxy settings blocking necessary connections.
+* Incorrect Configuration: Double-check your configuration files for any typos or incorrect settings.
+* Outdated Software: Ensure that all required software dependencies are up-to-date.
+* Are you working within WSL on Windows? Please see the [prerequisites](setup.html#prerequisites) for important notes on using WSL.
+
+## [](#known-docker-issues)Known Docker Issues
+
+Docker is not perfect and sometimes issues may arise that are related to Docker itself rather than **onecx-local-env**. Here are some common Docker-related issues and their solutions:
+
+* Docker Daemon Not Running: Ensure that the Docker daemon is running before starting the OneCX Local Environment.
+* Port Conflicts: Check for any port conflicts with other applications running on your system.
+* Network Issues: Docker networking can sometimes be problematic. Cleanup Docker networks if you encounter networking issues.
+
+### [](#cleanup-docker-resources)Cleanup Docker Resources
+
+If you encounter persistent issues, it may be helpful to clean up Docker resources used by OneCX Local Environment.  
+Remove unused Docker resources with the following commands:
+
+```bash
+docker system prune -a
+docker volume prune
+docker network prune
+```
+
+| |  Be cautious when using these commands, as they will remove all unused Docker resources, which may affect other Docker containers and applications on your system. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+In case OneCX is already running, you can stop it with cleanup of volumes by executing:
+
+```bash
+./stop-onecx.sh -c
+```
+
+This will remove all volumes used by OneCX Local Environment, which can help resolve issues related to corrupted or inconsistent data.
+
+| |  Please note that this will delete all data stored in the volumes, so use this option with caution. |
+| ----------------------------------------------------------------------------------------------------- |
+
+Now you can cleanup any remaining Docker resources as described above and start OneCX again.
+
+## [](#specific-issues)Specific Issues
+
+### [](#status-code-000-on-imports)Status Code "000" on Imports
+
+The issue occurs when the script [import-onecx.sh](scripts/import.html) is executed (importing OneCX data)
+
+![status code 000 import onecx.sh](_images/issues/status-code-000-import-onecx.sh.png) 
+
+Figure 1\. Status code 000 on Imports
+
+Solution 
+
+* Check if the hosts file is up-to-date. See [Setup hosts](setup.html#hosts) instructions. Add missing entries if necessary.
+* Restart import with  
+```bash  
+./import-onecx.sh -x  
+```
+
+### [](#status-code-401-on-starting)Status Code "401" on Starting
+
+The problem occurs after logging into OneCX, although the start and import itself were successful.
+
+![status code 401 start onecx.sh](_images/issues/status-code-401-start-onecx.sh.png) 
+
+Figure 2\. Status code 401 on Starting
+
+Solution 
+
+* Stop the services with cleanup (remove volumes)
+* Cleanup Docker resources as described above
+* Start again
+
+### [](#postgresdb-container-fails-on-start-up)PostgresDB Container fails on Start up
+
+The problem occurs when the version of the PostgreSQL database was changed without renew the affected database volumes.
+
+![start postgresdb failed on changed db version](_images/issues/start-postgresdb-failed-on-changed-db-version.png) 
+
+Figure 3\. Message: Failed postgresdb service on Start up
+
+Solution 
+
+* Stop the services with cleanup (remove volumes)
+* Start again
+
+### [](#failed-services-on-start-up)Failed Services on Start up
+
+The problem occurs when some services cannot be started successfully even after several attempts and timeouts.
+
+![incomplete onecx start](_images/issues/incomplete-onecx-start.png) 
+
+Figure 4\. Message: Failed Services on Start up
+
+Solution 
+
+* Start again
+
+### [](#missing-menu-in-browser)Missing Menu in Browser
+
+The problem occurs sometimes after succesful starting the services
+
+![missing menu on start](_images/issues/missing-menu-on-start.png) 
+
+Figure 5\. Message: Missing Menu in Browser
+
+Solution 
+
+* Remove Browser Cache & Cookies
+* Refresh browser
+
+### [](#bad-gateway-in-browser)Bad gateway in Browser
+
+The problem occurs sometimes after succesful starting the services
+
+![bad gateway on mfe start](_images/issues/bad-gateway-on-mfe-start.png) 
+
+Figure 6\. Message: Bad gateway in Browser
+
+Solution 
+
+* Start again
+* Refresh browser
+
+### [](#failed-to-set-up-networking)Failed to set up Networking
+
+The problem occurs when during start up there are collisions between Docker networks.  
+`Error response from daemon: failed to set up container networking`
+
+![docker deamon failed to setup container networking](_images/issues/docker-deamon_failed-to-setup-container-networking.png) 
+
+Figure 7\. Message: Failed to set up container networking
+
+Solution 
+
+* Remove all Docker networks with  
+```bash  
+docker network prune  
+```
+* Start again
+
+### [](#cannot-successful-pull)Cannot successful pull
+
+The issue occurs if the repository is updated with `git pull` (get latest version of onecx-local-env)
+
+![untracked files on pull.sh](_images/issues/untracked-files-on-pull.sh.png) 
+
+Figure 8\. Message: Untracked local files on pulling
+
+![traefik active created by root.sh](_images/issues/traefik-active_created-by-root.sh.png) 
+
+Figure 9\. The directory init\_data/traefik/active was created by root
+
+Solution 
+
+* Remove the active directory of Traefik manually by execution of  
+```bash  
+sudo rm -rf init_data/traefik/active  
+```
+* Reset the local repo (all other changes will be lost)  
+```bash  
+git reset --hard origin/main  
+```
+
+undefined
+====================
+## [](#additional-started-services)Additional Started Services
+
+In addition to the original OneCX products, some open-source tools are also used and launched.
+
+### [](#keycloak)Keycloak
+
+[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
+
+There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
+
+* <http://keycloak-app/admin/master/console/#/onecx>
+* Username: **admin**
+* Password: **admin**
+
+![screenshot successful keycloak onecx](_images/screenshot_successful-keycloak-onecx.png) 
+
+Figure 1\. Keycloak running on localhost
+
+### [](#pgadmin)pgAdmin
+
+[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
+
+| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* <http://pgadmin/>
+* Username: **user@1000kit.org**
+* Password: **admin**
+
+![screenshot successful pgadmin](_images/screenshot_successful-pgadmin.png) 
+
+Figure 2\. pgAdmin running on localhost
+
+### [](#traefik)Traefik
+
+Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
+
+* [Use Traefik for routing Microfrontends](scripts/toggle-mfes.html#routing-and-prioritize)
+* <http://traefik:8082/dashboard/>
+
+![screenshot successful traefik](_images/screenshot_successful-traefik.png) 
+
+Figure 3\. Traefik Dashboard
+
 Set up a WSL2 Distribution
 ====================
 Start Powershell as Administrator…​
@@ -28773,231 +28998,6 @@ unzip apache-maven-3.9.15-bin.zip
 # add maven to path
 # => ~/bin is already in $PATH
 ln -s ~/utils/apache-maven-3.9.15/bin/mvn ~/bin/mvn
-```
-
-undefined
-====================
-## [](#additional-started-services)Additional Started Services
-
-In addition to the original OneCX products, some open-source tools are also used and launched.
-
-### [](#keycloak)Keycloak
-
-[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
-
-There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
-
-* <http://keycloak-app/admin/master/console/#/onecx>
-* Username: **admin**
-* Password: **admin**
-
-![screenshot successful keycloak onecx](_images/screenshot_successful-keycloak-onecx.png) 
-
-Figure 1\. Keycloak running on localhost
-
-### [](#pgadmin)pgAdmin
-
-[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
-
-| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* <http://pgadmin/>
-* Username: **user@1000kit.org**
-* Password: **admin**
-
-![screenshot successful pgadmin](_images/screenshot_successful-pgadmin.png) 
-
-Figure 2\. pgAdmin running on localhost
-
-### [](#traefik)Traefik
-
-Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
-
-* [Use Traefik for routing Microfrontends](scripts/toggle-mfes.html#routing-and-prioritize)
-* <http://traefik:8082/dashboard/>
-
-![screenshot successful traefik](_images/screenshot_successful-traefik.png) 
-
-Figure 3\. Traefik Dashboard
-
-Troubleshooting Common Errors
-====================
-This page provides information for how to troubleshoot common problems and errors.
-
-## [](#general-advice)General Advice
-
-* Make sure you are using the latest version of **onecx-local-env**.
-* Make sure your system meets the [prerequisites](setup.html#prerequisites) for running **onecx-local-env**.
-* If you encounter an error, carefully read the error message and any accompanying logs. They often provide valuable clues about the root cause of the issue.
-* Check the official OneCX documentation and community forums for similar issues and solutions.
-* If the problem persists, consider reaching out to OneCX support or community forums for assistance.
-* When reporting an issue, provide detailed information about your environment, the steps to reproduce the problem, and any relevant logs or error messages.
-
-## [](#common-pitfalls)Common Pitfalls
-
-* Insufficient System Resources: Ensure your system has enough CPU, memory, and disk space to run the OneCX Local Environment smoothly.
-* Network Issues: Verify that your network connection is stable and that there are no firewall or proxy settings blocking necessary connections.
-* Incorrect Configuration: Double-check your configuration files for any typos or incorrect settings.
-* Outdated Software: Ensure that all required software dependencies are up-to-date.
-* Are you working within WSL on Windows? Please see the [prerequisites](setup.html#prerequisites) for important notes on using WSL.
-
-## [](#known-docker-issues)Known Docker Issues
-
-Docker is not perfect and sometimes issues may arise that are related to Docker itself rather than **onecx-local-env**. Here are some common Docker-related issues and their solutions:
-
-* Docker Daemon Not Running: Ensure that the Docker daemon is running before starting the OneCX Local Environment.
-* Port Conflicts: Check for any port conflicts with other applications running on your system.
-* Network Issues: Docker networking can sometimes be problematic. Cleanup Docker networks if you encounter networking issues.
-
-### [](#cleanup-docker-resources)Cleanup Docker Resources
-
-If you encounter persistent issues, it may be helpful to clean up Docker resources used by OneCX Local Environment.  
-Remove unused Docker resources with the following commands:
-
-```bash
-docker system prune -a
-docker volume prune
-docker network prune
-```
-
-| |  Be cautious when using these commands, as they will remove all unused Docker resources, which may affect other Docker containers and applications on your system. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-In case OneCX is already running, you can stop it with cleanup of volumes by executing:
-
-```bash
-./stop-onecx.sh -c
-```
-
-This will remove all volumes used by OneCX Local Environment, which can help resolve issues related to corrupted or inconsistent data.
-
-| |  Please note that this will delete all data stored in the volumes, so use this option with caution. |
-| ----------------------------------------------------------------------------------------------------- |
-
-Now you can cleanup any remaining Docker resources as described above and start OneCX again.
-
-## [](#specific-issues)Specific Issues
-
-### [](#status-code-000-on-imports)Status Code "000" on Imports
-
-The issue occurs when the script [import-onecx.sh](scripts/import.html) is executed (importing OneCX data)
-
-![status code 000 import onecx.sh](_images/issues/status-code-000-import-onecx.sh.png) 
-
-Figure 1\. Status code 000 on Imports
-
-Solution 
-
-* Check if the hosts file is up-to-date. See [Setup hosts](setup.html#hosts) instructions. Add missing entries if necessary.
-* Restart import with  
-```bash  
-./import-onecx.sh -x  
-```
-
-### [](#status-code-401-on-starting)Status Code "401" on Starting
-
-The problem occurs after logging into OneCX, although the start and import itself were successful.
-
-![status code 401 start onecx.sh](_images/issues/status-code-401-start-onecx.sh.png) 
-
-Figure 2\. Status code 401 on Starting
-
-Solution 
-
-* Stop the services with cleanup (remove volumes)
-* Cleanup Docker resources as described above
-* Start again
-
-### [](#postgresdb-container-fails-on-start-up)PostgresDB Container fails on Start up
-
-The problem occurs when the version of the PostgreSQL database was changed without renew the affected database volumes.
-
-![start postgresdb failed on changed db version](_images/issues/start-postgresdb-failed-on-changed-db-version.png) 
-
-Figure 3\. Message: Failed postgresdb service on Start up
-
-Solution 
-
-* Stop the services with cleanup (remove volumes)
-* Start again
-
-### [](#failed-services-on-start-up)Failed Services on Start up
-
-The problem occurs when some services cannot be started successfully even after several attempts and timeouts.
-
-![incomplete onecx start](_images/issues/incomplete-onecx-start.png) 
-
-Figure 4\. Message: Failed Services on Start up
-
-Solution 
-
-* Start again
-
-### [](#missing-menu-in-browser)Missing Menu in Browser
-
-The problem occurs sometimes after succesful starting the services
-
-![missing menu on start](_images/issues/missing-menu-on-start.png) 
-
-Figure 5\. Message: Missing Menu in Browser
-
-Solution 
-
-* Remove Browser Cache & Cookies
-* Refresh browser
-
-### [](#bad-gateway-in-browser)Bad gateway in Browser
-
-The problem occurs sometimes after succesful starting the services
-
-![bad gateway on mfe start](_images/issues/bad-gateway-on-mfe-start.png) 
-
-Figure 6\. Message: Bad gateway in Browser
-
-Solution 
-
-* Start again
-* Refresh browser
-
-### [](#failed-to-set-up-networking)Failed to set up Networking
-
-The problem occurs when during start up there are collisions between Docker networks.  
-`Error response from daemon: failed to set up container networking`
-
-![docker deamon failed to setup container networking](_images/issues/docker-deamon_failed-to-setup-container-networking.png) 
-
-Figure 7\. Message: Failed to set up container networking
-
-Solution 
-
-* Remove all Docker networks with  
-```bash  
-docker network prune  
-```
-* Start again
-
-### [](#cannot-successful-pull)Cannot successful pull
-
-The issue occurs if the repository is updated with `git pull` (get latest version of onecx-local-env)
-
-![untracked files on pull.sh](_images/issues/untracked-files-on-pull.sh.png) 
-
-Figure 8\. Message: Untracked local files on pulling
-
-![traefik active created by root.sh](_images/issues/traefik-active_created-by-root.sh.png) 
-
-Figure 9\. The directory init\_data/traefik/active was created by root
-
-Solution 
-
-* Remove the active directory of Traefik manually by execution of  
-```bash  
-sudo rm -rf init_data/traefik/active  
-```
-* Reset the local repo (all other changes will be lost)  
-```bash  
-git reset --hard origin/main  
 ```
 
 Tipps for Advanced Usage
@@ -29954,6 +29954,89 @@ Traefik is required for routing within Docker Compose networks as well as to and
 
 Figure 3\. Traefik Dashboard
 
+Check local Docker images
+====================
+The **check-images.sh** script is used to list local Docker images with version information. It can be run from the root directory of the **onecx-local-env** repository.
+
+Command to list all Docker images (without any filter).
+
+```bash
+./check-images.sh
+```
+
+![script check images.sh](../_images/scripts/script_check-images.sh.png) 
+
+Figure 1\. List of local Docker images
+
+| |  The local Docker images can easily be updated using the script [update-images.sh](update-images.html). |
+| --------------------------------------------------------------------------------------------------------- |
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
+
+\-f
+
+Image filter, see <https://docs.docker.com/reference/cli/docker/image/ls/#filter>
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-n <text>
+
+Name filter, find images which have <text> into image name
+
+## [](#examples)Examples
+
+### [](#list-images-with-onecx-in-name)List images with onecx in name
+
+```bash
+./check-images.sh   -n onecx
+```
+
+![script check images.sh filter onecx](../_images/scripts/script_check-images.sh_filter-onecx.png) 
+
+Figure 2\. List of local OneCX Docker images
+
+### [](#list-images-marked-as-dangling)List images marked as dangling
+
+List images marked as dangling, which means they are not tagged and not referenced by any container. This happens if there is a newer version of an image built or pulled. Such images can be removed without affecting any running container.
+
+List candidates for deletion
+
+```bash
+./check-images.sh   -f "dangling=true"
+```
+
+The -f option can be combined with the -n option to filter for dangling images with a specific name pattern.
+
+List outdated backend service images
+
+```bash
+./check-images.sh   -f "dangling=true" -n svc
+```
+
+## [](#understanding-the-listing)Understanding the Listing
+
+### [](#onecx-version-labelling)OneCX Version Labelling
+
+When building OneCX images, the version is set in the label **samo.project.version**. The value of this label is displayed in the listing as **VERSION**.
+
+### [](#outdated-images)Outdated Images
+
+Over time, local Docker images become outdated. Especially after updates, images with the tag `**<none>**` may be listed.
+
+![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
+
+Figure 3\. List of outdated Docker images
+
+Such images can be removed. The script [update-images.sh](update-images.html) can be used or native with
+
+```bash
+docker image rm <image-id>
+```
+
 Import OneCX Data
 ====================
 To operate a local OneCX, some services require initial data, e.g. the theme, the admin workspace, permissions, etc.
@@ -30063,89 +30146,6 @@ Figure 2\. Successful import of **t1** data with authenticated user **onecx\_t1\
 | |  If you want only import tenant-specific data but do not working afterwards with secure authentication then execute the [start-onecx.sh](start.html) script **without** **\-s** option again. This reset the security option on running services. |
 | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
-Check local Docker images
-====================
-The **check-images.sh** script is used to list local Docker images with version information. It can be run from the root directory of the **onecx-local-env** repository.
-
-Command to list all Docker images (without any filter).
-
-```bash
-./check-images.sh
-```
-
-![script check images.sh](../_images/scripts/script_check-images.sh.png) 
-
-Figure 1\. List of local Docker images
-
-| |  The local Docker images can easily be updated using the script [update-images.sh](update-images.html). |
-| --------------------------------------------------------------------------------------------------------- |
-
-## [](#available-options)Available Options
-
-The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
-
-\-f
-
-Image filter, see <https://docs.docker.com/reference/cli/docker/image/ls/#filter>
-
-\-h
-
-Displays help information about the script and its available options. If used then all other options are ignored.
-
-\-n <text>
-
-Name filter, find images which have <text> into image name
-
-## [](#examples)Examples
-
-### [](#list-images-with-onecx-in-name)List images with onecx in name
-
-```bash
-./check-images.sh   -n onecx
-```
-
-![script check images.sh filter onecx](../_images/scripts/script_check-images.sh_filter-onecx.png) 
-
-Figure 2\. List of local OneCX Docker images
-
-### [](#list-images-marked-as-dangling)List images marked as dangling
-
-List images marked as dangling, which means they are not tagged and not referenced by any container. This happens if there is a newer version of an image built or pulled. Such images can be removed without affecting any running container.
-
-List candidates for deletion
-
-```bash
-./check-images.sh   -f "dangling=true"
-```
-
-The -f option can be combined with the -n option to filter for dangling images with a specific name pattern.
-
-List outdated backend service images
-
-```bash
-./check-images.sh   -f "dangling=true" -n svc
-```
-
-## [](#understanding-the-listing)Understanding the Listing
-
-### [](#onecx-version-labelling)OneCX Version Labelling
-
-When building OneCX images, the version is set in the label **samo.project.version**. The value of this label is displayed in the listing as **VERSION**.
-
-### [](#outdated-images)Outdated Images
-
-Over time, local Docker images become outdated. Especially after updates, images with the tag `**<none>**` may be listed.
-
-![script check images.sh none images](../_images/scripts/script_check-images.sh_none-images.png) 
-
-Figure 3\. List of outdated Docker images
-
-Such images can be removed. The script [update-images.sh](update-images.html) can be used or native with
-
-```bash
-docker image rm <image-id>
-```
-
 List Docker Containers
 ====================
 The **list-containers.sh** script provides an overview of running Docker containers used in the OneCX Local Environment.  
@@ -30248,64 +30248,6 @@ A Java Truststore is created at the default location with the default password. 
 ![script setup truststore.sh default](../_images/scripts/script_setup-truststore.sh_default.png) 
 
 Figure 1\. Creating truststore with default settings
-
-Stop local OneCX
-====================
-The **stop-onecx.sh** script is used to stop the OneCX Local Environment. It can be run from the root directory of the **onecx-local-env** repository. Here the command for stopping the essential services without removing data:
-
-```bash
-./stop-onecx.sh
-```
-
-## [](#available-options)Available Options
-
-The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
-
-\-c
-
-Cleans up all volumes associated with the OneCX Local Environment when stopping the services. This will remove all data stored in the volumes, so use this option with caution. (Default: disabled)
-
-Deletion only occurs if the service shutdown was completely successful, meaning no services are still running. This prevents data loss in case of problems during shutdown. This is the case, for example, if **all** OneCX services have been started, but only the **base** profile is stopped.
-
-\-e
-
-The edition of OneCX to stop. This must match the edition that was used to start the environment. Supported editions are:
-
-* `v2` (Default).
-* `v1`
-
-\-h
-
-Displays help information about the script and its available options. If used then all other options are ignored.
-
-\-p <profile-name>
-
-The profile to use when stopping the environment. This must match the profile that was used to start the environment. The supported profiles are:
-
-* `base` (Default)
-* `all`
-
-## [](#examples)Examples
-
-### [](#stop-base-and-cleanup)Stop base and Cleanup
-
-The Docker services **essential** for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
-
-```bash
-./stop-onecx.sh -c
-```
-
-![script stop onecx.sh cleanup](../_images/scripts/script_stop-onecx.sh_cleanup.png) 
-
-Figure 1\. Successful stopping with cleanup
-
-### [](#stop-all-and-cleanup)Stop ALL and Cleanup
-
-**All** Docker services for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
-
-```bash
-./stop-onecx.sh -p all -c
-```
 
 Start local OneCX
 ====================
@@ -30434,6 +30376,64 @@ Traefik is required for routing within Docker Compose networks as well as to and
 ![screenshot successful traefik](../_images/screenshot_successful-traefik.png) 
 
 Figure 4\. Traefik Dashboard
+
+Stop local OneCX
+====================
+The **stop-onecx.sh** script is used to stop the OneCX Local Environment. It can be run from the root directory of the **onecx-local-env** repository. Here the command for stopping the essential services without removing data:
+
+```bash
+./stop-onecx.sh
+```
+
+## [](#available-options)Available Options
+
+The script accepts several optional options to customize its behavior. Some options can be combined. The options are:
+
+\-c
+
+Cleans up all volumes associated with the OneCX Local Environment when stopping the services. This will remove all data stored in the volumes, so use this option with caution. (Default: disabled)
+
+Deletion only occurs if the service shutdown was completely successful, meaning no services are still running. This prevents data loss in case of problems during shutdown. This is the case, for example, if **all** OneCX services have been started, but only the **base** profile is stopped.
+
+\-e
+
+The edition of OneCX to stop. This must match the edition that was used to start the environment. Supported editions are:
+
+* `v2` (Default).
+* `v1`
+
+\-h
+
+Displays help information about the script and its available options. If used then all other options are ignored.
+
+\-p <profile-name>
+
+The profile to use when stopping the environment. This must match the profile that was used to start the environment. The supported profiles are:
+
+* `base` (Default)
+* `all`
+
+## [](#examples)Examples
+
+### [](#stop-base-and-cleanup)Stop base and Cleanup
+
+The Docker services **essential** for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
+
+```bash
+./stop-onecx.sh -c
+```
+
+![script stop onecx.sh cleanup](../_images/scripts/script_stop-onecx.sh_cleanup.png) 
+
+Figure 1\. Successful stopping with cleanup
+
+### [](#stop-all-and-cleanup)Stop ALL and Cleanup
+
+**All** Docker services for OneCX will be terminated, including the deletion of all data. Technically, this involves deleting the Docker volumes used by OneCX.
+
+```bash
+./stop-onecx.sh -p all -c
+```
 
 Integrate Microfrontends into OneCX
 ====================
@@ -33137,6 +33137,8 @@ undefined
 
 undefined
 ====================
+## [](#%5Fonecx%5Fdata%5Forchestrator%5Fui)onecx-data-orchestrator-ui
+
 ## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
@@ -33217,8 +33219,6 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fdata%5Forchestrator%5Fui)onecx-data-orchestrator-ui
-
 ## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
@@ -37304,10 +37304,6 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 * `pgadmin`: pgAdmin is an open-source administration and development platform that offers a user-friendly graphical interface for managing and interacting with the local PostgreSQL database. This is optional.
 * `keycloak`: Keycloak is an open-source identity and access management system that simplifies authentication, authorization, and single sign-on for web and mobile applications.
 
-undefined
-====================
-
-
 OneCX Product Store Operator
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -37410,6 +37406,10 @@ app:
         description: OneCX Product Store Operator
         name: OneCX Product Store Operator
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -38254,19 +38254,26 @@ The Slot Group Component automatically monitors size changes and publishes resiz
 * **Event Type:** `SLOT_GROUP_RESIZED` (from `@onecx/integration-interface`)
 * **Debounce Time:** 100ms
 * **Payload:**  
-   * `slotName`: The name of the slot group  
-   * `slotDetails`: Object containing `width` and `height` properties
+   * `slotGroupName`: The name of the slot group  
+   * `slotGroupDetails`: Object containing `width` and `height` properties
 
 **Implementation:**
 
-The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published through the `EventsPublisher` TopicPublisher, making them available to all micro frontends in the shell.
+The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published on the `ResizedEventsTopic`, making them available to all micro frontends in the shell.
 
 ```typescript
+import { ResizedEventsTopic, ResizedEventType } from '@onecx/integration-interface'
+import { filter } from 'rxjs'
+
+const resizedEventsTopic = new ResizedEventsTopic()
+
 // Remote components can subscribe to resize events
-eventsPublisher.subscribe(EventType.SLOT_GROUP_RESIZED, (event) => {
-  console.log('Slot group resized:', event.payload.slotName);
-  console.log('New dimensions:', event.payload.slotDetails);
-});
+resizedEventsTopic
+  .pipe(filter((event) => event.type === ResizedEventType.SLOT_GROUP_RESIZED))
+  .subscribe((event) => {
+    console.log('Slot group resized:', event.payload.slotGroupName);
+    console.log('New dimensions:', event.payload.slotGroupDetails);
+  });
 ```
 
 #### [](#onecx-extensions-slot)OneCX Extensions Slot
@@ -38388,6 +38395,18 @@ For further details on version compatibility, refer to the following resources:
 
 * [OneCX Compatibility Documentation](../onecx-portal-ui-libs/onecx-compatibility.html)
 * [Troubleshooting for Shell Issues](#onecx-docs-dev:guides/troubleshooting.adoc#shell-related)
+
+### [](#upgrading-the-shell)Upgrading the Shell
+
+Upgrading the OneCX Shell means moving to a newer OneCX library major version in step with the Angular version it supports. Use the Angular - Libs Version Compatibility table above to choose the target library version, then follow the library migration guide for your target Angular version.
+
+#### [](#library-migration-guides)Library Migration Guides
+
+OneCX ships a migration guide for each Angular major-version transition. Complete the steps in the guide that matches the Angular version you are upgrading to:
+
+* [Migrate from Angular 18 to Angular 19 (libs v6)](../onecx-portal-ui-libs/migrations/angular-19/index.html)
+* [Migrate from Angular 19 to Angular 20 (libs v7)](../onecx-portal-ui-libs/migrations/angular-20/index.html)
+* [Migrate from Angular 20 to Angular 21 (libs v8)](../onecx-portal-ui-libs/migrations/angular-21/index.html)
 
 undefined
 ====================
@@ -38531,19 +38550,26 @@ The Slot Group Component automatically monitors size changes and publishes resiz
 * **Event Type:** `SLOT_GROUP_RESIZED` (from `@onecx/integration-interface`)
 * **Debounce Time:** 100ms
 * **Payload:**  
-   * `slotName`: The name of the slot group  
-   * `slotDetails`: Object containing `width` and `height` properties
+   * `slotGroupName`: The name of the slot group  
+   * `slotGroupDetails`: Object containing `width` and `height` properties
 
 **Implementation:**
 
-The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published through the `EventsPublisher` TopicPublisher, making them available to all micro frontends in the shell.
+The component uses a `ResizeObserver` to monitor the slot group’s dimensions. When changes occur, they are debounced and published on the `ResizedEventsTopic`, making them available to all micro frontends in the shell.
 
 ```typescript
+import { ResizedEventsTopic, ResizedEventType } from '@onecx/integration-interface'
+import { filter } from 'rxjs'
+
+const resizedEventsTopic = new ResizedEventsTopic()
+
 // Remote components can subscribe to resize events
-eventsPublisher.subscribe(EventType.SLOT_GROUP_RESIZED, (event) => {
-  console.log('Slot group resized:', event.payload.slotName);
-  console.log('New dimensions:', event.payload.slotDetails);
-});
+resizedEventsTopic
+  .pipe(filter((event) => event.type === ResizedEventType.SLOT_GROUP_RESIZED))
+  .subscribe((event) => {
+    console.log('Slot group resized:', event.payload.slotGroupName);
+    console.log('New dimensions:', event.payload.slotGroupDetails);
+  });
 ```
 
 #### [](#onecx-extensions-slot)OneCX Extensions Slot
@@ -38665,6 +38691,18 @@ For further details on version compatibility, refer to the following resources:
 
 * [OneCX Compatibility Documentation](../onecx-portal-ui-libs/onecx-compatibility.html)
 * [Troubleshooting for Shell Issues](#onecx-docs-dev:guides/troubleshooting.adoc#shell-related)
+
+### [](#upgrading-the-shell)Upgrading the Shell
+
+Upgrading the OneCX Shell means moving to a newer OneCX library major version in step with the Angular version it supports. Use the Angular - Libs Version Compatibility table above to choose the target library version, then follow the library migration guide for your target Angular version.
+
+#### [](#library-migration-guides)Library Migration Guides
+
+OneCX ships a migration guide for each Angular major-version transition. Complete the steps in the guide that matches the Angular version you are upgrading to:
+
+* [Migrate from Angular 18 to Angular 19 (libs v6)](../onecx-portal-ui-libs/migrations/angular-19/index.html)
+* [Migrate from Angular 19 to Angular 20 (libs v7)](../onecx-portal-ui-libs/migrations/angular-20/index.html)
+* [Migrate from Angular 20 to Angular 21 (libs v8)](../onecx-portal-ui-libs/migrations/angular-21/index.html)
 
 OneCX Tenant Management
 ====================
