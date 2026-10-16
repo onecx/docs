@@ -9,6 +9,8 @@ If the following packages are used in your project, update them to ensure compat
 | @ngx-translate/core                   | ^17.0.0          | Updated for Angular 20 compatibility                             |
 | @ngx-translate/http-loader            | ^17.0.0          | Compatible with @ngx-translate/core v17                          |
 | @primeng                              | ^20.3.0          | Updated for Angular 20 compatibility                             |
+| primeicons                            | ^7.0.0           | Updated for Angular 20 compatibility                             |
+| primeflex                             | ^4.0.0           | Updated for Angular 20 compatibility                             |
 | @primeng/themes                       | ^20.0.0          | Updated for Angular 20 compatibility                             |
 | ngrx-store-localstorage               | ^20.0.0          | Updated for Angular 20 compatibility                             |
 | zod                                   | ^4.0.0           | Updated for Angular 20 and @onecx/ngrx-accelerator compatibility |

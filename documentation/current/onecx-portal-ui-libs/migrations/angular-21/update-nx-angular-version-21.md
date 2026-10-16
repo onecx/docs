@@ -20,9 +20,9 @@ nx migrate latest --interactive
 
 Apply all proposed updates up to Angular 21.
 
-For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](#https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
+For details on NX / Angular compatibility, refer to the [Angular NX Version Matrix](https://nx.dev/docs/technologies/angular/guides/angular-nx-version-matrix).
 
-For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](#https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
+For details on `nx migrate`, refer to the official documentation: [NX Migrate Documentation](https://nx.dev/docs/guides/tips-n-tricks/advanced-update).
 
 ## [](#%5Fupdate%5Fpackage%5Fversions%5Fin%5Fpackage%5Fjson)Update package versions in `package.json`
 

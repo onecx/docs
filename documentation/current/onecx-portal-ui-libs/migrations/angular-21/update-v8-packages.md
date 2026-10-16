@@ -10,7 +10,9 @@ If the following packages are used in your project, update them to ensure compat
 | primeflex                                       | ^4.0.0           | Updated for Angular 21 compatibility              |
 | @primeng/themes                                 | ^21.0.0          | Required with PrimeNG v21                         |
 | @ngrx/\*                                        | ^21.0.0          | Required when using @onecx/ngrx-accelerator       |
+| ngrx-store-localstorage                         | ^21.0.0          | Updated for Angular 21 compatibility              |
 | @ngx-translate/core, @ngx-translate/http-loader | ^17.0.0          | Required by OneCX translation utilities           |
+| @angular-architects/module-federation           | ^21.0.0          | Updated for Angular 21 compatibility              |
 | ngx-build-plus                                  | ^21.0.0          | Angular 21 compatible version                     |
 
 ## [](#installation-commands)Installation Commands

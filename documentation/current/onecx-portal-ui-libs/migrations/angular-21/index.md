@@ -23,7 +23,7 @@ AI Migration Agent
 
 **Before You Start**
 
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html).
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html) ([published reference](https://onecx.github.io/docs/documentation/current/onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html)).
 
 **Setup**
 
