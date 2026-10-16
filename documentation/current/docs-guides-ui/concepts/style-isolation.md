@@ -32,7 +32,7 @@ Because `styles.css` rules are confined to your application’s own DOM region, 
 * **Targeting document-level elements**, such as `body` or `html`. These elements sit outside every application’s DOM region, so such rules never match.
 * **Using the universal selector (`*`) deliberately** to apply an application-wide reset inside your own DOM region. The selector still matches only your application’s descendants, so it can affect the whole application but cannot affect the shell or another application.
 * **Targeting classes or IDs you do not own** — for example a selector that happens to match a class name used by another application’s components, the shell’s own interface, or a shared library, in the hope of overriding its appearance. Even if the name matches, the rule is confined to your own DOM region and will not reach that content.
-* **Relying on `styles.css` to theme other applications or the shell.** Cross-application appearance (colors, fonts, spacing that should be consistent platform-wide) is a [theming](#documentation:docs-guides-ui:angular/theming.adoc) concern, expressed through shared theme variables, not through application styles reaching into content you do not own.
+* **Relying on `styles.css` to theme other applications or the shell.** Cross-application appearance (colors, fonts, spacing that should be consistent platform-wide) is a [theming](theming.html) concern, expressed through shared theme variables, not through application styles reaching into content you do not own.
 
 /* Anti-pattern: body and html are outside every application's DOM region */
 body {
@@ -58,5 +58,5 @@ body {
 ## [](#related)Related
 
 * [Assets](assets.html) — owns the **what** and **how** of exposing `styles.css` so the shell can load it; this page owns the **rules** for what belongs inside it once exposed.
-* [Theming](#documentation:docs-guides-ui:angular/theming.adoc) — the mechanism for platform-wide, cross-application appearance (theme variables), as opposed to an individual application’s own styles.
+* [Theming](theming.html) — the mechanism for platform-wide, cross-application appearance (theme variables), as opposed to an individual application’s own styles.
 * [Style scoping implementation deep dive](https://github.com/onecx/onecx-portal-ui-libs/blob/main/dev-docs/styles/scoping.adoc) — implementation details for the shell’s CSS scoping boundary.
