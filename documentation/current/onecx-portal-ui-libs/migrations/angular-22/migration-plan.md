@@ -9,7 +9,7 @@ This guide explains the changes an application needs to be aware of when moving 
 
 The one change that applies to every application is that the `@onecx/*` UI libraries change the component library they are built on: from **PrimeNG** to **Optimus UI**. Optimus UI is an open-source, community-maintained fork of PrimeNG that keeps the PrimeNG API. Because PrimeNG has stopped being open source, moving to Optimus UI lets OneCX keep its own libraries fully open source while staying close to the PrimeNG APIs that most applications already use.
 
-For the high-level plan and timing across the UI libraries and Shell, see the [Release Overview](#onecx-docs-overview:release-overview.adoc).
+For the high-level plan and timing across the UI libraries and Shell, see the [Release Overview](../../../onecx-docs-overview/release-overview.html).
 
 ## [](#why-were-changing)Why we’re changing
 

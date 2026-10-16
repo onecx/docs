@@ -9,7 +9,7 @@ This guide explains how to migrate a OneCX application to **Angular 23** and the
 
 Angular 23 support builds on Angular 22 support. The OneCX libraries have already moved from PrimeNG to **Optimus UI** with Angular 22 (see the [Angular 22 migration guide](../angular-22/migration-plan.html)). With Angular 23, the OneCX UI libraries take the next step: the `@onecx/*` accelerator components are rebuilt on **Angular Material**, styled with **Tailwind CSS** — a library maintained by the Angular team itself and closely aligned with the framework’s direction.
 
-For the high-level plan and rough timing, see the [Release Overview](#onecx-docs-overview:release-overview.adoc).
+For the high-level plan and rough timing, see the [Release Overview](../../../onecx-docs-overview/release-overview.html).
 
 ## [](#why-were-changing)Why we’re changing
 
@@ -64,7 +64,7 @@ The goal is to keep every component’s public API stable — selectors, inputs,
 
 Where can I follow along with progress?
 
-The step-by-step guides are published on this page as each area is finalized, and rough timing for the Angular 23 release is tracked on the [Release Overview](#onecx-docs-overview:release-overview.adoc).
+The step-by-step guides are published on this page as each area is finalized, and rough timing for the Angular 23 release is tracked on the [Release Overview](../../../onecx-docs-overview/release-overview.html).
 
 ## [](#related-resources)Related resources
 
