@@ -9,4 +9,4 @@ This page is the single entry point for working on a OneCX UI. It is aimed at in
 * [Troubleshooting](troubleshooting/index.html) — how to diagnose and resolve common problems when building, integrating, or running a OneCX UI application.
 * [Migrating an Existing App](migration/index.html) — the Angular guide for bringing an existing app to OneCX, whether you start from a vanilla app or upgrade an existing OneCX app across library versions.
 * [React](react/index.html) — onboarding a React app. A dedicated React integration guide is not yet available; until it lands, start from the React section, which lists the React libraries and integration guidelines.
-* [Contribution & Testing](#documentation:onecx-portal-ui-libs:contribution-testing/index.adoc) — how to test a change before opening a pull request, organized by verification scope (local-only, integration, and application-only).
+* [Contribution & Testing](../onecx-portal-ui-libs/contribution-testing/index.html) — how to test a change before opening a pull request, organized by verification scope (local-only, integration, and application-only).
