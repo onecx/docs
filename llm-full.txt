@@ -1381,290 +1381,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2037,6 +1753,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -2699,40 +2699,6 @@ The Workspace avoids tight coupling with individual apps. Instead, it relies on 
 * OneCX Portal UI Libs: shared components and styles used by the Workspace UI.
 * OneCX Theme: branding and theming across apps and workspaces.
 * OneCX IAM and Tenant: authentication, authorization, and tenant scoping for users.
-
-Module Federation Introduction
-====================
-[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
-
-**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
-
-**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
-
-This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
-
-Before proceeding, familiarize yourself with the following concepts:
-
-__Table 1\. Prerequisites__
-| Name                                                                                | Description                                                                                     |
-| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
-| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
-| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
-| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
-| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
-
-__Table 2\. Concepts__
-| Name                                                           | Description                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------- |
-| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
-| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
-
-__Table 3\. Microfrontends in OneCX__
-| Name                                                             | Description                                                                                                                    |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
-| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
-| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Microfrontend Bootstrapping
 ====================
@@ -3629,6 +3595,40 @@ The name of the remote entry file (usually `remoteEntry.js`).
 
 * [Content bootstrapping](bootstrapping.html) \- based on the content type and expose method bootstrap mechanism needs to be adjusted.
 * [Package sharing](https://www.angulararchitects.io/en/blog/getting-out-of-version-mismatch-hell-with-module-federation/) \- based on the content of the Microfrontend different packages are required or should be considered for sharing.
+
+Module Federation Introduction
+====================
+[Module Federation](https://module-federation.io/guide/start/) is a mechanism that allows code and resources to be shared across multiple JavaScript applications.
+
+**Module Federation** is used to support a **microfrontend-based architecture** where multiple applications can work together as a single user interface.
+
+**In OneCX**, Module Federation enables dynamic loading of UI modules, allowing applications to be developed, built, and deployed independently.
+
+This documentation section covers module federation-related concepts, implementation details, configuration, and best practices.
+
+Before proceeding, familiarize yourself with the following concepts:
+
+__Table 1\. Prerequisites__
+| Name                                                                                | Description                                                                                     |
+| ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [Webpack](https://webpack.js.org/concepts/)                                         | A static module bundler for **JavaScript applications** that supports Module Federation         |
+| [Module Federation](https://module-federation.io/)                                  | Enables scalable, independently deployable frontend architecture with **runtime integration**   |
+| [Web Components](https://developer.mozilla.org/en-US/docs/Web/API/Web%5Fcomponents) | Technology used to render applications in OneCX shell                                           |
+| [Microfrontends](https://micro-frontends.org/)                                      | Extends the concepts of microservices to the frontend world                                     |
+| [OneCX](https://onecx.github.io/docs/documentation/current/index.html)              | An **innovative open-source platform** solution enabling seamless **microfrontend integration** |
+
+__Table 2\. Concepts__
+| Name                                                           | Description                                                          |
+| -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| [Microfrontend content loading](concepts/content-loading.html) | Explains how content loading is handled in OneCX                     |
+| [Web Components](concepts/webcomponents/index.html)            | Explains how Web Components are used in OneCX to load Microfrontends |
+
+__Table 3\. Microfrontends in OneCX__
+| Name                                                             | Description                                                                                                                    |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [Bootstrapping](onecx/microfrontend-bootstrapping/index.html)    | Explains how to set the initial structure and configuration for a Microfrontend application in OneCX                           |
+| [Configuration](onecx/microfrontend-configuration.html)          | Explains how to configure a Microfrontend to use Module Federation for loading and dependency sharing in OneCX                 |
+| [@onecx/angular-webcomponents](onecx/angular-webcomponents.html) | Explains that exposing modules and remote components via Microfrontends is the recommended approach within the OneCX platform. |
 
 Clean Removal of a Custom App
 ====================
@@ -12136,247 +12136,6 @@ module.exports = {
 }
 ```
 
-AutoComplete for suggestions with array of type number
-====================
-## [](#goal)Goal: Add AutoComplete Number
-
-Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
-| -------------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleNumberArray: z
-        .union([z.string(), z.array(z.string())])
-        .transform((v: string | string[] | undefined): string[] | undefined =>
-        v instanceof Array || !v
-            ? (v as string[] | undefined)
-            : ([v] as string[]),
-        )
-        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
-        .optional(),
-```
-
-## [](#state-and-viewmodel)2\. State & viewmodel
-
-Add additional array member for the AutoComplete suggestions in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
-
-```javascript
-...
-    exampleNumberArrayOptions: number[]
-...
-```
-
-## [](#actions)3\. Actions
-
-Create following actions to handle the events regarding AutoComplete:
-
-_Adapt in File:_ `<feature>-search.actions.ts`
-
-```javascript
-...
-    events: {
-        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
-        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
-        'exampleNumberArray data loading failed': emptyProps(),
-        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
-        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
-    },
-...
-```
-
-## [](#html)4\. HTML
-
-Add the following code to your formGroup in the html file:
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-autoComplete
-            id="exampleNumberArray"
-            formControlName="exampleNumberArray"
-            (completeMethod)="searchexampleNumberArrayData($event)"
-            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
-            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
-            [forceSelection]="true"
-            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
-            [showEmptyMessage]="true"
-            [emptyMessage]="
-            vm?.exampleNumberArrayOptions?.length === 0
-                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
-                : ''
-            "
-            (onSelect)="selectexampleNumberArrayValue($event)"
-            (onUnselect)="unSelectexampleNumberArrayValue($event)"
-        >
-        </p-autoComplete>
-        <label for="exampleNumberArray">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)5\. Component
-
-Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-...
-    optionLabelTransformer(item: number): string {
-      return item?.toString();
-    }
-
-    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArrayDataTextEntered({
-            exampleNumberArrayInputValue: event.query,
-        }),
-      );
-    }
-
-    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionSelected({
-            selectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-
-    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
-            unSelectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-...
-```
-
-## [](#reducers)6\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
-    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: exampleNumberArrayOptions,
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
-    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { selectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => {
-      const isValuePresent =
-        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
-      return {
-        ...state,
-        exampleNumberArraySelectedValues: isValuePresent
-          ? state.exampleNumberArraySelectedValues
-          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
-        exampleNumberArrayOptions: [],
-      };
-    },
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { unSelectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
-        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
-      ),
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-...
-```
-
-## [](#selectors)7\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-search.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>SearchViewModel = createSelector(
-      ...
-      <feature>SearchSelectors.
-      selectExampleNumberArrayOptions,
-      ...
-      (
-        ...
-        exampleNumberArrayOptions,
-        ...
-      ): <%= featureClassName %>SearchViewModel => ({
-        ...
-        exampleNumberArrayOptions,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)8\. Effects
-
-Create the effect for getting the suggestions
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-...
-    searchexampleNumberArray$ = createEffect(() =>
-      this.actions$.pipe(
-        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
-        mergeMap((action) => {
-          return this.<feature>Service
-            .searchexampleNumberArray(action.exampleNumberArrayInputText)
-            .pipe(
-              map((response) =>
-                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
-                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
-                }),
-              ),
-              catchError(() =>
-                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
-              ),
-            );
-        }),
-      ),
-    );
-...
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
 AutoComplete for suggestions with array of type object
 ====================
 ## [](#goal)Goal: Add Autocmplete Object
@@ -12692,13 +12451,246 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
 
-AutoComplete search criteria input field
+AutoComplete for suggestions with array of type number
 ====================
-There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+## [](#goal)Goal: Add AutoComplete Number
 
-* [AutoComplete with array of type string](autocomplete-string.html)
-* [AutoComplete with array of type number](autocomplete-number.html)
-* [AutoComplete with array of type object](autocomplete-object.html)
+Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
+| -------------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleNumberArray: z
+        .union([z.string(), z.array(z.string())])
+        .transform((v: string | string[] | undefined): string[] | undefined =>
+        v instanceof Array || !v
+            ? (v as string[] | undefined)
+            : ([v] as string[]),
+        )
+        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
+        .optional(),
+```
+
+## [](#state-and-viewmodel)2\. State & viewmodel
+
+Add additional array member for the AutoComplete suggestions in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
+
+```javascript
+...
+    exampleNumberArrayOptions: number[]
+...
+```
+
+## [](#actions)3\. Actions
+
+Create following actions to handle the events regarding AutoComplete:
+
+_Adapt in File:_ `<feature>-search.actions.ts`
+
+```javascript
+...
+    events: {
+        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
+        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
+        'exampleNumberArray data loading failed': emptyProps(),
+        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
+        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
+    },
+...
+```
+
+## [](#html)4\. HTML
+
+Add the following code to your formGroup in the html file:
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-autoComplete
+            id="exampleNumberArray"
+            formControlName="exampleNumberArray"
+            (completeMethod)="searchexampleNumberArrayData($event)"
+            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
+            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
+            [forceSelection]="true"
+            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
+            [showEmptyMessage]="true"
+            [emptyMessage]="
+            vm?.exampleNumberArrayOptions?.length === 0
+                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
+                : ''
+            "
+            (onSelect)="selectexampleNumberArrayValue($event)"
+            (onUnselect)="unSelectexampleNumberArrayValue($event)"
+        >
+        </p-autoComplete>
+        <label for="exampleNumberArray">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)5\. Component
+
+Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+...
+    optionLabelTransformer(item: number): string {
+      return item?.toString();
+    }
+
+    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArrayDataTextEntered({
+            exampleNumberArrayInputValue: event.query,
+        }),
+      );
+    }
+
+    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionSelected({
+            selectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+
+    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
+            unSelectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+...
+```
+
+## [](#reducers)6\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
+    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: exampleNumberArrayOptions,
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
+    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { selectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => {
+      const isValuePresent =
+        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
+      return {
+        ...state,
+        exampleNumberArraySelectedValues: isValuePresent
+          ? state.exampleNumberArraySelectedValues
+          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
+        exampleNumberArrayOptions: [],
+      };
+    },
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { unSelectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
+        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
+      ),
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+...
+```
+
+## [](#selectors)7\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-search.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>SearchViewModel = createSelector(
+      ...
+      <feature>SearchSelectors.
+      selectExampleNumberArrayOptions,
+      ...
+      (
+        ...
+        exampleNumberArrayOptions,
+        ...
+      ): <%= featureClassName %>SearchViewModel => ({
+        ...
+        exampleNumberArrayOptions,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)8\. Effects
+
+Create the effect for getting the suggestions
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+...
+    searchexampleNumberArray$ = createEffect(() =>
+      this.actions$.pipe(
+        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
+        mergeMap((action) => {
+          return this.<feature>Service
+            .searchexampleNumberArray(action.exampleNumberArrayInputText)
+            .pipe(
+              map((response) =>
+                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
+                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
+                }),
+              ),
+              catchError(() =>
+                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
+              ),
+            );
+        }),
+      ),
+    );
+...
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
 
 AutoComplete for suggestions with array of type string
 ====================
@@ -12935,6 +12927,14 @@ _Adapt in File:_ `<feature>-search.effects.ts`
 
 | |  Don’t forget to add the translations to your **de.json** and **en.json**. |
 | ---------------------------------------------------------------------------- |
+
+AutoComplete search criteria input field
+====================
+There are different cases for implementing AutoComplete depending on the array type of the Request and Response object for the suggestions/options. Each case requires a different way of implementation:
+
+* [AutoComplete with array of type string](autocomplete-string.html)
+* [AutoComplete with array of type number](autocomplete-number.html)
+* [AutoComplete with array of type object](autocomplete-object.html)
 
 Create Example Quarkus Project
 ====================
@@ -26923,15 +26923,15 @@ Run the codemod first; then complete the [manual steps](#manual-steps) it cannot
 
 Replace the PrimeNG packages with their Optimus UI equivalents. The codemod updates these automatically; if you migrate by hand, apply this mapping:
 
-| PrimeNG package  | Optimus UI package        | Notes                                                               |
-| ---------------- | ------------------------- | ------------------------------------------------------------------- |
-| primeng          | @openng/optimus-ui        | Main component library                                              |
-| primeicons       | @openng/icons             | Icon font                                                           |
-| @primeng/themes  | @openng/optimus-ui-themes | Presets and theme utilities (Aura, Lara, Nora, Material)            |
-| @primeuix/themes | @openng/optimus-ui-themes | If you used the PrimeUix themes package directly                    |
-| @primeuix/styled | @openng/optimus-ui-styled | Low-level styled utilities                                          |
-| primelocale      | @openng/optimus-ui-locale | Locale data                                                         |
-| primeflex        | _unchanged_               | Utility-CSS package, not part of the component library — keep as-is |
+| PrimeNG package  | Optimus UI package                            | Notes                                                                                                                                                                                                                                                           |
+| ---------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| primeng          | @openng/optimus-ui                            | Main component library                                                                                                                                                                                                                                          |
+| primeicons       | @openng/icons                                 | Icon font                                                                                                                                                                                                                                                       |
+| @primeng/themes  | @openng/optimus-ui-themes                     | Presets and theme utilities (Aura, Lara, Nora, Material)                                                                                                                                                                                                        |
+| @primeuix/themes | @openng/optimus-ui-themes                     | If you used the PrimeUix themes package directly                                                                                                                                                                                                                |
+| @primeuix/styled | @openng/optimus-ui-styled                     | Low-level styled utilities                                                                                                                                                                                                                                      |
+| primelocale      | @openng/optimus-ui-locale                     | Locale data                                                                                                                                                                                                                                                     |
+| primeflex        | tailwindcss \+ @openng/optimus-ui-tailwindcss | Utility CSS. The OneCX libraries v9+ ship their own compiled, scoped Tailwind CSS (built on the Optimus UI styled-mode preset) instead of PrimeFlex. Keep consuming the library’s compiled scoped CSS — see [Utility CSS contract](#utility-css-contract) below |
 
 For a fresh install you can add the Optimus UI packages directly:
 
@@ -27013,9 +27013,35 @@ No `primeng`, `primeicons`, @primeng/, or `@primeuix/` imports or dependencies r
 
 ## [](#what-is-unaffected)What is unaffected
 
-* `primeflex` (utility CSS) stays as-is — it is a separate package that Optimus UI still uses.
+* The PrimeNG/Optimus UI component themes are unchanged — this migration touches only the utility CSS.
 The `pi` / pi- CSS icon classes emitted by `@openng/icons` are unchanged (Optimus UI inherits PrimeNG’s icon CSS class names), so any CSS or class-matching against `pi-` continues to work. 
 * Application-level OneCX integration (routing, module federation, shell integration) is unchanged.
+
+## [](#utility-css-contract)Utility CSS contract
+
+As part of the move to Optimus UI, `primeflex` was replaced with **Tailwind CSS v4**. This change affects how the OneCX accelerator components are styled, so it is covered here alongside the component swap.
+
+Starting with v9, the `@onecx/angular-accelerator` and `@onecx/angular-standalone-shell` libraries no longer depend on PrimeFlex. Instead, each ships a **compiled, scoped CSS file** — `assets/tailwind.css` — built with Tailwind CSS v4 and the Optimus UI styled-mode preset (`@openng/optimus-ui-tailwindcss`). This file is the single stylesheet that styles the OneCX utility layout: keep importing it. The accelerator exposes it through its `style` export, so an application that already imports \`@onecx/angular-accelerator’s style picks it up without any change.
+
+The compiled CSS is deliberately scoped and safe to drop into an application that styles its own components:
+
+* **No global reset.** It does not pull in Tailwind’s preflight (the browser-style reset), so it will not override your own element defaults or reset your application’s base styles.
+* **Scoped utility generation.** Only the utilities the OneCX components actually use are emitted, from the library’s own templates — not a blanket set applied to your markup.
+* **Optimus-aware semantics.** It carries the Optimus UI styled-mode utilities and theme tokens, so the same semantic names the components use are available to you.
+
+If you want a utility the OneCX components do not emit, you can define it yourself in your own Tailwind CSS. The Optimus UI preset exposes the semantic utilities and color tokens as regular Tailwind CSS, so your own utilities stay on-theme:
+
+```css
+@utility text-brand-subtle {
+  color: var(--color-primary-200);
+}
+
+@utility bg-surface-card {
+  background: var(--color-surface-0);
+}
+```
+
+Because the library’s file is a fully-resolved stylesheet rather than a Tailwind entry point, you can import it alongside your own Tailwind CSS without the two conflicting.
 
 ## [](#related)Related
 
@@ -27078,7 +27104,12 @@ Migrate OneCX App from Angular 22 to Angular 23
 
 This guide explains how to migrate a OneCX application to **Angular 23** and the accompanying changes to the OneCX UI libraries.
 
-Angular 23 support builds on Angular 22 support. The OneCX libraries have already moved from PrimeNG to **Optimus UI** with Angular 22 (see the [Angular 22 migration guide](../angular-22/migration-plan.html)). With Angular 23, the OneCX UI libraries take the next step: the `@onecx/*` accelerator components are rebuilt on **Angular Material**, styled with **Tailwind CSS** — a library maintained by the Angular team itself and closely aligned with the framework’s direction.
+This work has two distinct parts, and it is worth keeping them separate:
+
+* **Utility CSS — PrimeFlex → Tailwind CSS.** This is a utility-CSS change in the OneCX UI libraries v9 line (Angular 22). It replaces the PrimeFlex utility classes with **Tailwind CSS v4** (Optimus UI styled mode) and ships a compiled, scoped CSS contract. It is independent of any component rebuild and is documented in the [Angular 22 migration guide](../angular-22/migrate-to-optimus-ui.html#utility-css-contract).
+* **Components — rebuild on Angular Material.** This is the larger, still **deferred** step. The `@onecx/*` accelerator components are rebuilt on **Angular Material**, styled with **Tailwind CSS** — a library maintained by the Angular team itself and closely aligned with the framework’s direction. The step-by-step guides for this part are published here as each area is finalized.
+
+Angular 23 support builds on Angular 22 support. The OneCX libraries have already moved from PrimeNG to **Optimus UI** with Angular 22 (see the [Angular 22 migration guide](../angular-22/migration-plan.html)); the PrimeFlex → Tailwind utility migration described above ships in the same v9 line.
 
 For the high-level plan and rough timing, see the [Release Overview](../../../onecx-docs-overview/release-overview.html).
 
@@ -27103,17 +27134,20 @@ Applications that rely on the PrimeNG-style API are not forced to change. OneCX 
 
 ## [](#what-you-need-to-do)What you need to do
 
-The one change that applies to every application is the same: pick up the Angular 23 support for the OneCX UI libraries when it ships.
+The PrimeFlex → Tailwind utility-CSS migration ships with the library and is transparent: your application keeps consuming the library’s compiled, scoped CSS exactly as before, and its internal utility class names are the library’s concern. No change to your application is required for that part.
+
+The Angular Material component rebuild is the part tied to Angular 23\. For it, the one change that applies to every application is: pick up the Angular 23 support for the OneCX UI libraries when it ships.
 
 * If you keep your application’s UI on Optimus UI (PrimeNG-style components), that is all you need to do.
 * If you want to adopt Angular Material + Tailwind CSS alongside OneCX, you additionally migrate your own components — see [Migration steps](#migration-steps).
 
 ## [](#migration-steps)Migration steps
 
-The detailed, step-by-step guides for adopting Angular Material + Tailwind CSS are being published as each area is finalized. The migration is planned across the following areas; each will link to its own guide once it is available:
+**Layout utilities (PrimeFlex → Tailwind)** is already complete for the v9 libraries — the PrimeFlex utility classes are replaced by Tailwind CSS utilities behind the compiled, scoped CSS contract, with no separate migration step required. See the [utility CSS contract](../angular-22/migrate-to-optimus-ui.html#utility-css-contract).
+
+The remaining areas are part of the Angular Material component rebuild. The detailed, step-by-step guides for adopting Angular Material + Tailwind CSS are being published as each area is finalized; each will link to its own guide once it is available:
 
 * **Theming** — moving from PrimeNG/Optimus design tokens to Material Design 3 tokens with Tailwind CSS.
-* **Layout utilities** — replacing PrimeFlex utility classes with Tailwind CSS utilities.
 * **Components** — migrating the PrimeNG-backed components to their Angular Material equivalents (or OneCX first-party components where Material has no equivalent).
 * **Optimus UI** — configuring your application to keep using Optimus UI (the PrimeNG-compatible fork) for the PrimeNG/Optimus utilities, if you choose that path.
 
@@ -28726,6 +28760,52 @@ Click here to view entries to be added to the **hosts** file
 
 After completing the steps outlined in this guide, **onecx-local-env** is now ready to run OneCX locally. Check the instructions on how to start, access, and stop the local environment in the [Run OneCX](run-onecx.html) guide.
 
+undefined
+====================
+## [](#additional-started-services)Additional Started Services
+
+In addition to the original OneCX products, some open-source tools are also used and launched.
+
+### [](#keycloak)Keycloak
+
+[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
+
+There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
+
+* <http://keycloak-app/admin/master/console/#/onecx>
+* Username: **admin**
+* Password: **admin**
+
+![screenshot successful keycloak onecx](_images/screenshot_successful-keycloak-onecx.png) 
+
+Figure 1\. Keycloak running on localhost
+
+### [](#pgadmin)pgAdmin
+
+[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
+
+| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* <http://pgadmin/>
+* Username: **user@1000kit.org**
+* Password: **admin**
+
+![screenshot successful pgadmin](_images/screenshot_successful-pgadmin.png) 
+
+Figure 2\. pgAdmin running on localhost
+
+### [](#traefik)Traefik
+
+Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
+
+* [Use Traefik for routing Microfrontends](scripts/toggle-mfes.html#routing-and-prioritize)
+* <http://traefik:8082/dashboard/>
+
+![screenshot successful traefik](_images/screenshot_successful-traefik.png) 
+
+Figure 3\. Traefik Dashboard
+
 Troubleshooting Common Errors
 ====================
 This page provides information for how to troubleshoot common problems and errors.
@@ -28904,52 +28984,6 @@ sudo rm -rf init_data/traefik/active
 ```bash  
 git reset --hard origin/main  
 ```
-
-undefined
-====================
-## [](#additional-started-services)Additional Started Services
-
-In addition to the original OneCX products, some open-source tools are also used and launched.
-
-### [](#keycloak)Keycloak
-
-[Keycloak](https://www.keycloak.org/) is an open-source software for Identity and Access Management (IAM) that provides features like single sign-on (SSO), user authentication, and authorization for modern applications and services.
-
-There is an OneCX realm which contains all configurations needed by OneCX like users, roles, clients etc.
-
-* <http://keycloak-app/admin/master/console/#/onecx>
-* Username: **admin**
-* Password: **admin**
-
-![screenshot successful keycloak onecx](_images/screenshot_successful-keycloak-onecx.png) 
-
-Figure 1\. Keycloak running on localhost
-
-### [](#pgadmin)pgAdmin
-
-[pgAdmin](https://www.pgadmin.org/) is a popular, open-source administration and development platform for [PostgreSQL](https://www.postgresql.org/) databases.
-
-| |  This service is optional, as it is not strictly necessary for OneCX to function. For a better user experience, use a native client directly on your computer. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* <http://pgadmin/>
-* Username: **user@1000kit.org**
-* Password: **admin**
-
-![screenshot successful pgadmin](_images/screenshot_successful-pgadmin.png) 
-
-Figure 2\. pgAdmin running on localhost
-
-### [](#traefik)Traefik
-
-Traefik is required for routing within Docker Compose networks as well as to and from networks outside this network.
-
-* [Use Traefik for routing Microfrontends](scripts/toggle-mfes.html#routing-and-prioritize)
-* <http://traefik:8082/dashboard/>
-
-![screenshot successful traefik](_images/screenshot_successful-traefik.png) 
-
-Figure 3\. Traefik Dashboard
 
 Set up a WSL2 Distribution
 ====================

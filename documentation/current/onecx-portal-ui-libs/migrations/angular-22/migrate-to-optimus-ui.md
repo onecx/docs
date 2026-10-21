@@ -30,15 +30,15 @@ Run the codemod first; then complete the [manual steps](#manual-steps) it cannot
 
 Replace the PrimeNG packages with their Optimus UI equivalents. The codemod updates these automatically; if you migrate by hand, apply this mapping:
 
-| PrimeNG package  | Optimus UI package        | Notes                                                               |
-| ---------------- | ------------------------- | ------------------------------------------------------------------- |
-| primeng          | @openng/optimus-ui        | Main component library                                              |
-| primeicons       | @openng/icons             | Icon font                                                           |
-| @primeng/themes  | @openng/optimus-ui-themes | Presets and theme utilities (Aura, Lara, Nora, Material)            |
-| @primeuix/themes | @openng/optimus-ui-themes | If you used the PrimeUix themes package directly                    |
-| @primeuix/styled | @openng/optimus-ui-styled | Low-level styled utilities                                          |
-| primelocale      | @openng/optimus-ui-locale | Locale data                                                         |
-| primeflex        | _unchanged_               | Utility-CSS package, not part of the component library — keep as-is |
+| PrimeNG package  | Optimus UI package                            | Notes                                                                                                                                                                                                                                                           |
+| ---------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| primeng          | @openng/optimus-ui                            | Main component library                                                                                                                                                                                                                                          |
+| primeicons       | @openng/icons                                 | Icon font                                                                                                                                                                                                                                                       |
+| @primeng/themes  | @openng/optimus-ui-themes                     | Presets and theme utilities (Aura, Lara, Nora, Material)                                                                                                                                                                                                        |
+| @primeuix/themes | @openng/optimus-ui-themes                     | If you used the PrimeUix themes package directly                                                                                                                                                                                                                |
+| @primeuix/styled | @openng/optimus-ui-styled                     | Low-level styled utilities                                                                                                                                                                                                                                      |
+| primelocale      | @openng/optimus-ui-locale                     | Locale data                                                                                                                                                                                                                                                     |
+| primeflex        | tailwindcss \+ @openng/optimus-ui-tailwindcss | Utility CSS. The OneCX libraries v9+ ship their own compiled, scoped Tailwind CSS (built on the Optimus UI styled-mode preset) instead of PrimeFlex. Keep consuming the library’s compiled scoped CSS — see [Utility CSS contract](#utility-css-contract) below |
 
 For a fresh install you can add the Optimus UI packages directly:
 
@@ -120,9 +120,35 @@ No `primeng`, `primeicons`, @primeng/, or `@primeuix/` imports or dependencies r
 
 ## [](#what-is-unaffected)What is unaffected
 
-* `primeflex` (utility CSS) stays as-is — it is a separate package that Optimus UI still uses.
+* The PrimeNG/Optimus UI component themes are unchanged — this migration touches only the utility CSS.
 The `pi` / pi- CSS icon classes emitted by `@openng/icons` are unchanged (Optimus UI inherits PrimeNG’s icon CSS class names), so any CSS or class-matching against `pi-` continues to work. 
 * Application-level OneCX integration (routing, module federation, shell integration) is unchanged.
+
+## [](#utility-css-contract)Utility CSS contract
+
+As part of the move to Optimus UI, `primeflex` was replaced with **Tailwind CSS v4**. This change affects how the OneCX accelerator components are styled, so it is covered here alongside the component swap.
+
+Starting with v9, the `@onecx/angular-accelerator` and `@onecx/angular-standalone-shell` libraries no longer depend on PrimeFlex. Instead, each ships a **compiled, scoped CSS file** — `assets/tailwind.css` — built with Tailwind CSS v4 and the Optimus UI styled-mode preset (`@openng/optimus-ui-tailwindcss`). This file is the single stylesheet that styles the OneCX utility layout: keep importing it. The accelerator exposes it through its `style` export, so an application that already imports \`@onecx/angular-accelerator’s style picks it up without any change.
+
+The compiled CSS is deliberately scoped and safe to drop into an application that styles its own components:
+
+* **No global reset.** It does not pull in Tailwind’s preflight (the browser-style reset), so it will not override your own element defaults or reset your application’s base styles.
+* **Scoped utility generation.** Only the utilities the OneCX components actually use are emitted, from the library’s own templates — not a blanket set applied to your markup.
+* **Optimus-aware semantics.** It carries the Optimus UI styled-mode utilities and theme tokens, so the same semantic names the components use are available to you.
+
+If you want a utility the OneCX components do not emit, you can define it yourself in your own Tailwind CSS. The Optimus UI preset exposes the semantic utilities and color tokens as regular Tailwind CSS, so your own utilities stay on-theme:
+
+```css
+@utility text-brand-subtle {
+  color: var(--color-primary-200);
+}
+
+@utility bg-surface-card {
+  background: var(--color-surface-0);
+}
+```
+
+Because the library’s file is a fully-resolved stylesheet rather than a Tailwind entry point, you can import it alongside your own Tailwind CSS without the two conflicting.
 
 ## [](#related)Related
 
