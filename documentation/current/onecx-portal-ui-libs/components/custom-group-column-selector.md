@@ -1,0 +1,29 @@
+# OneCX CustomGroupColumnSelector
+
+## [](#overview)Overview
+
+The CustomGroupColumnSelector component (`<ocx-custom-group-column-selector>`) opens a dialog with a pick-list that lets the user choose which columns are active (shown) and which are inactive (hidden) for a data view. It also exposes the dialog’s own configuration.
+
+The component is a building block hosted by [InteractiveDataView](interactive-data-view/index.html) in the `table` layout. The dialog configuration inputs below are forwarded from `InteractiveDataView` to the hosted selector.
+
+## [](#inputs)Column group selector dialog inputs
+
+__Table 1\. Column group selector dialog inputs__
+| Input name                         | Type    | Default | Description                                                                                                                                                                                                                                       |
+| ---------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| draggableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be dragged by the user.                                                                                                                                                                                   |
+| resizableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be resized by the user. Independent of draggableColumnGroupSelectorDialog.                                                                                                                                |
+| restoreColumnGroupSelectorOrder    | boolean | false   | When enabled, transferring columns rebuilds the active and inactive lists in the order of the configured columns, so the active columns keep the main column order after a save. When disabled, the normal pick-list transfer order is preserved. |
+
+## [](#behavior)Save behavior
+
+The Save button is enabled only when at least one column is active and the active columns or the action-column settings have actually changed. Merely highlighting a pick-list item does not count as a change, and restoring all committed values disables Save again. When enabled, transferring and saving a column keeps the active columns in the main column order.
+
+## [](#outputs)Outputs
+
+__Table 2\. CustomGroupColumnSelector outputs__
+| Output name               | Type                                                  | Description                                                            |
+| ------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------- |
+| columnSelectionChanged    | EventEmitter<ColumnSelectionChangedEvent>             | Emits the resulting active columns when the column selection is saved. |
+| actionColumnConfigChanged | EventEmitter<ActionColumnChangedEvent>                | Emits the frozen/position action-column settings when they are saved.  |
+| componentStateChanged     | EventEmitter<CustomGroupColumnSelectorComponentState> | Emits the combined component state after save or initialization.       |
