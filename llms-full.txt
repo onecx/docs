@@ -1381,290 +1381,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2037,6 +1753,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -6343,6 +6343,57 @@ Disclaimer: If any of the applications feature modules use ngx-translate feature
 
 After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
 
+Assets
+====================
+In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which will be added per-technology on the Recommended Setup how-to pages once they are published.
+
+## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
+
+In a standalone web application, static assets are served from the application’s own origin: the browser requests `/assets/icons/logo.svg`, the server resolves that path against the application’s build output, and the asset loads.
+
+OneCX applications do not run standalone. Each application is packaged as a Micro Frontend and **loaded into the OneCX shell**. When the shell loads a Micro Frontend, it is loaded relative to the shell’s deployment rather than from the application’s own origin. This changes how asset URLs are resolved: a path that the application’s build emitted is no longer guaranteed to resolve against the location the browser actually loads the application from.
+
+As a result, an asset that is merely **present** in a library’s npm package — or that is bundled into the application’s build output — is not enough for the application to **reference** it at runtime from the shell. The asset must be published to a path the application’s own build serves, and the code must reference it through that published path. This is why asset handling in OneCX is not the same as in a standalone app: the special treatment exists to make library- and application-provided assets resolvable even though the application runs from the shell.
+
+The same principle applies in both directions:
+
+* **Library-provided assets** (e.g. the translation files or icons a OneCX library ships) must be exposed by the application so the application can resolve them at runtime.
+* **Application-provided assets** (the app’s own styles and other static files) must be exposed so the shell can load and apply them when the application is active.
+
+## [](#library-assets)Library assets
+
+OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
+
+The exact build configuration — how to declare the assets of a given library in an Angular or React application — will be described on the Recommended Setup **Expose Library Assets** page for each technology once that guidance is published. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
+
+### [](#translation-assets)Translation assets (required)
+
+The most important library assets are **translation files**: a library that provides user-facing text ships i18n files for the languages it supports, and the application that uses the library is responsible for making those files available. Without them, library-provided strings fall back to untranslated keys or missing text.
+
+The **translation files** of the OneCX libraries the application uses are required to be exposed: they are what carry the user-facing text, and without them the library’s strings fall back to untranslated keys or missing text.
+
+## [](#application-assets)Application assets
+
+An application should also expose its own assets so the shell can apply them when the application is active.
+
+### [](#application-styles)Application styles (recommended)
+
+In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
+
+Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — will be described on the Recommended Setup **Expose Component Styles** page once that guidance is published.
+
+Note the boundary with the **[Style Isolation](style-isolation.html)** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
+
+## [](#related)Related
+
+| |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* [Style Isolation](style-isolation.html) — rules for what belongs in an application’s `styles.css` and how the platform scopes it.
+
+| |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
 Authentication
 ====================
 In OneCX, the shell has full control of the authentication flow and the user’s session. An integrated application never implements its own login, token storage, or session logic — it relies on the shell for all of that and limits itself to the small set of interactions described on this page.
@@ -6434,57 +6485,6 @@ The shell keeps the access token valid transparently: both the Angular HTTP inte
 * [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
 * [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
 * [Permissions Handling](../features/permissions.html) — rendering UI conditionally based on the permissions the shell exposes for the current user.
-
-Assets
-====================
-In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which will be added per-technology on the Recommended Setup how-to pages once they are published.
-
-## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
-
-In a standalone web application, static assets are served from the application’s own origin: the browser requests `/assets/icons/logo.svg`, the server resolves that path against the application’s build output, and the asset loads.
-
-OneCX applications do not run standalone. Each application is packaged as a Micro Frontend and **loaded into the OneCX shell**. When the shell loads a Micro Frontend, it is loaded relative to the shell’s deployment rather than from the application’s own origin. This changes how asset URLs are resolved: a path that the application’s build emitted is no longer guaranteed to resolve against the location the browser actually loads the application from.
-
-As a result, an asset that is merely **present** in a library’s npm package — or that is bundled into the application’s build output — is not enough for the application to **reference** it at runtime from the shell. The asset must be published to a path the application’s own build serves, and the code must reference it through that published path. This is why asset handling in OneCX is not the same as in a standalone app: the special treatment exists to make library- and application-provided assets resolvable even though the application runs from the shell.
-
-The same principle applies in both directions:
-
-* **Library-provided assets** (e.g. the translation files or icons a OneCX library ships) must be exposed by the application so the application can resolve them at runtime.
-* **Application-provided assets** (the app’s own styles and other static files) must be exposed so the shell can load and apply them when the application is active.
-
-## [](#library-assets)Library assets
-
-OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
-
-The exact build configuration — how to declare the assets of a given library in an Angular or React application — will be described on the Recommended Setup **Expose Library Assets** page for each technology once that guidance is published. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
-
-### [](#translation-assets)Translation assets (required)
-
-The most important library assets are **translation files**: a library that provides user-facing text ships i18n files for the languages it supports, and the application that uses the library is responsible for making those files available. Without them, library-provided strings fall back to untranslated keys or missing text.
-
-The **translation files** of the OneCX libraries the application uses are required to be exposed: they are what carry the user-facing text, and without them the library’s strings fall back to untranslated keys or missing text.
-
-## [](#application-assets)Application assets
-
-An application should also expose its own assets so the shell can apply them when the application is active.
-
-### [](#application-styles)Application styles (recommended)
-
-In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
-
-Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — will be described on the Recommended Setup **Expose Component Styles** page once that guidance is published.
-
-Note the boundary with the **[Style Isolation](style-isolation.html)** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
-
-## [](#related)Related
-
-| |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* [Style Isolation](style-isolation.html) — rules for what belongs in an application’s `styles.css` and how the platform scopes it.
-
-| |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 Concepts
 ====================
@@ -8187,42 +8187,6 @@ Make sure that the app follows the required OneCX application setup described in
 
 To understand the root cause of issues, it is recommended to enable source maps in the application and shell during development. For more information on how to enable source maps, see [Enable source maps guide](../features/development/source-maps.html).
 
-Specific Issues
-====================
-This page covers specific, named errors and rendering problems. Each issue is described here exactly once.
-
-## [](#rendering-priority)Rendering priority
-
-In some cases, elements may not be displayed correctly. This can have multiple reasons; however, below are some common issues that can be checked to resolve the problem.
-
-### [](#z-index-issues)Z-index issues
-
-Since every microfrontend can use its own CSS and be built on different technology stacks, it is possible that the z-index of elements is not working as expected. To resolve issues where elements are not displayed according to expectations (for example, a modal is not displayed on top of other elements), check the following:
-
-* z-index of the element that should be displayed on top
-* z-index of the element that is displayed on top of the other element
-
-If possible, the z-index of the element controlled by the application having the issue should be adjusted. In case this is not an option, please reach out to the OneCX support team for assistance.
-
-For a practical explanation of stacking behavior, see the [MDN stacking context guide](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Positioned%5Flayout/Stacking%5Fcontext).
-
-## [](#webpack-compilation)The 'compilation' argument must be an instance of Compilation
-
-Errors indicating issues with webpack compilation are related to multiple versions used in the project. It is a common issue when the `@angular-devkit/build-angular` library is used. To fix the issue:
-
-* run `npm ls webpack` (this command shows the exact package version used per dependency)
-* identify packages with a different webpack version
-* ensure only 1 version of webpack is present
-
-To use only 1 version of webpack, please adjust the versions of the packages that depend on webpack to use the same version. It is possible by updating the `package.json` file to specify compatible versions or by using the npm overrides feature.
-
-## [](#angular-compilation)Application is not showing up and "t is not a function" error is in the console
-
-If the application is not showing up and errors like `t is not a function` are in the console, then most likely the builder and the Angular packages used in the project are not compatible. To resolve the issue:
-
-* make sure that the builder used in the project is compatible with the Angular version used  
-   * e.g. for Angular 18 and the `ngx-build-plus` package use version `^18.0.0`
-
 Shell Compatibility
 ====================
 Issues caused by a mismatch between the shell and the application are often resolved by inspecting what the shell actually exposes. For the shell itself, sharing trouble is typically caused by Angular version differences, because one page can only contain one Angular major library version at runtime.
@@ -8263,6 +8227,42 @@ You will get a list of all the shared packages. Check, for example, the `@angula
 ![devtools webpack shared packages](../_images/devtools_webpack_shared_packages.png) 
 
 Figure 1\. Example DevTools output (`window['onecxWebpackContainer']`)
+
+Specific Issues
+====================
+This page covers specific, named errors and rendering problems. Each issue is described here exactly once.
+
+## [](#rendering-priority)Rendering priority
+
+In some cases, elements may not be displayed correctly. This can have multiple reasons; however, below are some common issues that can be checked to resolve the problem.
+
+### [](#z-index-issues)Z-index issues
+
+Since every microfrontend can use its own CSS and be built on different technology stacks, it is possible that the z-index of elements is not working as expected. To resolve issues where elements are not displayed according to expectations (for example, a modal is not displayed on top of other elements), check the following:
+
+* z-index of the element that should be displayed on top
+* z-index of the element that is displayed on top of the other element
+
+If possible, the z-index of the element controlled by the application having the issue should be adjusted. In case this is not an option, please reach out to the OneCX support team for assistance.
+
+For a practical explanation of stacking behavior, see the [MDN stacking context guide](https://developer.mozilla.org/en-US/docs/Web/CSS/Guides/Positioned%5Flayout/Stacking%5Fcontext).
+
+## [](#webpack-compilation)The 'compilation' argument must be an instance of Compilation
+
+Errors indicating issues with webpack compilation are related to multiple versions used in the project. It is a common issue when the `@angular-devkit/build-angular` library is used. To fix the issue:
+
+* run `npm ls webpack` (this command shows the exact package version used per dependency)
+* identify packages with a different webpack version
+* ensure only 1 version of webpack is present
+
+To use only 1 version of webpack, please adjust the versions of the packages that depend on webpack to use the same version. It is possible by updating the `package.json` file to specify compatible versions or by using the npm overrides feature.
+
+## [](#angular-compilation)Application is not showing up and "t is not a function" error is in the console
+
+If the application is not showing up and errors like `t is not a function` are in the console, then most likely the builder and the Angular packages used in the project are not compatible. To resolve the issue:
+
+* make sure that the builder used in the project is compatible with the Angular version used  
+   * e.g. for Angular 18 and the `ngx-build-plus` package use version `^18.0.0`
 
 TSConfig Paths
 ====================
@@ -8645,26 +8645,6 @@ this.translate.get('GREETING', params).subscribe((translated: string) => {
 });
 ```
 
-OneCX Multi-language Translations
-====================
-## [](#overview)Overview
-
-In OneCX multi-language support is available via translations using `@ngx-translate` library.
-
-A [OneCX compatible application](../../migration/vanilla-to-onecx-angular.html) can be set up for multi-language translation to support multiple languages in the application.
-
-## [](#setup)Setup
-
-To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
-
-## [](#usage)Usage
-
-After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
-
-## [](#language-information)Language Information
-
-The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
 Remote Components in Angular Applications
 ====================
 This page covers the Angular-specific APIs for exposing and hosting Remote Components. See [Remote Components](../remote-components.html) for the shared concept and terminology.
@@ -8722,6 +8702,26 @@ Behind the scenes, `<ocx-slot>` uses `SlotService` to resolve which Remote Compo
 
 * [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
 * [Component Approach](../../setup/required/expose-remote-module/component-approach.html) — the complete, practical how-to for exposing an Angular Remote Component.
+
+OneCX Multi-language Translations
+====================
+## [](#overview)Overview
+
+In OneCX multi-language support is available via translations using `@ngx-translate` library.
+
+A [OneCX compatible application](../../migration/vanilla-to-onecx-angular.html) can be set up for multi-language translation to support multiple languages in the application.
+
+## [](#setup)Setup
+
+To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
+
+## [](#usage)Usage
+
+After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
+
+## [](#language-information)Language Information
+
+The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
 
 Remote Components in React Applications
 ====================
@@ -8877,38 +8877,6 @@ The [WorkspaceService](../../../onecx-portal-ui-libs/libraries/angular-integrati
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
-Routing in React Applications
-====================
-This page covers the React-specific routing guidelines. See [Routing](../routing.html) for the shared routing requirements and reasons behind them.
-
-React applications resolve their base path at runtime using the `useAppHref` hook from `@onecx/react-webcomponents`, instead of a service injected into the router configuration.
-
-## [](#react-useapphref)Routing with useAppHref
-
-`useAppHref` retrieves and normalizes the URLs (base URL, app base href, and href) needed for routing in a microfrontend, relying on the `ConfigurationProvider` and `AppStateProvider` contexts from `@onecx/react-integration-interface`. Guard rendering until `href` is available, then prefix all routes with it so navigation stays aligned with the base path the shell mounted the app under.
-
-```tsx
-import { Route, Routes } from "react-router";
-import { useAppHref } from "@onecx/react-webcomponents";
-
-const AppRoutes = () => {
-  const { href } = useAppHref();
-
-  if (!href) {
-    return null;
-  }
-
-  return (
-    <Routes>
-      <Route path={`${href}/`} element={<Overview />} />
-      <Route path={`${href}/detail/:id`} element={<Detail />} />
-    </Routes>
-  );
-};
-```
-
-See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference.
-
 Source Maps
 ====================
 Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files — TypeScript, SCSS, or templates. They let you debug an application more effectively, because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to read stack traces, inspect application behavior, and identify the root cause of issues.
@@ -8951,6 +8919,38 @@ See the [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps
 ## [](#related)Related
 
 * [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) — how to enable source maps in the OneCX shell.
+
+Routing in React Applications
+====================
+This page covers the React-specific routing guidelines. See [Routing](../routing.html) for the shared routing requirements and reasons behind them.
+
+React applications resolve their base path at runtime using the `useAppHref` hook from `@onecx/react-webcomponents`, instead of a service injected into the router configuration.
+
+## [](#react-useapphref)Routing with useAppHref
+
+`useAppHref` retrieves and normalizes the URLs (base URL, app base href, and href) needed for routing in a microfrontend, relying on the `ConfigurationProvider` and `AppStateProvider` contexts from `@onecx/react-integration-interface`. Guard rendering until `href` is available, then prefix all routes with it so navigation stays aligned with the base path the shell mounted the app under.
+
+```tsx
+import { Route, Routes } from "react-router";
+import { useAppHref } from "@onecx/react-webcomponents";
+
+const AppRoutes = () => {
+  const { href } = useAppHref();
+
+  if (!href) {
+    return null;
+  }
+
+  return (
+    <Routes>
+      <Route path={`${href}/`} element={<Overview />} />
+      <Route path={`${href}/detail/:id`} element={<Detail />} />
+    </Routes>
+  );
+};
+```
+
+See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference.
 
 NgRx Guidelines
 ====================
@@ -9474,6 +9474,23 @@ For the other OneCX NgRx libraries, `@onecx/ngrx-accelerator` and `@onecx/ngrx-l
 * [NgRx Guidelines](guidelines.html) — the conventions OneCX applications follow and the OneCX utility libraries.
 * [State Management](../../concepts/state-management.html) — why OneCX Angular applications use NgRx.
 
+OneCX version 7 changelog
+====================
+## [](#changelog)Changelog
+
+* General changes  
+   * [Guards synchronization](#guards-synchronization)
+
+## [](#general-changes)General changes
+
+### [](#guards-synchronization)Guards synchronization
+
+The navigation guards are now synchronized between all microfrontends. This means that during navigation, all microfrontends will have their guards executed in a coordinated manner, ensuring consistent behavior across the entire application. Navigation will only proceed if all microfrontends approve the transition. In case of a rejection by any microfrontend, the navigation will be aborted, maintaining the integrity of the application’s state.
+
+#### [](#initial-microfrontend-load)Initial microfrontend load
+
+During the initial load of the application, it is likely that there are existing microfrontends that already approved the navigation that led to the current route. There is a scenario where the microfrontend that is being loaded initially has a guard that rejects the current navigation. In this case, the navigation will be aborted, and the application will revert to the previous state before the initial load.
+
 PrimeNG Theming Customization
 ====================
 ## [](#how-primeNG-is-themed)How PrimeNG is themed in OneCX
@@ -9522,103 +9539,6 @@ Each PrimeNG component specifies a list of design tokens (e.g. [button component
 ## [](#related)Related
 
 * [Theming](../../concepts/theming.html) — the concept page for how OneCX theming works and the theme variables available on the page.
-
-OneCX version 7 changelog
-====================
-## [](#changelog)Changelog
-
-* General changes  
-   * [Guards synchronization](#guards-synchronization)
-
-## [](#general-changes)General changes
-
-### [](#guards-synchronization)Guards synchronization
-
-The navigation guards are now synchronized between all microfrontends. This means that during navigation, all microfrontends will have their guards executed in a coordinated manner, ensuring consistent behavior across the entire application. Navigation will only proceed if all microfrontends approve the transition. In case of a rejection by any microfrontend, the navigation will be aborted, maintaining the integrity of the application’s state.
-
-#### [](#initial-microfrontend-load)Initial microfrontend load
-
-During the initial load of the application, it is likely that there are existing microfrontends that already approved the navigation that led to the current route. There is a scenario where the microfrontend that is being loaded initially has a guard that rejects the current navigation. In this case, the navigation will be aborted, and the application will revert to the previous state before the initial load.
-
-@onecx/react-auth
-====================
-## [](#overview)Overview
-
-This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
-
-## [](#axios-factory)axiosFactory Function
-
-The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
-
-```javascript
-export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
-  baseURL
-) => {
-  // Implementation
-};
-```
-
-* baseURL: An optional parameter specifying the base URL for HTTP requests.
-* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
-* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
-
-## [](#example-usage)Example Usage
-
-```javascript
-// Create an axios instance with a base URL
-const apiClient = axiosFactory('https://api.example.com');
-
-// Make a GET request
-apiClient.get('/data')
-  .then(response => {
-    console.log('Data received:', response.data);
-  })
-  .catch(error => {
-    console.error('Error fetching data:', error);
-  });
-
-// Make a POST request with authorization headers
-apiClient.post('/submit', { name: 'John Doe' })
-  .then(response => {
-    console.log('Submission successful:', response.data);
-  })
-  .catch(error => {
-    console.error('Error submitting data:', error);
-  });
-```
-
-## [](#auth-proxy-service)Auth Proxy Service
-
-The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
-
-Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
-
-```ts
-if (!window.onecxAuth?.authServiceProxy) {
-  // handle missing auth proxy (e.g., show fallback or defer logic)
-  return;
-}
-```
-
-```ts
-const { authServiceProxy } = window.onecxAuth;
-
-// Ensure token is still valid before a guarded action
-await authServiceProxy.v1.updateTokenIfNeeded();
-
-// Read user / permissions (depending on shell implementation)
-const user = await authServiceProxy.v1.getUser();
-const permissions = await authServiceProxy.v1.getPermissions();
-```
-
-Example usage with axiosFactory:
-
-```ts
-const apiClient = axiosFactory('/api');
-
-await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
-const response = await apiClient.get('/profile');
-```
 
 @onecx/react-integration-interface
 ====================
@@ -10095,6 +10015,86 @@ __Table 13\. Workspace Hook methods__
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
 
+@onecx/react-auth
+====================
+## [](#overview)Overview
+
+This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
+
+## [](#axios-factory)axiosFactory Function
+
+The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
+
+```javascript
+export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
+  baseURL
+) => {
+  // Implementation
+};
+```
+
+* baseURL: An optional parameter specifying the base URL for HTTP requests.
+* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
+* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
+
+## [](#example-usage)Example Usage
+
+```javascript
+// Create an axios instance with a base URL
+const apiClient = axiosFactory('https://api.example.com');
+
+// Make a GET request
+apiClient.get('/data')
+  .then(response => {
+    console.log('Data received:', response.data);
+  })
+  .catch(error => {
+    console.error('Error fetching data:', error);
+  });
+
+// Make a POST request with authorization headers
+apiClient.post('/submit', { name: 'John Doe' })
+  .then(response => {
+    console.log('Submission successful:', response.data);
+  })
+  .catch(error => {
+    console.error('Error submitting data:', error);
+  });
+```
+
+## [](#auth-proxy-service)Auth Proxy Service
+
+The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
+
+Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
+
+```ts
+if (!window.onecxAuth?.authServiceProxy) {
+  // handle missing auth proxy (e.g., show fallback or defer logic)
+  return;
+}
+```
+
+```ts
+const { authServiceProxy } = window.onecxAuth;
+
+// Ensure token is still valid before a guarded action
+await authServiceProxy.v1.updateTokenIfNeeded();
+
+// Read user / permissions (depending on shell implementation)
+const user = await authServiceProxy.v1.getUser();
+const permissions = await authServiceProxy.v1.getPermissions();
+```
+
+Example usage with axiosFactory:
+
+```ts
+const apiClient = axiosFactory('/api');
+
+await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
+const response = await apiClient.get('/profile');
+```
+
 @onecx/react-remote-components
 ====================
 ## [](#overview)Overview
@@ -10272,6 +10272,109 @@ This library works smoothly with vite applications.
 ## [](#nextjs)Next.js
 
 The next.js applications need more research to be able to share components. Although there is no problem with consuming other components.
+
+@onecx/react-webcomponents
+====================
+## [](#overview)Overview
+
+`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
+
+## [](#exports)Public Exports
+
+The package exports:
+
+* `createViteAppWebComponent`
+* `useAppHref`
+* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
+* `withSyncedRouter`
+
+## [](#vite)Vite
+
+The `createViteAppWebComponent` function is a utility that converts a React component or React App into a custom web component. This allows React components to be used in environments that do not natively support React, such as vanilla JavaScript projects or frameworks that work with standard web components. Relies on the browser’s custom elements API for registering and using web components.
+
+The function leverages the `@r2wc/react-to-web-component` library to facilitate the conversion and registration of the web component.
+
+```js
+const createViteAppWebComponent = (
+  app: React.ComponentType,
+  elementName: string
+) => {
+  // Implementation
+};
+```
+
+* app: A React component to be converted into a web component.
+* elementName: The name of the custom element to be registered (e.g. my-custom-element).
+
+Example for React component
+
+```js
+import React from 'react';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+// Define a simple React component
+const MyReactComponent = () => {
+  return <div>Hello, World!</div>;
+};
+
+// Convert the React component into a web component and register it
+createViteAppWebComponent(MyReactComponent, 'my-custom-element');
+
+// Now, you can use the custom element in your HTML:
+// <my-custom-element></my-custom-element>
+```
+
+Example for Vite App
+
+```js
+import App from './app';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+createViteAppWebComponent(App, 'my-custom-app');
+```
+
+where
+
+```js
+const AppRouter = () => {
+  const { href } = useAppHref();
+  return (
+    <Router>
+      <Routes>
+        <Route path={href} element={<Home />} />
+        <Route path={href + '/about'} element={<About />} />
+      </Routes>
+    </Router>
+  );
+};
+
+export function App() {
+  return (
+      <AppStateProvider>
+        <ConfigurationProvider>
+          <ThemeProvider>
+            <UserProvider>
+              <AppRouter />
+              <Components />
+            </UserProvider>
+          </ThemeProvider>
+        </ConfigurationProvider>
+      </AppStateProvider>
+  );
+}
+export default App;
+```
+
+## [](#routing-utils)Routing Utils
+
+The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
+
+The library also provides routing integration helpers:
+
+* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
+* `SyncedLocationContext` exposes the current location state.
+* `useSyncedLocation` reads the synced location state from context.
+* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
 @onecx/react-utils
 ====================
@@ -10462,120 +10565,17 @@ For coordinated navigation flows across multiple remotes, you can wire the lower
 
 The `withApp` HOC composes common providers (app state, configuration, user, theme) and sets up the style scoping helpers for micro-frontends.
 
-@onecx/react-webcomponents
+Apply Theming
 ====================
-## [](#overview)Overview
+The OneCX shell loads and applies the active theme for the selected workspace. Application code should not load or apply the theme itself; it should use the CSS variables the shell exposes.
 
-`@onecx/react-webcomponents` library is a set of tools aiming to ease the development of React applications integrated with OneCX by utilizing and extending functionalities of xref:onecx-portal-ui-libs:libraries/integration-interface.adoc. This library offers utilities for integrating Microfrontends with OneCX without directly utilizing Topics.
-
-## [](#exports)Public Exports
-
-The package exports:
-
-* `createViteAppWebComponent`
-* `useAppHref`
-* `SyncedRouterProvider`, `SyncedLocationContext`, `useSyncedLocation`
-* `withSyncedRouter`
-
-## [](#vite)Vite
-
-The `createViteAppWebComponent` function is a utility that converts a React component or React App into a custom web component. This allows React components to be used in environments that do not natively support React, such as vanilla JavaScript projects or frameworks that work with standard web components. Relies on the browser’s custom elements API for registering and using web components.
-
-The function leverages the `@r2wc/react-to-web-component` library to facilitate the conversion and registration of the web component.
-
-```js
-const createViteAppWebComponent = (
-  app: React.ComponentType,
-  elementName: string
-) => {
-  // Implementation
-};
-```
-
-* app: A React component to be converted into a web component.
-* elementName: The name of the custom element to be registered (e.g. my-custom-element).
-
-Example for React component
-
-```js
-import React from 'react';
-import { createViteAppWebComponent } from '@onecx/react-webcomponents';
-
-// Define a simple React component
-const MyReactComponent = () => {
-  return <div>Hello, World!</div>;
-};
-
-// Convert the React component into a web component and register it
-createViteAppWebComponent(MyReactComponent, 'my-custom-element');
-
-// Now, you can use the custom element in your HTML:
-// <my-custom-element></my-custom-element>
-```
-
-Example for Vite App
-
-```js
-import App from './app';
-import { createViteAppWebComponent } from '@onecx/react-webcomponents';
-
-createViteAppWebComponent(App, 'my-custom-app');
-```
-
-where
-
-```js
-const AppRouter = () => {
-  const { href } = useAppHref();
-  return (
-    <Router>
-      <Routes>
-        <Route path={href} element={<Home />} />
-        <Route path={href + '/about'} element={<About />} />
-      </Routes>
-    </Router>
-  );
-};
-
-export function App() {
-  return (
-      <AppStateProvider>
-        <ConfigurationProvider>
-          <ThemeProvider>
-            <UserProvider>
-              <AppRouter />
-              <Components />
-            </UserProvider>
-          </ThemeProvider>
-        </ConfigurationProvider>
-      </AppStateProvider>
-  );
-}
-export default App;
-```
-
-## [](#routing-utils)Routing Utils
-
-The **useAppHref** function is a custom React hook designed to retrieve and normalize URLs (base URL, app base href, and href) for use in micro-frontend (MFE) applications. It relies on the **ConfigurationProvider** and **AppStateProvider** hooks contexts the **@onecx/react-integration-interface** library to fetch and manage application state and configuration. Relies on RxJS for observable handling.
-
-The library also provides routing integration helpers:
-
-* `SyncedRouterProvider` publishes location changes to the shell and reacts to `CurrentLocationTopic` updates.
-* `SyncedLocationContext` exposes the current location state.
-* `useSyncedLocation` reads the synced location state from context.
-* `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
+See [Theming](../../concepts/theming.html) for the full list of available theme variables and how to use them in Angular and React applications.
 
 Adapt Routing
 ====================
 An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
 
 See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
-
-Apply Theming
-====================
-The OneCX shell loads and applies the active theme for the selected workspace. Application code should not load or apply the theme itself; it should use the CSS variables the shell exposes.
-
-See [Theming](../../concepts/theming.html) for the full list of available theme variables and how to use them in Angular and React applications.
 
 Expose Component Styles
 ====================
@@ -10594,25 +10594,6 @@ An application integrated with OneCX still loads and runs without exposing the a
 
 * [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
 * [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
-
-Recommended Setup
-====================
-Recommended Setup covers the steps an application **should** complete to behave correctly in the OneCX shell. Unlike Required Setup, skipping any of these steps does not break the app outright — it still loads and runs — but it behaves **visibly incorrectly**: wrong or missing styles, missing or broken translations, or broken navigation.
-
-This tier applies to both paths of building a OneCX UI:
-
-* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist after completing [Required Setup](../required/index.html). For the migration path itself, see [Migrate a vanilla Angular app to OneCX](../../migration/vanilla-to-onecx-angular.html), which cross-links back into these pages rather than restating their steps; the migration guide is Angular-specific and a React migration guide is not yet available.
-* **Creating a new app from scratch** — use this checklist, alongside Required Setup, as the target end-state for a freshly generated application.
-
-| |  If a step isn’t listed here, it belongs to a different tier. Steps every app **must** complete to function at all belong to [Required Setup](../required/index.html). An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Recommended tier as part of the same three-tier Setup structure. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#recommended-setup-pages)Pages
-
-* [Expose Component Styles](expose-component-styles.html) — how to expose an application’s and its libraries' `styles.css` in the build output, so the shell can style the app.
-* [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
-* [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
-* [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
 
 Configure Authentication
 ====================
@@ -10641,6 +10622,89 @@ React applications must use an HTTP client setup that attaches the shell authent
 ## [](#advanced-topics)Advanced Topics
 
 For the shell-owns-auth model, sending a logout event, using the auth proxy directly, configuring a custom authentication service, and token refresh, see [Authentication](../../concepts/authentication.html).
+
+Recommended Setup
+====================
+Recommended Setup covers the steps an application **should** complete to behave correctly in the OneCX shell. Unlike Required Setup, skipping any of these steps does not break the app outright — it still loads and runs — but it behaves **visibly incorrectly**: wrong or missing styles, missing or broken translations, or broken navigation.
+
+This tier applies to both paths of building a OneCX UI:
+
+* **Migrating an existing app** — bring a vanilla Angular or React application up to this checklist after completing [Required Setup](../required/index.html). For the migration path itself, see [Migrate a vanilla Angular app to OneCX](../../migration/vanilla-to-onecx-angular.html), which cross-links back into these pages rather than restating their steps; the migration guide is Angular-specific and a React migration guide is not yet available.
+* **Creating a new app from scratch** — use this checklist, alongside Required Setup, as the target end-state for a freshly generated application.
+
+| |  If a step isn’t listed here, it belongs to a different tier. Steps every app **must** complete to function at all belong to [Required Setup](../required/index.html). An Optional tier (steps an app **may** adopt with no correctness impact if skipped) is planned alongside this Recommended tier as part of the same three-tier Setup structure. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#recommended-setup-pages)Pages
+
+* [Expose Component Styles](expose-component-styles.html) — how to expose an application’s and its libraries' `styles.css` in the build output, so the shell can style the app.
+* [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
+* [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
+* [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
+
+Expose a Remote Module
+====================
+Every application integrated with OneCX must expose itself to the shell via Module Federation, so the shell can dynamically load it at runtime. This page covers the requirements and setup steps for both Angular and React applications.
+
+## [](#overview)Overview
+
+Content loading is triggered by route changes (for modules) or Slot Component display (for remote components). The content is loaded via Module Federation configuration exposed by the application. The recommended setup uses `@module-federation/enhanced` and exposes `mf-manifest.json`; `remoteEntry.js` is still supported when the shell configuration points directly to it. See [Platform & Package Compatibility Requirements](platform-package-compatibility.html) for the full compatibility baseline.
+
+`mf-manifest.json` contains metadata about the exposed modules and their dependencies and enables better integration and compatibility with the shell. See [Exposing mf-manifest.json file](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html#mf-manifest) for details.
+
+## [](#angular-applications)Angular Applications
+
+### [](#angular-webcomponent-method)Webcomponent Method (Recommended)
+
+This method uses Web Components **Custom Elements** to register content, allowing multiple frameworks and Angular versions to coexist in the shell. It is the recommended approach; the alternative "Angular expose method" (exposing an `NgModule` directly) limits the whole platform to a single Angular version and is not recommended.
+
+There are two ways to expose an Angular application depending on what needs to be loaded by the shell:
+
+* [Module Approach](expose-remote-module/module-approach.html) — expose a full Angular module, loaded on route activation.
+* [Component Approach](expose-remote-module/component-approach.html) — expose a single component, loaded by a Slot Component.
+
+## [](#react-applications)React Applications
+
+React applications are turned into a Custom Element and exposed the same way, using `@onecx/react-webcomponents`.
+
+### [](#react-vite-webcomponent)Converting a React App into a Web Component
+
+The `createViteAppWebComponent` function converts a React component or React app into a custom web component, relying on the browser’s Custom Elements API and the `@r2wc/react-to-web-component` library.
+
+```js
+const createViteAppWebComponent = (
+  app: React.ComponentType,
+  elementName: string
+) => {
+  // Implementation
+};
+```
+
+* `app`: the React component to convert into a web component.
+* `elementName`: the name of the custom element to register (e.g. `my-custom-element`).
+
+Example for a Vite App
+
+```js
+import App from './app';
+import { createViteAppWebComponent } from '@onecx/react-webcomponents';
+
+createViteAppWebComponent(App, 'my-custom-app');
+```
+
+Expose the resulting entry point through the Module Federation configuration:
+
+```js
+const config = withModuleFederationPlugin({
+  name: 'example-react-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ExampleApp': './src/main.tsx'
+  },
+})
+```
+
+See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
 
 Configure Remote Package Sharing
 ====================
@@ -10737,70 +10801,6 @@ The OneCX shell operates with the following share scopes:
 For Angular 21 and newer applications, the shell expects them to be loaded into the `angular_X` share scope corresponding to their Angular version. For applications integrated with older shell versions, the expected share scope is `default`. If no scope is specified for an application, it is loaded into the `default` share scope by default.
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
-
-Expose a Remote Module
-====================
-Every application integrated with OneCX must expose itself to the shell via Module Federation, so the shell can dynamically load it at runtime. This page covers the requirements and setup steps for both Angular and React applications.
-
-## [](#overview)Overview
-
-Content loading is triggered by route changes (for modules) or Slot Component display (for remote components). The content is loaded via Module Federation configuration exposed by the application. The recommended setup uses `@module-federation/enhanced` and exposes `mf-manifest.json`; `remoteEntry.js` is still supported when the shell configuration points directly to it. See [Platform & Package Compatibility Requirements](platform-package-compatibility.html) for the full compatibility baseline.
-
-`mf-manifest.json` contains metadata about the exposed modules and their dependencies and enables better integration and compatibility with the shell. See [Exposing mf-manifest.json file](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html#mf-manifest) for details.
-
-## [](#angular-applications)Angular Applications
-
-### [](#angular-webcomponent-method)Webcomponent Method (Recommended)
-
-This method uses Web Components **Custom Elements** to register content, allowing multiple frameworks and Angular versions to coexist in the shell. It is the recommended approach; the alternative "Angular expose method" (exposing an `NgModule` directly) limits the whole platform to a single Angular version and is not recommended.
-
-There are two ways to expose an Angular application depending on what needs to be loaded by the shell:
-
-* [Module Approach](expose-remote-module/module-approach.html) — expose a full Angular module, loaded on route activation.
-* [Component Approach](expose-remote-module/component-approach.html) — expose a single component, loaded by a Slot Component.
-
-## [](#react-applications)React Applications
-
-React applications are turned into a Custom Element and exposed the same way, using `@onecx/react-webcomponents`.
-
-### [](#react-vite-webcomponent)Converting a React App into a Web Component
-
-The `createViteAppWebComponent` function converts a React component or React app into a custom web component, relying on the browser’s Custom Elements API and the `@r2wc/react-to-web-component` library.
-
-```js
-const createViteAppWebComponent = (
-  app: React.ComponentType,
-  elementName: string
-) => {
-  // Implementation
-};
-```
-
-* `app`: the React component to convert into a web component.
-* `elementName`: the name of the custom element to register (e.g. `my-custom-element`).
-
-Example for a Vite App
-
-```js
-import App from './app';
-import { createViteAppWebComponent } from '@onecx/react-webcomponents';
-
-createViteAppWebComponent(App, 'my-custom-app');
-```
-
-Expose the resulting entry point through the Module Federation configuration:
-
-```js
-const config = withModuleFederationPlugin({
-  name: 'example-react-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ExampleApp': './src/main.tsx'
-  },
-})
-```
-
-See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference, including routing helpers (`useAppHref`, `SyncedRouterProvider`) used once the app is loaded in the shell.
 
 Required Setup
 ====================
@@ -11255,6 +11255,86 @@ _Adapt in File:_ `<feature>-search.component.html`
 
 Checking Permissions in Code
 ====================
+React applications in the OneCX portal can read the current user’s permissions from the `[@onecx/react-remote-components](../../../react/libraries/react-remote-components.html)` package, which exposes a `usePermission` hook and a `PermissionProvider`. This is the React counterpart to the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Angular `PermissionService` checks\]: it lets a React component ask "which permissions does this user have?" and render conditionally in plain React code.
+
+## [](#how-it-works)How it works
+
+The `PermissionProvider` subscribes to the portal’s permission topic (`PermissionsRpcTopic`) and resolves permissions for the pair of `appId` and `productName` you ask about:
+
+```tsx
+const { permissions, getPermissions } = usePermission()
+
+const appPermissions = await getPermissions('my-app', 'my-product')
+// appPermissions === ['USER#VIEW', 'USER#EDIT', ...]
+```
+
+There are two ways to obtain the permissions:
+
+* **`getPermissions(appId, productName)`** — a `Promise<string[]>` that resolves with the list of permission keys for that application. This is the primary mechanism; call it once (typically in an effect) and store the result.
+* **`permissions`** — the accumulated list of permission messages received from the topic so far. Use this when you want the value to stay reactive to newly published permissions.
+
+The permission strings follow the same `<RESOURCE>#<ACTION>` convention used throughout OneCX (for example, `USER#EDIT`).
+
+| |  This API is scoped by appId and productName and resolves permissions over the PermissionsRpcTopic — the remote-components data path. It is a different source from the Angular UserService / PermissionService standard path documented on the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] page. Both reflect the same underlying role-based assignments, but they read them through different integrations. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#provider)Setting up the provider
+
+`usePermission` must be called inside a component that is wrapped by a `PermissionProvider` (otherwise it throws). When a remote component is rendered through the standard `withSlot` / `SlotComponent` flow, the provider is already mounted for you — so `usePermission` is available directly in those components. If you build a standalone React app that talks to the portal directly, mount the provider yourself:
+
+```tsx
+import { PermissionProvider } from '@onecx/react-remote-components'
+
+<PermissionProvider>
+  <YourApp />
+</PermissionProvider>
+```
+
+## [](#checking-permissions)Checking permissions in a component
+
+Because `getPermissions` is asynchronous, fetch the list once and then derive your rendering from it. The example below shows a button that is only rendered when the user holds the `USER#EDIT` permission:
+
+```tsx
+import { useEffect, useState } from 'react'
+import { usePermission } from '@onecx/react-remote-components'
+
+function EditButton({ appId, productName }) {
+  const { getPermissions } = usePermission()
+  const [permissions, setPermissions] = useState<string[]>()
+
+  useEffect(() => {
+    let active = true
+    getPermissions(appId, productName).then((result) => {
+      if (active) setPermissions(result)
+    })
+    return () => { active = false }
+  }, [appId, productName, getPermissions])
+
+  if (!permissions) return null
+  if (!permissions.includes('USER#EDIT')) return null
+
+  return <button>Edit</button>
+}
+```
+
+To require several permissions at once, check that the list contains all of them:
+
+```tsx
+const required = ['USER#VIEW', 'USER#EXPORT']
+const canExport = permissions.every((p) => required.includes(p))
+```
+
+| |  There is no \*ocxIfPermission\-equivalent conditional-rendering directive in the React libraries. Conditional rendering is done in plain React (as above) — see the [Conditional rendering](../angular/conditional-rendering.html)\[Angular conditional rendering\] page for the directive-based equivalent. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#related)Related
+
+* [@onecx/react-remote-components](../../../react/libraries/react-remote-components.html) — the library page, covering the provider/hooks setup and the slot API this permission API pairs with.
+* [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the Angular `PermissionService` / `HAS_PERMISSION_CHECKER` equivalent.
+* [Conditional rendering](../angular/conditional-rendering.html)\[Conditional rendering\] — the Angular `*ocxIfPermission` / `*ocxIfNotPermission` directives.
+
+Checking Permissions in Code
+====================
 ## [](#overview)Overview
 
 For logic outside a template — route or component guards, services, computed visibility — use the `PermissionService` from the `@onecx/angular-utils` library. It validates the same permissions the [Conditional rendering](conditional-rendering.html)\[conditional rendering\] directives use, but as an API you can call from TypeScript. It caches its results, so repeated checks stay cheap and do not re-query the source on every render.
@@ -11498,86 +11578,6 @@ example.html
 * [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the `@onecx/angular-integration-interface` service the directives resolve permissions through.
 * [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — reading permissions in a React application with `usePermission` / `PermissionProvider`.
 
-Checking Permissions in Code
-====================
-React applications in the OneCX portal can read the current user’s permissions from the `[@onecx/react-remote-components](../../../react/libraries/react-remote-components.html)` package, which exposes a `usePermission` hook and a `PermissionProvider`. This is the React counterpart to the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Angular `PermissionService` checks\]: it lets a React component ask "which permissions does this user have?" and render conditionally in plain React code.
-
-## [](#how-it-works)How it works
-
-The `PermissionProvider` subscribes to the portal’s permission topic (`PermissionsRpcTopic`) and resolves permissions for the pair of `appId` and `productName` you ask about:
-
-```tsx
-const { permissions, getPermissions } = usePermission()
-
-const appPermissions = await getPermissions('my-app', 'my-product')
-// appPermissions === ['USER#VIEW', 'USER#EDIT', ...]
-```
-
-There are two ways to obtain the permissions:
-
-* **`getPermissions(appId, productName)`** — a `Promise<string[]>` that resolves with the list of permission keys for that application. This is the primary mechanism; call it once (typically in an effect) and store the result.
-* **`permissions`** — the accumulated list of permission messages received from the topic so far. Use this when you want the value to stay reactive to newly published permissions.
-
-The permission strings follow the same `<RESOURCE>#<ACTION>` convention used throughout OneCX (for example, `USER#EDIT`).
-
-| |  This API is scoped by appId and productName and resolves permissions over the PermissionsRpcTopic — the remote-components data path. It is a different source from the Angular UserService / PermissionService standard path documented on the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] page. Both reflect the same underlying role-based assignments, but they read them through different integrations. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#provider)Setting up the provider
-
-`usePermission` must be called inside a component that is wrapped by a `PermissionProvider` (otherwise it throws). When a remote component is rendered through the standard `withSlot` / `SlotComponent` flow, the provider is already mounted for you — so `usePermission` is available directly in those components. If you build a standalone React app that talks to the portal directly, mount the provider yourself:
-
-```tsx
-import { PermissionProvider } from '@onecx/react-remote-components'
-
-<PermissionProvider>
-  <YourApp />
-</PermissionProvider>
-```
-
-## [](#checking-permissions)Checking permissions in a component
-
-Because `getPermissions` is asynchronous, fetch the list once and then derive your rendering from it. The example below shows a button that is only rendered when the user holds the `USER#EDIT` permission:
-
-```tsx
-import { useEffect, useState } from 'react'
-import { usePermission } from '@onecx/react-remote-components'
-
-function EditButton({ appId, productName }) {
-  const { getPermissions } = usePermission()
-  const [permissions, setPermissions] = useState<string[]>()
-
-  useEffect(() => {
-    let active = true
-    getPermissions(appId, productName).then((result) => {
-      if (active) setPermissions(result)
-    })
-    return () => { active = false }
-  }, [appId, productName, getPermissions])
-
-  if (!permissions) return null
-  if (!permissions.includes('USER#EDIT')) return null
-
-  return <button>Edit</button>
-}
-```
-
-To require several permissions at once, check that the list contains all of them:
-
-```tsx
-const required = ['USER#VIEW', 'USER#EXPORT']
-const canExport = permissions.every((p) => required.includes(p))
-```
-
-| |  There is no \*ocxIfPermission\-equivalent conditional-rendering directive in the React libraries. Conditional rendering is done in plain React (as above) — see the [Conditional rendering](../angular/conditional-rendering.html)\[Angular conditional rendering\] page for the directive-based equivalent. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#related)Related
-
-* [@onecx/react-remote-components](../../../react/libraries/react-remote-components.html) — the library page, covering the provider/hooks setup and the slot API this permission API pairs with.
-* [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the Angular `PermissionService` / `HAS_PERMISSION_CHECKER` equivalent.
-* [Conditional rendering](../angular/conditional-rendering.html)\[Conditional rendering\] — the Angular `*ocxIfPermission` / `*ocxIfNotPermission` directives.
-
 Expose Component Styles in Angular Applications
 ====================
 This page covers exposing an Angular application’s and its OneCX libraries' styles in the build output. See [Expose Component Styles](../expose-component-styles.html) for why this matters.
@@ -11677,6 +11677,23 @@ Example styles configuration
 ...
 ```
 
+Expose Component Styles in React Applications
+====================
+This page covers exposing a React application’s styles in the build output. See [Expose Component Styles](../expose-component-styles.html) for why this matters.
+
+## [](#react-expose-app-styles)Expose App styles.css
+
+The goal for React applications is the same as for any other technology: expose a stable `styles.css` file, containing the app’s styles, in the build output so the shell can style the app correctly. There is no single OneCX-prescribed mechanism for React — how this is achieved depends on the build tool used (e.g. Vite, webpack).
+
+As general guidance:
+
+* Configure the build so all of the application’s styles are emitted into a single stylesheet.
+* Because the generated stylesheet filename often includes a content hash, adjust the build output (e.g. via a post-build step) so a stable `styles.css` file is available.
+* Verify that `styles.css`, including all of the app’s styles, is present in the build output before deploying.
+
+| |  This page does not cover style scoping (isolating the app’s styles from other applications in the shell). See [@onecx/react-utils](../../../react/libraries/react-utils.html) for the style scoping helpers provided for React applications. |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
 Expose Library Assets in Angular Applications
 ====================
 This page covers exposing the static assets of the OneCX libraries an Angular application depends on. See [Expose Library Assets](../expose-library-assets.html) for why this matters.
@@ -11756,23 +11773,6 @@ Angular CLI angular.json assets configuration
   }
 ...
 ```
-
-Expose Component Styles in React Applications
-====================
-This page covers exposing a React application’s styles in the build output. See [Expose Component Styles](../expose-component-styles.html) for why this matters.
-
-## [](#react-expose-app-styles)Expose App styles.css
-
-The goal for React applications is the same as for any other technology: expose a stable `styles.css` file, containing the app’s styles, in the build output so the shell can style the app correctly. There is no single OneCX-prescribed mechanism for React — how this is achieved depends on the build tool used (e.g. Vite, webpack).
-
-As general guidance:
-
-* Configure the build so all of the application’s styles are emitted into a single stylesheet.
-* Because the generated stylesheet filename often includes a content hash, adjust the build output (e.g. via a post-build step) so a stable `styles.css` file is available.
-* Verify that `styles.css`, including all of the app’s styles, is present in the build output before deploying.
-
-| |  This page does not cover style scoping (isolating the app’s styles from other applications in the shell). See [@onecx/react-utils](../../../react/libraries/react-utils.html) for the style scoping helpers provided for React applications. |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 Expose Library Assets in React Applications
 ====================
@@ -26869,6 +26869,32 @@ After
 import { AuthServiceWrapper } from '@onecx/shell-auth'
 ```
 
+Optional debugging preference: debug-js namespaces
+====================
+In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
+
+This is not a breaking change for consumers.
+
+## [](#%5Fenable%5Flogging)Enable Logging
+
+Use this only as a debugging preference when troubleshooting.
+
+For troubleshooting, enable logs via browser local storage:
+
+```js
+localStorage.debug = '@onecx*'
+location.reload()
+```
+
+You can narrow logging to specific libraries, for example:
+
+```js
+localStorage.debug = '@onecx/angular-auth*'
+location.reload()
+```
+
+See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
+
 Required Package Updates
 ====================
 If the following packages are used in your project, update them to ensure compatibility with Angular 21 and OneCX UI libs v8:
@@ -26905,32 +26931,6 @@ npm install @ngrx/<package-name>@^21
 
 npm install @onecx/<package-name>@^8
 ```
-
-Optional debugging preference: debug-js namespaces
-====================
-In v8, OneCX libraries `console.log` usage was removed in favor of namespace-based debug logging.OneCX libraries use [debug](https://www.npmjs.com/package/debug) (aka **debug-js**) for runtime logging.
-
-This is not a breaking change for consumers.
-
-## [](#%5Fenable%5Flogging)Enable Logging
-
-Use this only as a debugging preference when troubleshooting.
-
-For troubleshooting, enable logs via browser local storage:
-
-```js
-localStorage.debug = '@onecx*'
-location.reload()
-```
-
-You can narrow logging to specific libraries, for example:
-
-```js
-localStorage.debug = '@onecx/angular-auth*'
-location.reload()
-```
-
-See also [Browser Logging](../../browser-logging.html) for more details on how to use debug-js namespaces for troubleshooting and debugging purposes.
 
 Migrate from PrimeNG to Optimus UI
 ====================
@@ -36507,7 +36507,7 @@ undefined
 | quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1.1   |
 | quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1.1   |
 
-undefined
+OneCX Permission UI
 ====================
 ## [](#%5Fwhat%5Fis%5Fpermission%5Fmanagement)What is Permission Management?
 
@@ -36575,7 +36575,7 @@ cd onecx-permission
 docker compose up -d traefik postgresdb pgadmin keycloak-app
 ```
 
-OneCX Permission UI
+undefined
 ====================
 ## [](#%5Fwhat%5Fis%5Fpermission%5Fmanagement)What is Permission Management?
 
@@ -39065,31 +39065,32 @@ tkit.dataimport.configurations.tenant.stop-at-error=true
 
 Extensions List 
 
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0    |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0    |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0    |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0    |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0    |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0    |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0    |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1 |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.3.1 |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1 |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1 |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.3.1 |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1 |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |          |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1 |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.3.1 |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1 |
+| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.3.1 |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1 |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1 |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0    |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |          |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1 |
+| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |          |
 
 ## [](#%5Fhelm)Helm
 
@@ -39155,31 +39156,32 @@ tkit.dataimport.configurations.tenant.stop-at-error=true
 
 Extensions List 
 
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0    |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0    |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0    |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0    |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0    |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0    |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0    |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1 |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.3.1 |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1 |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1 |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.3.1 |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1 |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |          |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1 |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.3.1 |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1 |
+| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.3.1 |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1 |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1 |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0    |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |          |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1 |
+| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |          |
 
 ## [](#%5Fhelm)Helm
 
@@ -39203,31 +39205,32 @@ app:
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0   |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0    |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0    |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0    |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0    |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0    |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0    |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0    |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1 |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.3.1 |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1 |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1 |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.3.1 |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1 |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |          |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1 |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.3.1 |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1 |
+| quarkus-smallrye-jwt                   | [Link](https://quarkus.io/guides/security-jwt-build)                                               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-jwt.adoc)                   | 3.33.3.1 |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1 |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1 |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0    |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |          |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1 |
+| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |          |
 
 undefined
 ====================
@@ -40587,7 +40590,9 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftheme%5Fui)OneCX Theme UI
+## [](#%5Fonecx%5Ftheme%5Fui)onecx-theme-ui
+
+## [](#%5Fonecx%5Ftheme%5Fui%5F2)OneCX Theme UI
 
 ### [](#%5Fwhat%5Fis%5Ftheme%5Fmanagement)What is Theme Management?
 
@@ -40665,9 +40670,7 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Ftheme%5Fui)onecx-theme-ui
-
-## [](#%5Fonecx%5Ftheme%5Fui%5F2)OneCX Theme UI
+## [](#%5Fonecx%5Ftheme%5Fui)OneCX Theme UI
 
 ### [](#%5Fwhat%5Fis%5Ftheme%5Fmanagement)What is Theme Management?
 
@@ -41864,34 +41867,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
-| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0   |
-| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0   |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-welcome-svc/pkgs/container/onecx-welcome-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -41977,6 +41952,34 @@ app:
         description: OneCX Welcome Backend Service
         name: OneCX Welcome SVC
 ```
+
+undefined
+====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------- |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0   |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0   |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0   |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0   |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0   |
+| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0   |
+| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0   |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0   |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.1  |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.1  |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.1  |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.1  |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.1  |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.1  |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.1                                                                                                                                           |         |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.1  |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.1  |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.1  |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.1  |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.1  |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0   |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |         |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.1  |
 
 OneCX Welcome Backend For Frontend
 ====================
