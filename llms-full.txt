@@ -1381,290 +1381,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2037,6 +1753,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -6343,57 +6343,6 @@ Disclaimer: If any of the applications feature modules use ngx-translate feature
 
 After following the above mentioned steps the app should be accessible on its configured URL (e.g. <http://localhost:4200>).
 
-Assets
-====================
-In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which will be added per-technology on the Recommended Setup how-to pages once they are published.
-
-## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
-
-In a standalone web application, static assets are served from the application’s own origin: the browser requests `/assets/icons/logo.svg`, the server resolves that path against the application’s build output, and the asset loads.
-
-OneCX applications do not run standalone. Each application is packaged as a Micro Frontend and **loaded into the OneCX shell**. When the shell loads a Micro Frontend, it is loaded relative to the shell’s deployment rather than from the application’s own origin. This changes how asset URLs are resolved: a path that the application’s build emitted is no longer guaranteed to resolve against the location the browser actually loads the application from.
-
-As a result, an asset that is merely **present** in a library’s npm package — or that is bundled into the application’s build output — is not enough for the application to **reference** it at runtime from the shell. The asset must be published to a path the application’s own build serves, and the code must reference it through that published path. This is why asset handling in OneCX is not the same as in a standalone app: the special treatment exists to make library- and application-provided assets resolvable even though the application runs from the shell.
-
-The same principle applies in both directions:
-
-* **Library-provided assets** (e.g. the translation files or icons a OneCX library ships) must be exposed by the application so the application can resolve them at runtime.
-* **Application-provided assets** (the app’s own styles and other static files) must be exposed so the shell can load and apply them when the application is active.
-
-## [](#library-assets)Library assets
-
-OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
-
-The exact build configuration — how to declare the assets of a given library in an Angular or React application — will be described on the Recommended Setup **Expose Library Assets** page for each technology once that guidance is published. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
-
-### [](#translation-assets)Translation assets (required)
-
-The most important library assets are **translation files**: a library that provides user-facing text ships i18n files for the languages it supports, and the application that uses the library is responsible for making those files available. Without them, library-provided strings fall back to untranslated keys or missing text.
-
-The **translation files** of the OneCX libraries the application uses are required to be exposed: they are what carry the user-facing text, and without them the library’s strings fall back to untranslated keys or missing text.
-
-## [](#application-assets)Application assets
-
-An application should also expose its own assets so the shell can apply them when the application is active.
-
-### [](#application-styles)Application styles (recommended)
-
-In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
-
-Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — will be described on the Recommended Setup **Expose Component Styles** page once that guidance is published.
-
-Note the boundary with the **[Style Isolation](style-isolation.html)** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
-
-## [](#related)Related
-
-| |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-* [Style Isolation](style-isolation.html) — rules for what belongs in an application’s `styles.css` and how the platform scopes it.
-
-| |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
 Authentication
 ====================
 In OneCX, the shell has full control of the authentication flow and the user’s session. An integrated application never implements its own login, token storage, or session logic — it relies on the shell for all of that and limits itself to the small set of interactions described on this page.
@@ -6485,6 +6434,57 @@ The shell keeps the access token valid transparently: both the Angular HTTP inte
 * [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
 * [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
 * [Permissions Handling](../features/permissions.html) — rendering UI conditionally based on the permissions the shell exposes for the current user.
+
+Assets
+====================
+In OneCX, **assets** are the non-code files a user interface needs at runtime: icons, images, fonts, and translation (i18n) files. This page is a technology-agnostic overview of how assets are treated in OneCX and why they need special treatment; it does not cover the build configuration, which will be added per-technology on the Recommended Setup how-to pages once they are published.
+
+## [](#why-assets-need-special-treatment)Why assets need special treatment in OneCX
+
+In a standalone web application, static assets are served from the application’s own origin: the browser requests `/assets/icons/logo.svg`, the server resolves that path against the application’s build output, and the asset loads.
+
+OneCX applications do not run standalone. Each application is packaged as a Micro Frontend and **loaded into the OneCX shell**. When the shell loads a Micro Frontend, it is loaded relative to the shell’s deployment rather than from the application’s own origin. This changes how asset URLs are resolved: a path that the application’s build emitted is no longer guaranteed to resolve against the location the browser actually loads the application from.
+
+As a result, an asset that is merely **present** in a library’s npm package — or that is bundled into the application’s build output — is not enough for the application to **reference** it at runtime from the shell. The asset must be published to a path the application’s own build serves, and the code must reference it through that published path. This is why asset handling in OneCX is not the same as in a standalone app: the special treatment exists to make library- and application-provided assets resolvable even though the application runs from the shell.
+
+The same principle applies in both directions:
+
+* **Library-provided assets** (e.g. the translation files or icons a OneCX library ships) must be exposed by the application so the application can resolve them at runtime.
+* **Application-provided assets** (the app’s own styles and other static files) must be exposed so the shell can load and apply them when the application is active.
+
+## [](#library-assets)Library assets
+
+OneCX libraries ship the assets their functionality depends on: translation files, icons, fonts, and other static files. Because the application is what loads and runs in the shell, exposing the assets of the libraries it uses is the application’s responsibility. Other library assets (icons, fonts, and other static files) should be exposed so the application resolves them at runtime; the application still loads and runs without them, but it renders with missing or broken assets.
+
+The exact build configuration — how to declare the assets of a given library in an Angular or React application — will be described on the Recommended Setup **Expose Library Assets** page for each technology once that guidance is published. The conceptual requirement, regardless of technology, is: **make the assets of the libraries you use part of your build output, at a path you reference them from.**
+
+### [](#translation-assets)Translation assets (required)
+
+The most important library assets are **translation files**: a library that provides user-facing text ships i18n files for the languages it supports, and the application that uses the library is responsible for making those files available. Without them, library-provided strings fall back to untranslated keys or missing text.
+
+The **translation files** of the OneCX libraries the application uses are required to be exposed: they are what carry the user-facing text, and without them the library’s strings fall back to untranslated keys or missing text.
+
+## [](#application-assets)Application assets
+
+An application should also expose its own assets so the shell can apply them when the application is active.
+
+### [](#application-styles)Application styles (recommended)
+
+In OneCX, an application’s own styles live in a `styles.css` file (the entry point for the application’s global stylesheet), and that file is what the application exposes to the shell.
+
+Exposing the application’s `styles.css` is recommended rather than strictly required: the application still loads and runs without it, but the shell has no stylesheet to apply for that application, so the application may render without its intended global styling. How to expose `styles.css` — the per-technology mechanism — will be described on the Recommended Setup **Expose Component Styles** page once that guidance is published.
+
+Note the boundary with the **[Style Isolation](style-isolation.html)** concept: exposing `styles.css` is the **what** and **how** — the mechanics of publishing the file so the shell can load it. What **belongs** inside that stylesheet, and how it is scoped so it does not leak into or out of the application, is a separate concern owned by the **Style Isolation** concept page.
+
+## [](#related)Related
+
+| |  A link to the **Translations** concept page will be added here once that page is published — it covers the library-translation exposure requirement described above in depth. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+* [Style Isolation](style-isolation.html) — rules for what belongs in an application’s `styles.css` and how the platform scopes it.
+
+| |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
 Concepts
 ====================
@@ -8406,28 +8406,6 @@ Module Federation and Share Scopes
 ====================
 Remote package sharing and share scopes are part of Required Setup. See [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html).
 
-PrimeNG
-====================
-## [](#overview)Overview
-
-PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
-
-## [](#theming-with-primeng)Theming with PrimeNG
-
-PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
-
-## [](#useful-links)Useful Links
-
-* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
-* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
-* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
-* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
-* PrimeNG Theming Customization: [PrimeNG Theming Customization](../../features/primeng/theming-customization.html)
-
-## [](#onecx-integration)OneCX Integration
-
-PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on customizing PrimeNG theming within OneCX, refer to the [PrimeNG Theming Customization](../../features/primeng/theming-customization.html).
-
 OneCX Multi-language Translations
 ====================
 ## [](#overview)Overview
@@ -8579,6 +8557,28 @@ To verify that the setup is complete, ensure the following:
 ## [](#next-steps)Next Steps
 
 After completing the setup, you can start using translations in your components and templates. For usage instructions, refer to the [multi-language usage document](multi-language-usage.html).
+
+PrimeNG
+====================
+## [](#overview)Overview
+
+PrimeNG offers a comprehensive set of UI components, including buttons, forms, data tables, charts, dialogs, and more. These components are designed to be easy to use and integrate seamlessly with Angular applications. PrimeNG also provides features like theming, accessibility support, and responsive design, making it a versatile choice for building web applications.
+
+## [](#theming-with-primeng)Theming with PrimeNG
+
+PrimeNG supports theming, allowing developers to customize the look and feel of their applications. It provides a variety of pre-defined themes, and developers can also create their own custom themes using CSS or Sass. The theming system in PrimeNG enables consistent styling across all components, ensuring a cohesive user experience.
+
+## [](#useful-links)Useful Links
+
+* Official website: [PrimeNG](https://www.primefaces.org/primeng/)
+* Documentation: [PrimeNG Showcase](https://www.primefaces.org/primeng/showcase/)
+* GitHub Repository: [PrimeNG GitHub](https://github.com/primefaces/primeng)
+* Theme Designer: [PrimeNG Theme Designer](https://www.primefaces.org/designer/primeng/)
+* PrimeNG Theming Customization: [PrimeNG Theming Customization](../../features/primeng/theming-customization.html)
+
+## [](#onecx-integration)OneCX Integration
+
+PrimeNG is integrated into the OneCX platform to provide a consistent and efficient way to build user interfaces. The OneCX team has created guidelines and best practices for using PrimeNG components within OneCX applications. This includes recommendations on theming, component usage, and performance optimization to ensure that applications built with PrimeNG meet the high standards of the OneCX platform. For more information on customizing PrimeNG theming within OneCX, refer to the [PrimeNG Theming Customization](../../features/primeng/theming-customization.html).
 
 OneCX Multi-language Translations Usage
 ====================
@@ -8909,49 +8909,6 @@ const AppRoutes = () => {
 
 See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference.
 
-Source Maps
-====================
-Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files — TypeScript, SCSS, or templates. They let you debug an application more effectively, because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to read stack traces, inspect application behavior, and identify the root cause of issues.
-
-Source maps are a development-time aid: they are not required for the application to run, and are usually enabled while developing and turned off for production. This page explains how to enable them and how to decide where to enable them.
-
-## [](#recommendation-for-source-map-usage)Recommendation for source map usage
-
-For consuming applications, source maps should usually be:
-
-* enabled in development
-* optionally enabled in test or staging environments
-* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
-
-## [](#how-to-enable-source-maps)How to enable source maps
-
-The exact configuration depends on how each application is built.
-
-For Angular applications, see the official Angular documentation:
-
-* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
-
-For Nx-based applications, see the official Nx documentation:
-
-* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
-
-## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
-
-It is recommended to also enable source maps in the shell during development, so that the shell and the integrated application can be debugged together.
-
-Because packages are shared at runtime between the shell and applications, having source maps enabled in the shell gives better insight into the shared dependencies and their interactions. It also avoids the minification issues that can arise when the shell is built without source maps while the application is built with them.
-
-See the [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) guide for how to enable source maps in the shell.
-
-## [](#security-and-operations-note)Security and operations note
-
-| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
-| ----------------------------------------------------------------------------------------------------------------- |
-
-## [](#related)Related
-
-* [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) — how to enable source maps in the OneCX shell.
-
 NgRx Guidelines
 ====================
 This chapter gives guidance about NgRx. NgRx is a framework for building reactive applications in Angular.
@@ -9161,6 +9118,49 @@ For the legacy `.eslintrc` setup and for overriding rule severities, see the [ng
 For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
+
+Source Maps
+====================
+Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files — TypeScript, SCSS, or templates. They let you debug an application more effectively, because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to read stack traces, inspect application behavior, and identify the root cause of issues.
+
+Source maps are a development-time aid: they are not required for the application to run, and are usually enabled while developing and turned off for production. This page explains how to enable them and how to decide where to enable them.
+
+## [](#recommendation-for-source-map-usage)Recommendation for source map usage
+
+For consuming applications, source maps should usually be:
+
+* enabled in development
+* optionally enabled in test or staging environments
+* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
+
+## [](#how-to-enable-source-maps)How to enable source maps
+
+The exact configuration depends on how each application is built.
+
+For Angular applications, see the official Angular documentation:
+
+* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
+
+For Nx-based applications, see the official Nx documentation:
+
+* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
+
+## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
+
+It is recommended to also enable source maps in the shell during development, so that the shell and the integrated application can be debugged together.
+
+Because packages are shared at runtime between the shell and applications, having source maps enabled in the shell gives better insight into the shared dependencies and their interactions. It also avoids the minification issues that can arise when the shell is built without source maps while the application is built with them.
+
+See the [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) guide for how to enable source maps in the shell.
+
+## [](#security-and-operations-note)Security and operations note
+
+| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
+| ----------------------------------------------------------------------------------------------------------------- |
+
+## [](#related)Related
+
+* [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) — how to enable source maps in the OneCX shell.
 
 Lazy loading tabs
 ====================
@@ -10565,17 +10565,17 @@ The library also provides routing integration helpers:
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
-Adapt Routing
-====================
-An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
-
-See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
-
 Apply Theming
 ====================
 The OneCX shell loads and applies the active theme for the selected workspace. Application code should not load or apply the theme itself; it should use the CSS variables the shell exposes.
 
 See [Theming](../../concepts/theming.html) for the full list of available theme variables and how to use them in Angular and React applications.
+
+Adapt Routing
+====================
+An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
+
+See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
 
 Expose Component Styles
 ====================
@@ -10585,15 +10585,6 @@ An application integrated with OneCX still loads and runs even if its own or its
 
 * [Angular Applications](expose-component-styles/angular.html) — exposing an application’s `styles.css` and the stylesheets of OneCX libraries it depends on.
 * [React Applications](expose-component-styles/react.html) — guidance for exposing an application’s `styles.css`.
-
-Expose Library Assets
-====================
-An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
-
-## [](#expose-library-assets-pages)Pages
-
-* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
-* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Recommended Setup
 ====================
@@ -10613,6 +10604,15 @@ This tier applies to both paths of building a OneCX UI:
 * [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
+
+Expose Library Assets
+====================
+An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
+
+## [](#expose-library-assets-pages)Pages
+
+* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
+* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Configure Authentication
 ====================
@@ -11253,6 +11253,109 @@ _Adapt in File:_ `<feature>-search.component.html`
 * [MultiSelect input field](multiselect.html)
 * [AutoComplete input field](autocomplete/autocomplete.html)
 
+Conditional Rendering
+====================
+## [](#overview)Overview
+
+Two structural directives render a template based on the current user’s permissions, letting an Angular application conditionally show or hide parts of its UI:
+
+**ocxIfPermission — renders the template only when the user \*has** the required permission(s). **ocxIfNotPermission — renders the template only when the user does \*not** have the required permission(s), which is useful for showing a fallback or hint to users without access. 
+
+Both accept a single permission (a string) or several (an array). When an array is given, all of the listed permissions are required — the check is a logical AND.
+
+| |  The directives resolve the current user’s permissions through the HAS\_PERMISSION\_CHECKER injection token, falling back to the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) when no custom checker is provided. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#ifpermission)`*ocxIfPermission`
+
+Shows the host template only if the user has the required permission(s).
+
+button shown only with the USER#EDIT permission
+
+```html
+<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
+  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
+</button>
+```
+
+button shown only when every listed permission is present
+
+```html
+<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
+  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
+</button>
+```
+
+## [](#ifnotpermission)`*ocxIfNotPermission`
+
+Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (a hint or read-only message) to users without access.
+
+fallback hint for users without the USER#VIEW permission
+
+```html
+<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
+  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
+</div>
+```
+
+## [](#options)Microsyntax options
+
+Beyond show/hide, both directives support rendering an alternative `elseTemplate` and keeping the UI visible but `disabled` when the permission is missing (`onMissingPermission: 'disable'`). Both directives support the same microsyntax options:
+
+| Option              | Type                | Meaning                                                                                                                              |
+| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
+| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
+| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
+
+## [](#elsetemplate)`elseTemplate`
+
+Renders an alternative template when the permission condition is not met.
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
+>
+  {{ 'ORDER.EDIT' | translate }}
+</button>
+
+<ng-template #noEditPermission>
+  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
+</ng-template>
+```
+
+For **ocxIfNotPermission, the semantics are inverted: `elseTemplate` is rendered when the user \*does have** the permission(s). 
+
+## [](#onmissingpermission-disable)`onMissingPermission: 'disable'`
+
+Keeping the UI visible but disabled is useful for discoverability — the user can see the control but not interact with it.
+
+example.html
+
+```html
+<button
+  pButton
+  pRipple
+  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
+>
+  {{ 'ORDER.DELETE' | translate }}
+</button>
+```
+
+| |  The directive adds and removes the disabled attribute on the **root node** of the rendered template. Make sure the template’s root element supports being disabled (e.g. <button>, <input>, some PrimeNG host elements). |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#related)Related
+
+* [Permissions Handling](../../permissions.html)\[Permissions Handling\] — the feature overview, how permissions reach an application, and the `<RESOURCE>#<ACTION>` convention.
+* [Checking permissions in code (Angular)](checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the `PermissionService` and `HAS_PERMISSION_CHECKER` checks for logic outside a template.
+* [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the `@onecx/angular-integration-interface` service the directives resolve permissions through.
+* [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — reading permissions in a React application with `usePermission` / `PermissionProvider`.
+
 Checking Permissions in Code
 ====================
 ## [](#overview)Overview
@@ -11394,109 +11497,6 @@ userService.getPermissions().pipe(
 * [Conditional rendering](conditional-rendering.html)\[Conditional rendering\] — the `*ocxIfPermission` / `*ocxIfNotPermission` directives for permission-based UI inside templates.
 * [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the full `@onecx/angular-integration-interface` reference.
 * [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — the `usePermission` hook / `PermissionProvider` equivalent for React applications.
-
-Conditional Rendering
-====================
-## [](#overview)Overview
-
-Two structural directives render a template based on the current user’s permissions, letting an Angular application conditionally show or hide parts of its UI:
-
-**ocxIfPermission — renders the template only when the user \*has** the required permission(s). **ocxIfNotPermission — renders the template only when the user does \*not** have the required permission(s), which is useful for showing a fallback or hint to users without access. 
-
-Both accept a single permission (a string) or several (an array). When an array is given, all of the listed permissions are required — the check is a logical AND.
-
-| |  The directives resolve the current user’s permissions through the HAS\_PERMISSION\_CHECKER injection token, falling back to the [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) when no custom checker is provided. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#ifpermission)`*ocxIfPermission`
-
-Shows the host template only if the user has the required permission(s).
-
-button shown only with the USER#EDIT permission
-
-```html
-<button pButton pRipple *ocxIfPermission="'USER#EDIT'">
-  {{ 'ACCESS_PAGE_KEY.EDIT' | translate }}
-</button>
-```
-
-button shown only when every listed permission is present
-
-```html
-<button pButton pRipple *ocxIfPermission="['USER#VIEW', 'USER#EXPORT']">
-  {{ 'ACCESS_PAGE_KEY.EXPORT' | translate }}
-</button>
-```
-
-## [](#ifnotpermission)`*ocxIfNotPermission`
-
-Shows the host template only if the user does **not** have the required permission(s). This is useful for displaying fallback UI (a hint or read-only message) to users without access.
-
-fallback hint for users without the USER#VIEW permission
-
-```html
-<div class="text-muted" *ocxIfNotPermission="'USER#VIEW'">
-  {{ 'ACCESS_PAGE_KEY.NO_ACCESS_HINT' | translate }}
-</div>
-```
-
-## [](#options)Microsyntax options
-
-Beyond show/hide, both directives support rendering an alternative `elseTemplate` and keeping the UI visible but `disabled` when the permission is missing (`onMissingPermission: 'disable'`). Both directives support the same microsyntax options:
-
-| Option              | Type                | Meaning                                                                                                                              |
-| ------------------- | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| elseTemplate        | TemplateRef         | Template to render when the permission condition is not met.                                                                         |
-| onMissingPermission | 'hide' \| 'disable' | Default is 'hide'. If set to 'disable', the original template is rendered and its root element gets a disabled="disabled" attribute. |
-| permissions         | string\[\]          | Optional override list of permissions to use for the check (bypasses the injected checker/service).                                  |
-
-## [](#elsetemplate)`elseTemplate`
-
-Renders an alternative template when the permission condition is not met.
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#EDIT'; elseTemplate: noEditPermission"
->
-  {{ 'ORDER.EDIT' | translate }}
-</button>
-
-<ng-template #noEditPermission>
-  <p class="text-muted">{{ 'ACCESS_PAGE_KEY.READ_ONLY' | translate }}</p>
-</ng-template>
-```
-
-For **ocxIfNotPermission, the semantics are inverted: `elseTemplate` is rendered when the user \*does have** the permission(s). 
-
-## [](#onmissingpermission-disable)`onMissingPermission: 'disable'`
-
-Keeping the UI visible but disabled is useful for discoverability — the user can see the control but not interact with it.
-
-example.html
-
-```html
-<button
-  pButton
-  pRipple
-  *ocxIfPermission="'USER#DELETE'; onMissingPermission: 'disable'"
->
-  {{ 'ORDER.DELETE' | translate }}
-</button>
-```
-
-| |  The directive adds and removes the disabled attribute on the **root node** of the rendered template. Make sure the template’s root element supports being disabled (e.g. <button>, <input>, some PrimeNG host elements). |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#related)Related
-
-* [Permissions Handling](../../permissions.html)\[Permissions Handling\] — the feature overview, how permissions reach an application, and the `<RESOURCE>#<ACTION>` convention.
-* [Checking permissions in code (Angular)](checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the `PermissionService` and `HAS_PERMISSION_CHECKER` checks for logic outside a template.
-* [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the `@onecx/angular-integration-interface` service the directives resolve permissions through.
-* [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — reading permissions in a React application with `usePermission` / `PermissionProvider`.
 
 Checking Permissions in Code
 ====================
@@ -12136,6 +12136,247 @@ module.exports = {
 }
 ```
 
+AutoComplete for suggestions with array of type number
+====================
+## [](#goal)Goal: Add AutoComplete Number
+
+Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
+
+| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
+| -------------------------------------------------------------------------------------------------------------- |
+
+## [](#parameters)1\. Parameters
+
+Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
+
+_Adapt in File:_ `<feature>-search.parameters.ts`
+
+```javascript
+    exampleNumberArray: z
+        .union([z.string(), z.array(z.string())])
+        .transform((v: string | string[] | undefined): string[] | undefined =>
+        v instanceof Array || !v
+            ? (v as string[] | undefined)
+            : ([v] as string[]),
+        )
+        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
+        .optional(),
+```
+
+## [](#state-and-viewmodel)2\. State & viewmodel
+
+Add additional array member for the AutoComplete suggestions in your state and viewmodel:
+
+_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
+
+```javascript
+...
+    exampleNumberArrayOptions: number[]
+...
+```
+
+## [](#actions)3\. Actions
+
+Create following actions to handle the events regarding AutoComplete:
+
+_Adapt in File:_ `<feature>-search.actions.ts`
+
+```javascript
+...
+    events: {
+        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
+        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
+        'exampleNumberArray data loading failed': emptyProps(),
+        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
+        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
+    },
+...
+```
+
+## [](#html)4\. HTML
+
+Add the following code to your formGroup in the html file:
+
+_Adapt in File:_ `<feature>-search.component.html`
+
+```html
+    <span class="p-float-label">
+        <p-autoComplete
+            id="exampleNumberArray"
+            formControlName="exampleNumberArray"
+            (completeMethod)="searchexampleNumberArrayData($event)"
+            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
+            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
+            [forceSelection]="true"
+            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
+            [showEmptyMessage]="true"
+            [emptyMessage]="
+            vm?.exampleNumberArrayOptions?.length === 0
+                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
+                : ''
+            "
+            (onSelect)="selectexampleNumberArrayValue($event)"
+            (onUnselect)="unSelectexampleNumberArrayValue($event)"
+        >
+        </p-autoComplete>
+        <label for="exampleNumberArray">{{
+            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
+        }}</label>
+    </span>
+```
+
+## [](#component)5\. Component
+
+Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
+
+_Adapt in File:_ `<feature>-search.component.ts`
+
+```javascript
+...
+    optionLabelTransformer(item: number): string {
+      return item?.toString();
+    }
+
+    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArrayDataTextEntered({
+            exampleNumberArrayInputValue: event.query,
+        }),
+      );
+    }
+
+    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionSelected({
+            selectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+
+    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
+      this.store.dispatch(
+        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
+            unSelectedexampleNumberArrayValue: event.value,
+        }),
+      );
+    }
+...
+```
+
+## [](#reducers)6\. Reducers
+
+In the reducers file you need to define the functions:
+
+_Adapt in File:_ `<feature>-search.reducers.ts`
+
+```javascript
+...
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
+    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: exampleNumberArrayOptions,
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
+    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { selectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => {
+      const isValuePresent =
+        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
+      return {
+        ...state,
+        exampleNumberArraySelectedValues: isValuePresent
+          ? state.exampleNumberArraySelectedValues
+          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
+        exampleNumberArrayOptions: [],
+      };
+    },
+  ),
+  on(
+    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
+    (
+      state: <%= featureClassName %>SearchState,
+      { unSelectedexampleNumberArrayValue },
+    ): <%= featureClassName %>SearchState => ({
+      ...state,
+      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
+        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
+      ),
+      exampleNumberArrayOptions: [],
+    }),
+  ),
+...
+```
+
+## [](#selectors)7\. Selectors
+
+Add the missing selectors:
+
+_Adapt in File:_ `<feature>-search.selectors.ts`
+
+```javascript
+...
+    export const select<%= featureClassName %>SearchViewModel = createSelector(
+      ...
+      <feature>SearchSelectors.
+      selectExampleNumberArrayOptions,
+      ...
+      (
+        ...
+        exampleNumberArrayOptions,
+        ...
+      ): <%= featureClassName %>SearchViewModel => ({
+        ...
+        exampleNumberArrayOptions,
+        ...
+      }),
+    );
+...
+```
+
+## [](#effects)8\. Effects
+
+Create the effect for getting the suggestions
+
+_Adapt in File:_ `<feature>-search.effects.ts`
+
+```javascript
+...
+    searchexampleNumberArray$ = createEffect(() =>
+      this.actions$.pipe(
+        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
+        mergeMap((action) => {
+          return this.<feature>Service
+            .searchexampleNumberArray(action.exampleNumberArrayInputText)
+            .pipe(
+              map((response) =>
+                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
+                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
+                }),
+              ),
+              catchError(() =>
+                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
+              ),
+            );
+        }),
+      ),
+    );
+...
+```
+
+| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
+| ---------------------------------------------------------------------------- |
+
 AutoComplete for suggestions with array of type object
 ====================
 ## [](#goal)Goal: Add Autocmplete Object
@@ -12443,247 +12684,6 @@ _Adapt in File:_ `<feature>-search.effects.ts`
               ),
             ),
         ),
-      ),
-    );
-...
-```
-
-| |  Don’t forget to add the translations to your **de.json** and **en.json**. |
-| ---------------------------------------------------------------------------- |
-
-AutoComplete for suggestions with array of type number
-====================
-## [](#goal)Goal: Add AutoComplete Number
-
-Add an AutoComplete for suggestions with array of type number as a search criteria input field for your search page.
-
-| |  Please replace all occurences of **exampleNumberArray** with the actual name in the following code snippets |
-| -------------------------------------------------------------------------------------------------------------- |
-
-## [](#parameters)1\. Parameters
-
-Please define the member for your **<%= featurePropertyName %>SearchCriteriasSchema** here.
-
-_Adapt in File:_ `<feature>-search.parameters.ts`
-
-```javascript
-    exampleNumberArray: z
-        .union([z.string(), z.array(z.string())])
-        .transform((v: string | string[] | undefined): string[] | undefined =>
-        v instanceof Array || !v
-            ? (v as string[] | undefined)
-            : ([v] as string[]),
-        )
-        .transform((v: string[] | undefined) => v?.map((e) => Number(e)))
-        .optional(),
-```
-
-## [](#state-and-viewmodel)2\. State & viewmodel
-
-Add additional array member for the AutoComplete suggestions in your state and viewmodel:
-
-_Adapt in Files:_ `<feature>-search.viewmodel.ts` and `<feature>-search.state.ts`
-
-```javascript
-...
-    exampleNumberArrayOptions: number[]
-...
-```
-
-## [](#actions)3\. Actions
-
-Create following actions to handle the events regarding AutoComplete:
-
-_Adapt in File:_ `<feature>-search.actions.ts`
-
-```javascript
-...
-    events: {
-        'exampleNumberArray data text entered': props<{ exampleNumberArrayInputValue: number }>(),
-        'exampleNumberArray data received ': props<{ exampleNumberArrayOptions: number[] }>(),
-        'exampleNumberArray data loading failed': emptyProps(),
-        'exampleNumberArray selected': props<{ selectedexampleNumberArrayValue: number }>(),
-        'exampleNumberArray unselected': props<{ unSelectedexampleNumberArrayValue: number }>(),
-    },
-...
-```
-
-## [](#html)4\. HTML
-
-Add the following code to your formGroup in the html file:
-
-_Adapt in File:_ `<feature>-search.component.html`
-
-```html
-    <span class="p-float-label">
-        <p-autoComplete
-            id="exampleNumberArray"
-            formControlName="exampleNumberArray"
-            (completeMethod)="searchexampleNumberArrayData($event)"
-            [optionLabel]="optionLabelTransformer" <-- NECESSARY FOR PROPERPLY HANDLING ITEMS OF TYPE NUMBER
-            [suggestions]="vm?.exampleNumberArrayOptions ?? []"
-            [forceSelection]="true"
-            [multiple]="true" <-- ONLY NECESSARY IF MULTIPLE VALUES CAN BE SELECTED
-            [showEmptyMessage]="true"
-            [emptyMessage]="
-            vm?.exampleNumberArrayOptions?.length === 0
-                ? ('YOUR_PRODUCT_SEARCH.CRITERIA.EXAMPLE_ID_NOT_FOUND' | translate)
-                : ''
-            "
-            (onSelect)="selectexampleNumberArrayValue($event)"
-            (onUnselect)="unSelectexampleNumberArrayValue($event)"
-        >
-        </p-autoComplete>
-        <label for="exampleNumberArray">{{
-            'YOUR_PRODUCT_SEARCH.CRITERIA.ID' | translate
-        }}</label>
-    </span>
-```
-
-## [](#component)5\. Component
-
-Add the respective methods to handle the different events and in addition a transformer method to correctly deal with the number type it needs to convert the number to a string:
-
-_Adapt in File:_ `<feature>-search.component.ts`
-
-```javascript
-...
-    optionLabelTransformer(item: number): string {
-      return item?.toString();
-    }
-
-    searchexampleNumberArrayData(event: AutoCompleteCompleteEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArrayDataTextEntered({
-            exampleNumberArrayInputValue: event.query,
-        }),
-      );
-    }
-
-    selectexampleNumberArrayValue(event: AutoCompleteSelectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionSelected({
-            selectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-
-    unSelectexampleNumberArrayValue(event: AutoCompleteUnselectEvent) {
-      this.store.dispatch(
-        <feature>SearchActions.exampleNumberArraySuggestionUnselected({
-            unSelectedexampleNumberArrayValue: event.value,
-        }),
-      );
-    }
-...
-```
-
-## [](#reducers)6\. Reducers
-
-In the reducers file you need to define the functions:
-
-_Adapt in File:_ `<feature>-search.reducers.ts`
-
-```javascript
-...
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived,
-    (state: <%= featureClassName %>SearchState, { exampleNumberArrayOptions }): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: exampleNumberArrayOptions,
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed,
-    (state: <%= featureClassName %>SearchState): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionSelected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { selectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => {
-      const isValuePresent =
-        state.exampleNumberArraySelectedValues.includes(selectedexampleNumberArrayValue);
-      return {
-        ...state,
-        exampleNumberArraySelectedValues: isValuePresent
-          ? state.exampleNumberArraySelectedValues
-          : [...state.exampleNumberArraySelectedValues, selectedexampleNumberArrayValue],
-        exampleNumberArrayOptions: [],
-      };
-    },
-  ),
-  on(
-    <%= featureClassName %>SearchActions.exampleNumberArraySuggestionUnselected,
-    (
-      state: <%= featureClassName %>SearchState,
-      { unSelectedexampleNumberArrayValue },
-    ): <%= featureClassName %>SearchState => ({
-      ...state,
-      exampleNumberArraySelectedValues: state.exampleNumberArraySelectedValues.filter(
-        (exampleNumberArray) => exampleNumberArray !== unSelectedexampleNumberArrayValue,
-      ),
-      exampleNumberArrayOptions: [],
-    }),
-  ),
-...
-```
-
-## [](#selectors)7\. Selectors
-
-Add the missing selectors:
-
-_Adapt in File:_ `<feature>-search.selectors.ts`
-
-```javascript
-...
-    export const select<%= featureClassName %>SearchViewModel = createSelector(
-      ...
-      <feature>SearchSelectors.
-      selectExampleNumberArrayOptions,
-      ...
-      (
-        ...
-        exampleNumberArrayOptions,
-        ...
-      ): <%= featureClassName %>SearchViewModel => ({
-        ...
-        exampleNumberArrayOptions,
-        ...
-      }),
-    );
-...
-```
-
-## [](#effects)8\. Effects
-
-Create the effect for getting the suggestions
-
-_Adapt in File:_ `<feature>-search.effects.ts`
-
-```javascript
-...
-    searchexampleNumberArray$ = createEffect(() =>
-      this.actions$.pipe(
-        ofType(<%= featureClassName %>SearchActions.exampleNumberArrayDataTextEntered),
-        mergeMap((action) => {
-          return this.<feature>Service
-            .searchexampleNumberArray(action.exampleNumberArrayInputText)
-            .pipe(
-              map((response) =>
-                <%= featureClassName %>SearchActions.exampleNumberArrayDataReceived({
-                  exampleNumberArrayOptions: response.exampleNumberArray, <-- NAME OF THE MEMBER WHICH IS DEFINED IN THE RESPONSE OBJECT
-                }),
-              ),
-              catchError(() =>
-                of<%= featureClassName %>SearchActions.exampleNumberArrayDataLoadingFailed()),
-              ),
-            );
-        }),
       ),
     );
 ...
@@ -16580,6 +16580,106 @@ cd bookstore
 npm install
 ```
 
+Create a Feature Module (React)
+====================
+What is a Feature Module?
+
+A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application.  
+It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.
+
+| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+| |  This page documents the React feature generator.For Angular, see [Create a Feature Module](#../generator/create-feature.adoc). |
+| --------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#generate-a-feature-module)Generate a Feature Module
+
+The current working directory must be the root of an existing OneCX UI Application.
+
+| Directory | <root-of-ui-app> |
+| --------- | ---------------- |
+
+Create a feature module with the following command, preset resource/entity name
+
+```bash
+nx generate <namespace>/react-generator:react-feature <feature> --resource=<resource>
+```
+
+with:
+
+| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
+| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
+
+Next, **you will be asked** if you would like to adapt the names for the generation.  
+If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
+If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
+
+The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
+Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a React search page](create-search.html).
+
+### [](#key-naming-conventions)Key Naming Conventions
+
+* `src/pages/<feature>/`  
+Directory for the generated feature entry page and related pages
+* `/<feature>/`  
+Default **route path** for the application feature, configured in `src/router.tsx`.
+
+### [](#routing-configuration)Routing Configuration
+
+The generator will automatically configure the routing for the generated feature module.  
+It will add a new route to `src/router.tsx` that renders the generated feature entry page component when the specified route is accessed.  
+The generated feature page is intentionally only a placeholder and is typically replaced later by other generators such as the search generator.  
+
+The route path will be derived from the feature name, e.g. `/book/` for a feature named "book".  
+You can further customize the routing configuration as needed after the generation.
+
+## [](#example)Example
+
+### [](#create-a-feature-module)Create a Feature Module
+
+Create a feature module **book** inside an application named **bookstore** to manage book data.  
+Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
+
+Create a Feature Module named "book" with React
+
+```bash
+nx generate @onecx/react-generator:react-feature book --resource=Book
+```
+
+This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
+
+### [](#routing)Routing
+
+The generator will add a new route to `src/router.tsx` that renders the generated book placeholder page when the `/book/` route is accessed. This placeholder is later replaced by generators such as `react-search`.  
+
+You can further customize the routing configuration as needed after the generation.
+
+#### React Routing Configuration in src/router.tsx
+
+```tsx
+import BookFeature from "./pages/book";
+
+// ...
+
+{
+  path: `${href}/book`,
+  element: <BookFeature />,
+  handle: {},
+}
+```
+
+### [](#testing)Testing
+
+The generator does not create test cases for the feature module itself, but it neverthless it is a good practice to run the tests after generating the feature module to ensure that the existing functionality of the application is not broken and everything is working as expected.  
+Use the following command to run the tests:
+
+```bash
+npm run test
+```
+
 Create a Detail Page (React)
 ====================
 | |  This page documents the React detail generator.For Angular, see [Create a Detail Component](#../generator/create-details.adoc). |
@@ -16682,106 +16782,6 @@ The detail page is generated with a basic layout and structure, which can be fur
 ![generated book detail component book react](../_images/generated_book_detail_component_book_react.png) 
 
 Figure 4\. Detail UI after generation
-
-Create a Feature Module (React)
-====================
-What is a Feature Module?
-
-A feature Module is a modular unit of functionality that encapsulates a specific feature or set of related features within an UI Application.  
-It is designed to promote code reusability, maintainability, and separation of concerns by grouping related components, services, and state management logic together.
-
-| |  The Feature Module created with the OneCX App Generator is only the base of a functional module.You will need to further develop and customize the module to meet your specific requirements and business logic. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-| |  This page documents the React feature generator.For Angular, see [Create a Feature Module](#../generator/create-feature.adoc). |
-| --------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#generate-a-feature-module)Generate a Feature Module
-
-The current working directory must be the root of an existing OneCX UI Application.
-
-| Directory | <root-of-ui-app> |
-| --------- | ---------------- |
-
-Create a feature module with the following command, preset resource/entity name
-
-```bash
-nx generate <namespace>/react-generator:react-feature <feature> --resource=<resource>
-```
-
-with:
-
-| _<namespace>_ | The base namespace of the project where the application is part of.For the OneCX, use @onecx.                                                                                                                            |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| _<feature>_   | The name of the generated feature module.E.g. book for a feature module named "Book".                                                                                                                                    |
-| _<resource>_  | Optional. The name of the resource entity for which the feature module is generated.E.g. book for a resource entity named "Book". If not specified, the generator will use the feature name as resource name by default. |
-
-Next, **you will be asked** if you would like to adapt the names for the generation.  
-If you answer **No**, the generator will use the preset resource name to derive the names for the feature module and other generated parts.  
-If you answer **Yes**, you can specify a name for the API in the following questions. This can be helpful if you want to customize an existing API.
-
-The generator will create a new feature module with the specified name and set up the necessary structure and configurations.  
-Next steps may create components, services, and state management logic within the feature module as needed, e.g. [create a React search page](create-search.html).
-
-### [](#key-naming-conventions)Key Naming Conventions
-
-* `src/pages/<feature>/`  
-Directory for the generated feature entry page and related pages
-* `/<feature>/`  
-Default **route path** for the application feature, configured in `src/router.tsx`.
-
-### [](#routing-configuration)Routing Configuration
-
-The generator will automatically configure the routing for the generated feature module.  
-It will add a new route to `src/router.tsx` that renders the generated feature entry page component when the specified route is accessed.  
-The generated feature page is intentionally only a placeholder and is typically replaced later by other generators such as the search generator.  
-
-The route path will be derived from the feature name, e.g. `/book/` for a feature named "book".  
-You can further customize the routing configuration as needed after the generation.
-
-## [](#example)Example
-
-### [](#create-a-feature-module)Create a Feature Module
-
-Create a feature module **book** inside an application named **bookstore** to manage book data.  
-Execute the following command with the **bookstore** application as current working directory. Define the resource name as **Book** to generate a feature module for managing the entity **Book**.
-
-Create a Feature Module named "book" with React
-
-```bash
-nx generate @onecx/react-generator:react-feature book --resource=Book
-```
-
-This command will generate a new feature module named **book** with the necessary structure and configurations. The preset resource name **Book** will be used to derive the names for the generated components and services related to managing book data.
-
-### [](#routing)Routing
-
-The generator will add a new route to `src/router.tsx` that renders the generated book placeholder page when the `/book/` route is accessed. This placeholder is later replaced by generators such as `react-search`.  
-
-You can further customize the routing configuration as needed after the generation.
-
-#### React Routing Configuration in src/router.tsx
-
-```tsx
-import BookFeature from "./pages/book";
-
-// ...
-
-{
-  path: `${href}/book`,
-  element: <BookFeature />,
-  handle: {},
-}
-```
-
-### [](#testing)Testing
-
-The generator does not create test cases for the feature module itself, but it neverthless it is a good practice to run the tests after generating the feature module to ensure that the existing functionality of the application is not broken and everything is working as expected.  
-Use the following command to run the tests:
-
-```bash
-npm run test
-```
 
 Create a React Page
 ====================
@@ -17125,6 +17125,13 @@ If you add new templates, update this partial and link it from the Shared Genera
 
 undefined
 ====================
+### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
+
+| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+undefined
+====================
 ## [](#customize-form-fields)Customize form fields
 
 The form fields of the dialog need to be adapted
@@ -17216,13 +17223,6 @@ this.formGroup = new FormGroup({
 
 | |  To configure the dialog or modify its contents, please refer to the [PortalDialogService docs](../../../onecx-portal-ui-libs/service/portal-dialog-service.html). |
 | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-undefined
-====================
-### [](#%5Fcommit%5Fyour%5Fchanges)Commit your changes
-
-| |  After the Application is started, make sure: new button to create an object is created on the search page header and it opens the create dialog. items in the data view have an edit icon that opens the update dialog. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 
 undefined
 ====================
@@ -18758,6 +18758,137 @@ nx generate <namespaceOfTheGenerator>/angular-generator:ngrx-page <feature>
 
 After running the generator, you can modify all files to your needs.
 
+Configure Detail Tests (React)
+====================
+| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](#../../generator/details/detail-tests.adoc). |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#action-d11)ACTION D11
+
+Configure Detail Tests
+
+In alignment to the adaptations made in the detail component, you will also need to adapt the generated tests for the detail component. This includes updating the test data and expected results in the test files to reflect the changes made to the detail component, such as the property definitions and the structure of the detail view.  
+This ensures that the tests accurately validate the functionality of the detail component based on the customized implementation.
+
+---
+
+### [](#detail-component)Detail Component
+
+#### [](#location-of-detail-component-tests)Location of Detail Component Tests
+
+| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
+| --------- | ------------------------------------------------------- |
+| File      | <resource>-details.hook.test.ts (hook tests)            |
+| File      | <resource>-details.page.test.tsx (page tests)           |
+
+#### [](#tests-for-the-book)Tests for the book
+
+| Directory | bookstore/src/pages/book/book-details |
+| --------- | ------------------------------------- |
+| File      | book-details.hook.test.ts             |
+| File      | book-details.page.test.tsx            |
+
+Update the test data in the test file to reflect the expected structure and values based on the customized detail component implementation.
+
+ACTION D11 in `<resource>-details.hook.test.ts` 
+
+```javascript
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { useBookDetails } from './book-details.hook';
+
+  it('should fetch details when id is provided', async () => {
+    const mockDetails = {
+      id: 'test-id',
+      modificationCount: 0,
+      // ACTION D11: Add additional fields to match your implementation
+    };
+
+    mockService.getBookById.mockResolvedValue({
+      data: { resource: mockDetails }
+    });
+
+    const { result } = renderHook(() => useBookDetails(mockService));
+
+    await act(async () => {
+      await result.current.fetchDetails('test-id');
+    });
+
+    await waitFor(() => {
+      expect(result.current.details).toEqual(mockDetails);
+    });
+  });
+```
+
+ACTION D11 in `<resource>-details.page.test.tsx` 
+
+```javascript
+(useBookDetails as any).mockReturnValue({
+  details: {
+    id: 'test-id',
+    modificationCount: 0,
+    // ACTION D11: Adjust test data to match your detail properties
+  },
+  loading: false,
+  error: null,
+  fetchDetails: vi.fn(),
+});
+```
+
+## [](#action-d12)ACTION D12
+
+Adjust API Request Structure
+
+When using edit mode in React, you may need to adjust the API request structure to match your backend’s expected signature. The generated code uses a type cast (`as any`) for flexibility, but you should update it to match your actual API requirements.
+
+| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
+| --------- | ------------------------------------------------------- |
+| File      | <resource>-details.hook.ts                              |
+
+ACTION D12 in `<resource>-details.hook.ts` 
+
+```javascript
+const updateDetails = useCallback(async (updatedDetails: BookDetails) => {
+  if (!details?.id) return false;
+
+  setIsSubmitting(true);
+  setError(null);
+  try {
+    // ACTION D12: Adjust request structure to match your API signature
+    // The API expects: updateBookById(id: string, updateRequest: UpdateBookRequest)
+    // You may need to transform updatedDetails to match the UpdateRequest structure
+    await bookService.updateBookById(
+      details.id,
+      updatedDetails as any
+    );
+    setDetails(updatedDetails);
+    return true;
+  } catch (err) {
+    setError(err instanceof Error ? err.message : 'Failed to update details');
+    return false;
+  } finally {
+    setIsSubmitting(false);
+  }
+}, [details, bookService]);
+```
+
+---
+
+## [](#execute-tests)Execute Tests
+
+After adapting the tests, you can execute them to ensure that they are working correctly and validating the functionality of the detail component as expected.  
+Use the following command to run all tests:
+
+```bash
+npm run test
+```
+
+This will execute the test suite and provide feedback on the success or failure of the tests based on the adapted test cases and expected results.  
+Make sure to review the test results and address any issues that may arise to ensure that your detail component is functioning correctly and meets the desired requirements.
+
+![test result detail](../../_images/test_result_detail.png) 
+
+Figure 1\. Test results
+
 Configure Detail View (React)
 ====================
 After generating the base of the detail component, you can configure the detail view to display and manage the details of the specified resource/entity. By default, the generator creates data structures used in GET request to fetch the details of the resource/entity and display them in the detail view.
@@ -19156,137 +19287,6 @@ resetFormData({
   // ACTION D4: Add additional form field initializations here
 });
 ```
-
-Configure Detail Tests (React)
-====================
-| |  This section covers the React implementation. For Angular, see [Configure Detail Tests (Angular)](#../../generator/details/detail-tests.adoc). |
-| ------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#action-d11)ACTION D11
-
-Configure Detail Tests
-
-In alignment to the adaptations made in the detail component, you will also need to adapt the generated tests for the detail component. This includes updating the test data and expected results in the test files to reflect the changes made to the detail component, such as the property definitions and the structure of the detail view.  
-This ensures that the tests accurately validate the functionality of the detail component based on the customized implementation.
-
----
-
-### [](#detail-component)Detail Component
-
-#### [](#location-of-detail-component-tests)Location of Detail Component Tests
-
-| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
-| --------- | ------------------------------------------------------- |
-| File      | <resource>-details.hook.test.ts (hook tests)            |
-| File      | <resource>-details.page.test.tsx (page tests)           |
-
-#### [](#tests-for-the-book)Tests for the book
-
-| Directory | bookstore/src/pages/book/book-details |
-| --------- | ------------------------------------- |
-| File      | book-details.hook.test.ts             |
-| File      | book-details.page.test.tsx            |
-
-Update the test data in the test file to reflect the expected structure and values based on the customized detail component implementation.
-
-ACTION D11 in `<resource>-details.hook.test.ts` 
-
-```javascript
-import { renderHook, waitFor, act } from '@testing-library/react';
-import { useBookDetails } from './book-details.hook';
-
-  it('should fetch details when id is provided', async () => {
-    const mockDetails = {
-      id: 'test-id',
-      modificationCount: 0,
-      // ACTION D11: Add additional fields to match your implementation
-    };
-
-    mockService.getBookById.mockResolvedValue({
-      data: { resource: mockDetails }
-    });
-
-    const { result } = renderHook(() => useBookDetails(mockService));
-
-    await act(async () => {
-      await result.current.fetchDetails('test-id');
-    });
-
-    await waitFor(() => {
-      expect(result.current.details).toEqual(mockDetails);
-    });
-  });
-```
-
-ACTION D11 in `<resource>-details.page.test.tsx` 
-
-```javascript
-(useBookDetails as any).mockReturnValue({
-  details: {
-    id: 'test-id',
-    modificationCount: 0,
-    // ACTION D11: Adjust test data to match your detail properties
-  },
-  loading: false,
-  error: null,
-  fetchDetails: vi.fn(),
-});
-```
-
-## [](#action-d12)ACTION D12
-
-Adjust API Request Structure
-
-When using edit mode in React, you may need to adjust the API request structure to match your backend’s expected signature. The generated code uses a type cast (`as any`) for flexibility, but you should update it to match your actual API requirements.
-
-| Directory | <root-of-ui-app>/src/pages/<feature>/<resource>-details |
-| --------- | ------------------------------------------------------- |
-| File      | <resource>-details.hook.ts                              |
-
-ACTION D12 in `<resource>-details.hook.ts` 
-
-```javascript
-const updateDetails = useCallback(async (updatedDetails: BookDetails) => {
-  if (!details?.id) return false;
-
-  setIsSubmitting(true);
-  setError(null);
-  try {
-    // ACTION D12: Adjust request structure to match your API signature
-    // The API expects: updateBookById(id: string, updateRequest: UpdateBookRequest)
-    // You may need to transform updatedDetails to match the UpdateRequest structure
-    await bookService.updateBookById(
-      details.id,
-      updatedDetails as any
-    );
-    setDetails(updatedDetails);
-    return true;
-  } catch (err) {
-    setError(err instanceof Error ? err.message : 'Failed to update details');
-    return false;
-  } finally {
-    setIsSubmitting(false);
-  }
-}, [details, bookService]);
-```
-
----
-
-## [](#execute-tests)Execute Tests
-
-After adapting the tests, you can execute them to ensure that they are working correctly and validating the functionality of the detail component as expected.  
-Use the following command to run all tests:
-
-```bash
-npm run test
-```
-
-This will execute the test suite and provide feedback on the success or failure of the tests based on the adapted test cases and expected results.  
-Make sure to review the test results and address any issues that may arise to ensure that your detail component is functioning correctly and meets the desired requirements.
-
-![test result detail](../../_images/test_result_detail.png) 
-
-Figure 1\. Test results
 
 Map the API and Prepare Mock Data
 ====================
@@ -31969,9 +31969,7 @@ undefined
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
-
-## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -32051,7 +32049,9 @@ docker compose up -d traefik postgresdb pgadmin keycloak-app
 
 undefined
 ====================
-## [](#%5Fonecx%5Fannouncement%5Fui)OneCX Announcement UI
+## [](#%5Fonecx%5Fannouncement%5Fui)onecx-announcement-ui
+
+## [](#%5Fonecx%5Fannouncement%5Fui%5F2)OneCX Announcement UI
 
 ### [](#%5Fwhat%5Fis%5Fannouncement%5Fmanagement)What is Announcement Management
 
@@ -39376,6 +39376,33 @@ undefined
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1   |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1   |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |            |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1   |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1   |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1   |
+| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
+| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.3.1                                                                                                                                         |            |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1   |
+| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1   |
+| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.3.1   |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1   |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1   |
+| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |            |
+
+undefined
+====================
 [Link to Docker registry](https://github.com/onecx/onecx-tenant-bff/pkgs/container/onecx-tenant-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -39474,33 +39501,6 @@ app:
         description: OneCX Tenant Backend For Frontend
         name: OneCX Tenant BFF
 ```
-
-undefined
-====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version    |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1   |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1   |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |            |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1   |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1   |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1   |
-| quarkus-openapi-generator              | [Link](https://docs.quarkiverse.io/quarkus-openapi-generator/dev/index.html)                       | [Link](https://github.com/quarkiverse/quarkus-openapi-generator/blob/2.16.0-lts/docs/modules/ROOT/pages/includes/quarkus-openapi-generator.adoc) | 2.16.0-lts |
-| quarkus-rest-client-jackson            | [Link](https://quarkus.io/guides/rest-client)                                                      | 3.33.3.1                                                                                                                                         |            |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0      |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0      |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0      |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0      |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0      |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1   |
-| onecx-permissions                      | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-permissions.html)    | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-permissions.adoc)                       | 3.0.0      |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1   |
-| quarkus-rest-client-oidc-filter        | [Link](https://quarkus.io/guides/security-openid-connect-client-reference#rest-client-oidc-filter) | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest-client-oidc-filter.adoc)        | 3.33.3.1   |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0      |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |            |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1   |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1   |
-| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |            |
 
 undefined
 ====================
@@ -41114,6 +41114,10 @@ undefined
 ====================
 
 
+undefined
+====================
+
+
 OneCX User Profile Avatar Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-user-profile-avatar-svc/pkgs/container/onecx-user-profile-avatar-svc)
@@ -41203,10 +41207,6 @@ app:
         description: OneCX User Profile Avatar Backend Service
         name: OneCX User Profile Avatar SVC
 ```
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -43367,10 +43367,6 @@ app:
 
 undefined
 ====================
-
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-api-bff/pkgs/container/onecx-workspace-api-bff)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -43454,6 +43450,10 @@ app:
         description: OneCX Workspace API Backend for Frontend
         name: OneCX Workspace API BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
