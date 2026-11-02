@@ -1381,6 +1381,290 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
+
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -1753,290 +2037,6 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
-
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -8432,26 +8432,6 @@ OneCX Multi-language Translations
 ====================
 ## [](#overview)Overview
 
-In OneCX multi-language support is available via translations using `@ngx-translate` library.
-
-A [OneCX compatible application](../../migration/vanilla-to-onecx-angular.html) can be set up for multi-language translation to support multiple languages in the application.
-
-## [](#setup)Setup
-
-To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
-
-## [](#usage)Usage
-
-After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
-
-## [](#language-information)Language Information
-
-The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
-
-OneCX Multi-language Translations
-====================
-## [](#overview)Overview
-
 This document contains instructions on how to set up multi-language translations in a [OneCX-compatible](../../migration/vanilla-to-onecx-angular.html) application using the `@ngx-translate` library.
 
 ## [](#prerequisites)Prerequisites
@@ -8665,60 +8645,25 @@ this.translate.get('GREETING', params).subscribe((translated: string) => {
 });
 ```
 
-Remote Components in React Applications
+OneCX Multi-language Translations
 ====================
-This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
+## [](#overview)Overview
 
-## [](#exposing-a-react-remote-component)Exposing a Remote Component
+In OneCX multi-language support is available via translations using `@ngx-translate` library.
 
-A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
+A [OneCX compatible application](../../migration/vanilla-to-onecx-angular.html) can be set up for multi-language translation to support multiple languages in the application.
 
-```javascript
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
+## [](#setup)Setup
 
-## [](#hosting-a-slot-in-react)Hosting a Slot
+To set up the multi-language translations support follow the guidelines in the [multi-language setup document](multi-language-setup.html).
 
-To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
+## [](#usage)Usage
 
-```tsx
-import { withSlot, SlotComponent } from '@onecx/react-remote-components';
+After setting up the multi-language translations, functionalities from `@ngx-translate` library can be used to use application translations. For more guidance, please refer to [multi-language usage document](multi-language-usage.html).
 
-const Example = () => (
-  <div>
-    <SlotComponent
-      name="onecx-shell-header-actions"
-      inputs={{ title: 'Remote title' }}
-      outputs={{ onSelect: (value) => console.log(value) }}
-      skeleton={<div>Loading...</div>}
-    />
-  </div>
-);
+## [](#language-information)Language Information
 
-export default withSlot(Example);
-```
-
-`SlotComponent` accepts:
-
-| Prop     | Type      | Description                                                          |
-| -------- | --------- | -------------------------------------------------------------------- |
-| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
-| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
-| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
-| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
-
-Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
-
-## [](#related)Related
-
-* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
-* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
+The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
 
 Remote Components in Angular Applications
 ====================
@@ -8777,6 +8722,61 @@ Behind the scenes, `<ocx-slot>` uses `SlotService` to resolve which Remote Compo
 
 * [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
 * [Component Approach](../../setup/required/expose-remote-module/component-approach.html) — the complete, practical how-to for exposing an Angular Remote Component.
+
+Remote Components in React Applications
+====================
+This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
+
+## [](#exposing-a-react-remote-component)Exposing a Remote Component
+
+A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
+
+```javascript
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+## [](#hosting-a-slot-in-react)Hosting a Slot
+
+To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
+
+```tsx
+import { withSlot, SlotComponent } from '@onecx/react-remote-components';
+
+const Example = () => (
+  <div>
+    <SlotComponent
+      name="onecx-shell-header-actions"
+      inputs={{ title: 'Remote title' }}
+      outputs={{ onSelect: (value) => console.log(value) }}
+      skeleton={<div>Loading...</div>}
+    />
+  </div>
+);
+
+export default withSlot(Example);
+```
+
+`SlotComponent` accepts:
+
+| Prop     | Type      | Description                                                          |
+| -------- | --------- | -------------------------------------------------------------------- |
+| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
+| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
+| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
+| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
+
+Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
+
+## [](#related)Related
+
+* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
+* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
 
 Routing in Angular Applications
 ====================
@@ -9474,6 +9474,55 @@ For the other OneCX NgRx libraries, `@onecx/ngrx-accelerator` and `@onecx/ngrx-l
 * [NgRx Guidelines](guidelines.html) — the conventions OneCX applications follow and the OneCX utility libraries.
 * [State Management](../../concepts/state-management.html) — why OneCX Angular applications use NgRx.
 
+PrimeNG Theming Customization
+====================
+## [](#how-primeNG-is-themed)How PrimeNG is themed in OneCX
+
+OneCX themes define the design tokens that PrimeNG consumes. When a PrimeNG application runs as a microfrontend or remote component, register `provideThemeConfig()` so the active OneCX theme is mapped to PrimeNG in that runtime. If the runtime needs application-specific overrides, pass them through `provideThemeConfig({ overrides })`.
+
+### [](#microfrontend)Microfrontend
+
+Register the provider in the microfrontend’s remote module:
+
+my-mfe-remote.module.ts
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
+...
+@NgModule({
+  providers: [
+    provideThemeConfig()
+  ]
+})
+export class MyMfe {}
+```
+
+### [](#remote-component)Remote component
+
+Add the provider to the `bootstrapRemoteComponent` providers array in `bootstrap.ts`:
+
+remote-component.bootstrap.ts
+
+```typescript
+import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
+
+bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
+  provideThemeConfig()
+])
+```
+
+### [](#microfrontend-and-remote-component-overrides)Microfrontend and remote-component overrides
+
+If a microfrontend or remote component needs to adjust PrimeNG design tokens for its own UI, pass an `overrides` object to `provideThemeConfig({ overrides })`. Use the same structure as PrimeNG presets.
+
+The object containing overrides must have the same structure as [PrimeNG’s presets](https://primeng.org/theming#definepreset). The presets can contain general variables like primary color or surface color, but it is also possible to define customizations for components.
+
+Each PrimeNG component specifies a list of design tokens (e.g. [button component design tokens](https://v21.primeng.org/button#Buttonclasses)). Those can be used to override certain styles of each component.
+
+## [](#related)Related
+
+* [Theming](../../concepts/theming.html) — the concept page for how OneCX theming works and the theme variables available on the page.
+
 OneCX version 7 changelog
 ====================
 ## [](#changelog)Changelog
@@ -9570,55 +9619,6 @@ const apiClient = axiosFactory('/api');
 await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
 const response = await apiClient.get('/profile');
 ```
-
-PrimeNG Theming Customization
-====================
-## [](#how-primeNG-is-themed)How PrimeNG is themed in OneCX
-
-OneCX themes define the design tokens that PrimeNG consumes. When a PrimeNG application runs as a microfrontend or remote component, register `provideThemeConfig()` so the active OneCX theme is mapped to PrimeNG in that runtime. If the runtime needs application-specific overrides, pass them through `provideThemeConfig({ overrides })`.
-
-### [](#microfrontend)Microfrontend
-
-Register the provider in the microfrontend’s remote module:
-
-my-mfe-remote.module.ts
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
-...
-@NgModule({
-  providers: [
-    provideThemeConfig()
-  ]
-})
-export class MyMfe {}
-```
-
-### [](#remote-component)Remote component
-
-Add the provider to the `bootstrapRemoteComponent` providers array in `bootstrap.ts`:
-
-remote-component.bootstrap.ts
-
-```typescript
-import { provideThemeConfig } from '@onecx/angular-utils/theme/primeng'
-
-bootstrapRemoteComponent(RemoteComponent, 'my-remote-component', environment.production, [
-  provideThemeConfig()
-])
-```
-
-### [](#microfrontend-and-remote-component-overrides)Microfrontend and remote-component overrides
-
-If a microfrontend or remote component needs to adjust PrimeNG design tokens for its own UI, pass an `overrides` object to `provideThemeConfig({ overrides })`. Use the same structure as PrimeNG presets.
-
-The object containing overrides must have the same structure as [PrimeNG’s presets](https://primeng.org/theming#definepreset). The presets can contain general variables like primary color or surface color, but it is also possible to define customizations for components.
-
-Each PrimeNG component specifies a list of design tokens (e.g. [button component design tokens](https://v21.primeng.org/button#Buttonclasses)). Those can be used to override certain styles of each component.
-
-## [](#related)Related
-
-* [Theming](../../concepts/theming.html) — the concept page for how OneCX theming works and the theme variables available on the page.
 
 @onecx/react-integration-interface
 ====================
@@ -10462,12 +10462,6 @@ For coordinated navigation flows across multiple remotes, you can wire the lower
 
 The `withApp` HOC composes common providers (app state, configuration, user, theme) and sets up the style scoping helpers for micro-frontends.
 
-Adapt Routing
-====================
-An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
-
-See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
-
 @onecx/react-webcomponents
 ====================
 ## [](#overview)Overview
@@ -10571,6 +10565,12 @@ The library also provides routing integration helpers:
 * `useSyncedLocation` reads the synced location state from context.
 * `withSyncedRouter` wraps a component with `SyncedRouterProvider`.
 
+Adapt Routing
+====================
+An application integrated with OneCX still loads and runs without adapting its routing, but it behaves incorrectly: navigation may break when the app is embedded under a workspace-specific base path, or links to other applications may resolve to the wrong location. Because Micro Frontends are loaded relative to the shell rather than at a fixed base path, applications need to adapt how they route internally and to other OneCX applications.
+
+See [Routing](../../concepts/routing.html) for the full routing requirements and guidelines for Angular and React applications.
+
 Apply Theming
 ====================
 The OneCX shell loads and applies the active theme for the selected workspace. Application code should not load or apply the theme itself; it should use the CSS variables the shell exposes.
@@ -10585,6 +10585,15 @@ An application integrated with OneCX still loads and runs even if its own or its
 
 * [Angular Applications](expose-component-styles/angular.html) — exposing an application’s `styles.css` and the stylesheets of OneCX libraries it depends on.
 * [React Applications](expose-component-styles/react.html) — guidance for exposing an application’s `styles.css`.
+
+Expose Library Assets
+====================
+An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
+
+## [](#expose-library-assets-pages)Pages
+
+* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
+* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Recommended Setup
 ====================
@@ -10604,15 +10613,6 @@ This tier applies to both paths of building a OneCX UI:
 * [Apply Theming](apply-theming.html) — introduces OneCX theme variables and why application styles should use them; links to [Theming](../../concepts/theming.html) for the full deep dive.
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
-
-Expose Library Assets
-====================
-An application integrated with OneCX still loads and runs without exposing the assets of the OneCX libraries it depends on, but it behaves incorrectly: missing static assets (e.g. icons) shipped by those libraries. Because Micro Frontends are loaded relative to the shell rather than from their own origin, library assets need to be exposed through the application’s own build output using a dedicated mechanism, rather than assuming they’re resolvable from the library’s package location.
-
-## [](#expose-library-assets-pages)Pages
-
-* [Angular Applications](expose-library-assets/angular.html) — exposing OneCX library assets via the `angular.json` or `project.json` build configuration.
-* [React Applications](expose-library-assets/react.html) — what needs to be achieved for React applications.
 
 Configure Authentication
 ====================
@@ -19288,227 +19288,6 @@ Make sure to review the test results and address any issues that may arise to en
 
 Figure 1\. Test results
 
-Map the API and Prepare Mock Data
-====================
-The React search page fetches its data through a generated `<Resource>Api`, called from the `use<Resource>Search` hook. This page describes how to map the search criteria to the API request, how the search endpoint is defined in the OpenAPI file, and how to provide mock data while no real backend is available.
-
-## [](#action-s2)ACTION S2 - Map criteria to the search request
-
-The hook contains a colocated query function that calls the generated API service. Adjust the mapping so that the criteria object matches the generated `Search<Resource>Request`.
-
-| Directory | src/hooks/use<Resource>Search |
-| --------- | ----------------------------- |
-| File      | use<Resource>Search.ts        |
-
-ACTION S2 in `use<Resource>Search.ts` 
-
-```typescript
-const fetch<Resource>SearchResults = async (
-  <resource>Service: <Resource>Api,
-  criteria: <Resource>SearchCriteria
-): Promise<<Resource>SearchRow[]> => {
-  // ACTION S2: map the criteria to the generated search request
-  const response = await <resource>Service.search<Resource>Items({
-    ...criteria,
-    pageNumber: 0,
-    pageSize: 100,
-  } as any);
-  return ((response.data as any).stream ?? []) as <Resource>SearchRow[];
-};
-```
-
-Replace the spread `...criteria` with an explicit mapping to the fields of your `Search<Resource>Request`, and remove the `as any` casts once the request type matches.
-
-## [](#generated-openapi-endpoint)Generated OpenAPI Endpoint
-
-During generation, a search endpoint is added to the BFF OpenAPI specification. Adapt the request/response schemas to your entity, then regenerate the typed API client.
-
-| Directory | src/assets/api   |
-| --------- | ---------------- |
-| File      | openapi-bff.yaml |
-
-Generated search endpoint (excerpt) 
-
-```yaml
-  /<resource>s/search:
-    post:
-      operationId: search<Resource>Items
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/Search<Resource>Request'
-      responses:
-        '200':
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Search<Resource>Response'
-```
-
-Add your entity properties to the `Search<Resource>Request` (criteria) and to the `<Resource>` schema (result row).
-
-| |  After adjusting the OpenAPI specification, regenerate the typed API client so the changes are reflected in <Resource>Api. |
-| ---------------------------------------------------------------------------------------------------------------------------- |
-
-Generate the API client code
-
-```bash
-npm run apigen
-```
-
-## [](#mock-server-with-node-js)Mock Server with Node.js
-
-While no real backend is available, you can provide simulated data with a small [Node.js](https://nodejs.org/en) server. This example assumes an entity called "**Book**" and serves data on the `/books/search` endpoint. Save the file e.g. as `bookstore-mock-server.js`.
-
-Simulated data example via node mock server 
-
-```javascript
-const bodyParser = require("body-parser");
-const express = require("express");
-const { v4 } = require("uuid");
-const app = express();
-app.use(express.json());
-const data = {
-  books: [],
-};
-const bookTypes = ["CRIME", "DRAMA", "FANTASY", "PROSE", "SCIENCE"];
-const apiNames = ["books"];
-
-const generateBooks = (count) => {
-  let results = [];
-  for (let i = 0; i < count; i++) {
-    results.push({
-      creationDate: "2024-04-12T06:08:27.806Z",
-      creationUser: "anonymous",
-      modificationDate: "2024-04-12T06:08:40.312Z",
-      modificationUser: "anonymous",
-      modificationCount: "0",
-      id: i,
-      bookTitle: "Big Bang and Black Holes - " + i,
-      bookType: bookTypes[i % bookTypes.length],
-      bookAuthor: "Stephan Hawking",
-      bookIsbn: "978-3-99-123456-" + i,
-      bookPrice: "12,80",
-      bookPublisher: 'World Scientific',
-      bookPublishedDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
-    });
-  }
-  data.books = results;
-  return { number: 0, size: 100, totalElements: results.length, totalPages: 1, stream: results };
-};
-
-// Book Endpoints
-app.post("/books/search", (req, res) => {
-  const bookTitle = req.body.bookTitle;
-
-  res.send(
-    generateBooks(23)
-  );
-});
-
-
-app.get(`/books/:id`, (req, res) => {
-  res.send({
-    resource: {
-      creationDate: "2026-02-12T05:08:08.080Z",
-      creationUser: "anonymous",
-      modificationDate: "2026-02-12T05:18:18.888Z",
-      modificationUser: "anonymous",
-      modificationCount: "0",
-      id: req.params.id,
-      bookTitle: "Big Bang and Black Holes - " + req.params.id,
-      bookType: bookTypes[req.params.id % bookTypes.length],
-      bookAuthor: "Stephan Hawking",
-      bookIsbn: "978-3-99-123456-" + req.params.id,
-      bookPrice: "12,80",
-      bookPublisher: 'World Scientific',
-      bookPublishedDate: "1993-02-12T05:08:08.080Z",
-    },
-  });
-});
-
-// Generic Endpoints
-for (const apiname of apiNames) {
-  app.post(`/${apiname}/search`, (req, res) => {
-    res.send({
-      results: data[apiname],
-      totalNumberOfResults: data[apiname].length,
-    });
-  });
-
-  app.delete(`/${apiname}/:id`, (req, res) => {
-    data[apiname] = data[apiname].filter((i) => i.id != req.params.id);
-    res.status(204).send("Item deleted");
-  });
-
-  app.post(`/${apiname}/`, (req, res) => {
-    let item = {
-      id: v4(),
-      ...req.body.resource,
-    };
-    data[apiname] = [...data[apiname], item];
-    res.send({ resource: item });
-  });
-
-  app.put(`/${apiname}/:id`, (req, res) => {
-    console.log(`data[${apiname}] length: `, data[apiname].length);
-    console.log('req.params.id: ', req.params.id);
-
-    let item = data[apiname].find((i) => i.id == req.params.id);
-
-    if(!item) {
-      res.status(404).send("Item not found");
-      return;
-    }
-    console.log('current item: ', item);
-    console.log('request item: ', req.body.resource);
-
-    // update item
-    item = {
-      ...item,
-      ...req.body.resource,
-      ...{ modificationCount: (parseInt(item.modificationCount) + 1).toString() },
-    };
-
-    data[apiname] = data[apiname].map((_item) => {
-      if (_item.id == item.id) {
-        return item;
-      } else {
-        return _item;
-      }
-    });
-
-    res.send({ resource: item });
-  });
-
-  app.get(`/${apiname}/:id`, (req, res) => {
-    const result = {
-      resource: data[apiname].find((i) => i.id == req.params.id),
-    };
-    res.send(result);
-  });
-}
-
-app.listen(3000, () => console.log("Bookstore app is listening on port 3000."));
-```
-
-Start the server with the following command
-
-```bash
-node bookstore-mock-server.js
-```
-
-The server starts and listens for incoming requests on port 3000.
-
-![react mock server running](react_mock_server_running.png) 
-
-Figure 1\. Example output when the server is running and a request is made to the search endpoint
-
-## [](#using-the-mock-api)Using the Mock API
-
-Point your application’s BFF base URL to the mock server (e.g. `http://localhost:3000`) instead of the real backend, so the generated `<Resource>Api` calls the mock endpoints. Adjust the configured BFF/proxy target of your React UI app accordingly.
-
 Configure Search Add-ons
 ====================
 Besides the search criteria and results, the generated React search page contains several add-ons that you may want to adapt: the breadcrumb, the header actions (chart toggle and export), the permission gating and the translations.
@@ -19780,6 +19559,227 @@ Where **bookTitle** matches the criteria defined in the types file.
 
 | |  Keep the criteria keys in the types file, the field onChange handlers and the translation keys in sync. After adjusting the criteria, continue with mapping them to the API request in [Map the API](mock-api.html). |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+Map the API and Prepare Mock Data
+====================
+The React search page fetches its data through a generated `<Resource>Api`, called from the `use<Resource>Search` hook. This page describes how to map the search criteria to the API request, how the search endpoint is defined in the OpenAPI file, and how to provide mock data while no real backend is available.
+
+## [](#action-s2)ACTION S2 - Map criteria to the search request
+
+The hook contains a colocated query function that calls the generated API service. Adjust the mapping so that the criteria object matches the generated `Search<Resource>Request`.
+
+| Directory | src/hooks/use<Resource>Search |
+| --------- | ----------------------------- |
+| File      | use<Resource>Search.ts        |
+
+ACTION S2 in `use<Resource>Search.ts` 
+
+```typescript
+const fetch<Resource>SearchResults = async (
+  <resource>Service: <Resource>Api,
+  criteria: <Resource>SearchCriteria
+): Promise<<Resource>SearchRow[]> => {
+  // ACTION S2: map the criteria to the generated search request
+  const response = await <resource>Service.search<Resource>Items({
+    ...criteria,
+    pageNumber: 0,
+    pageSize: 100,
+  } as any);
+  return ((response.data as any).stream ?? []) as <Resource>SearchRow[];
+};
+```
+
+Replace the spread `...criteria` with an explicit mapping to the fields of your `Search<Resource>Request`, and remove the `as any` casts once the request type matches.
+
+## [](#generated-openapi-endpoint)Generated OpenAPI Endpoint
+
+During generation, a search endpoint is added to the BFF OpenAPI specification. Adapt the request/response schemas to your entity, then regenerate the typed API client.
+
+| Directory | src/assets/api   |
+| --------- | ---------------- |
+| File      | openapi-bff.yaml |
+
+Generated search endpoint (excerpt) 
+
+```yaml
+  /<resource>s/search:
+    post:
+      operationId: search<Resource>Items
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Search<Resource>Request'
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Search<Resource>Response'
+```
+
+Add your entity properties to the `Search<Resource>Request` (criteria) and to the `<Resource>` schema (result row).
+
+| |  After adjusting the OpenAPI specification, regenerate the typed API client so the changes are reflected in <Resource>Api. |
+| ---------------------------------------------------------------------------------------------------------------------------- |
+
+Generate the API client code
+
+```bash
+npm run apigen
+```
+
+## [](#mock-server-with-node-js)Mock Server with Node.js
+
+While no real backend is available, you can provide simulated data with a small [Node.js](https://nodejs.org/en) server. This example assumes an entity called "**Book**" and serves data on the `/books/search` endpoint. Save the file e.g. as `bookstore-mock-server.js`.
+
+Simulated data example via node mock server 
+
+```javascript
+const bodyParser = require("body-parser");
+const express = require("express");
+const { v4 } = require("uuid");
+const app = express();
+app.use(express.json());
+const data = {
+  books: [],
+};
+const bookTypes = ["CRIME", "DRAMA", "FANTASY", "PROSE", "SCIENCE"];
+const apiNames = ["books"];
+
+const generateBooks = (count) => {
+  let results = [];
+  for (let i = 0; i < count; i++) {
+    results.push({
+      creationDate: "2024-04-12T06:08:27.806Z",
+      creationUser: "anonymous",
+      modificationDate: "2024-04-12T06:08:40.312Z",
+      modificationUser: "anonymous",
+      modificationCount: "0",
+      id: i,
+      bookTitle: "Big Bang and Black Holes - " + i,
+      bookType: bookTypes[i % bookTypes.length],
+      bookAuthor: "Stephan Hawking",
+      bookIsbn: "978-3-99-123456-" + i,
+      bookPrice: "12,80",
+      bookPublisher: 'World Scientific',
+      bookPublishedDate: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+    });
+  }
+  data.books = results;
+  return { number: 0, size: 100, totalElements: results.length, totalPages: 1, stream: results };
+};
+
+// Book Endpoints
+app.post("/books/search", (req, res) => {
+  const bookTitle = req.body.bookTitle;
+
+  res.send(
+    generateBooks(23)
+  );
+});
+
+
+app.get(`/books/:id`, (req, res) => {
+  res.send({
+    resource: {
+      creationDate: "2026-02-12T05:08:08.080Z",
+      creationUser: "anonymous",
+      modificationDate: "2026-02-12T05:18:18.888Z",
+      modificationUser: "anonymous",
+      modificationCount: "0",
+      id: req.params.id,
+      bookTitle: "Big Bang and Black Holes - " + req.params.id,
+      bookType: bookTypes[req.params.id % bookTypes.length],
+      bookAuthor: "Stephan Hawking",
+      bookIsbn: "978-3-99-123456-" + req.params.id,
+      bookPrice: "12,80",
+      bookPublisher: 'World Scientific',
+      bookPublishedDate: "1993-02-12T05:08:08.080Z",
+    },
+  });
+});
+
+// Generic Endpoints
+for (const apiname of apiNames) {
+  app.post(`/${apiname}/search`, (req, res) => {
+    res.send({
+      results: data[apiname],
+      totalNumberOfResults: data[apiname].length,
+    });
+  });
+
+  app.delete(`/${apiname}/:id`, (req, res) => {
+    data[apiname] = data[apiname].filter((i) => i.id != req.params.id);
+    res.status(204).send("Item deleted");
+  });
+
+  app.post(`/${apiname}/`, (req, res) => {
+    let item = {
+      id: v4(),
+      ...req.body.resource,
+    };
+    data[apiname] = [...data[apiname], item];
+    res.send({ resource: item });
+  });
+
+  app.put(`/${apiname}/:id`, (req, res) => {
+    console.log(`data[${apiname}] length: `, data[apiname].length);
+    console.log('req.params.id: ', req.params.id);
+
+    let item = data[apiname].find((i) => i.id == req.params.id);
+
+    if(!item) {
+      res.status(404).send("Item not found");
+      return;
+    }
+    console.log('current item: ', item);
+    console.log('request item: ', req.body.resource);
+
+    // update item
+    item = {
+      ...item,
+      ...req.body.resource,
+      ...{ modificationCount: (parseInt(item.modificationCount) + 1).toString() },
+    };
+
+    data[apiname] = data[apiname].map((_item) => {
+      if (_item.id == item.id) {
+        return item;
+      } else {
+        return _item;
+      }
+    });
+
+    res.send({ resource: item });
+  });
+
+  app.get(`/${apiname}/:id`, (req, res) => {
+    const result = {
+      resource: data[apiname].find((i) => i.id == req.params.id),
+    };
+    res.send(result);
+  });
+}
+
+app.listen(3000, () => console.log("Bookstore app is listening on port 3000."));
+```
+
+Start the server with the following command
+
+```bash
+node bookstore-mock-server.js
+```
+
+The server starts and listens for incoming requests on port 3000.
+
+![react mock server running](react_mock_server_running.png) 
+
+Figure 1\. Example output when the server is running and a request is made to the search endpoint
+
+## [](#using-the-mock-api)Using the Mock API
+
+Point your application’s BFF base URL to the mock server (e.g. `http://localhost:3000`) instead of the real backend, so the generated `<Resource>Api` calls the mock endpoints. Adjust the configured BFF/proxy target of your React UI app accordingly.
 
 Configure Search Results
 ====================
@@ -23550,6 +23550,8 @@ __Table 1\. DataTableColumn interface__
 | columnType           | ColumnType | Defines the type of the column.                                                                                                                                                                                                                                                                                       |
 | id                   | string     | The id of the column.                                                                                                                                                                                                                                                                                                 |
 | nameKey              | string     | Translation key for the column header name.                                                                                                                                                                                                                                                                           |
+| tooltipKey?          | string     | Translation key for the column header tooltip. Used when tooltip is omitted or empty. If both properties are omitted or empty, no tooltip is shown. Only applies to the table layout. Use for supplementary information only, the tooltip is not keyboard accessible.                                                 |
+| tooltip?             | string     | Plain text for the column header tooltip, without translation. A non-empty value takes precedence over tooltipKey. Only applies to the table layout. Use for supplementary information only, the tooltip is not keyboard accessible.                                                                                  |
 | sortable?            | boolean    | Indicates if the column is sortable.                                                                                                                                                                                                                                                                                  |
 | filterable?          | boolean    | Indicates if the column is filterable.                                                                                                                                                                                                                                                                                |
 | filterType?          | FilterType | Defines which type of filter is used.                                                                                                                                                                                                                                                                                 |
@@ -25544,6 +25546,39 @@ const config = new PortalApiConfiguration(SomeConfigClass, '/api', configService
 const config = new PortalApiConfiguration(SomeConfigClass, '/api');
 ```
 
+Update Theme Service usage
+====================
+In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
+
+The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
+
+## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
+
+* Remove `baseUrlV1` property usages
+* Remove `getThemeRef()` function calls
+* Remove `loadAndApplyTheme()` function calls
+* Remove `apply()` function calls
+
+| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
+| ------------------------------------------------------------------------------------------------------------------------------- |
+
+In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
+
+Apply
+
+```typescript
+async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
+  await themeService.currentTheme$.publish(theme)
+  if (theme.properties) {
+    for (const group of Object.values(theme.properties)) {
+      for (const [key, value] of Object.entries(group)) {
+        document.documentElement.style.setProperty(`--${key}`, value)
+      }
+    }
+  }
+}
+```
+
 Update Translation Path Factories
 ====================
 In OneCX v6, `createTranslateLoader`, `createRemoteComponentAndMfeTranslateLoader`, and `createRemoteComponentTranslateLoader` were removed from @onecx/angular-accelerator. `createTranslateLoader` and `provideTranslationPathFromMeta` can be imported from @onecx/angular-utils.
@@ -25771,39 +25806,6 @@ bootstrapRemoteComponent(
     })
   ]
 )
-```
-
-Update Theme Service usage
-====================
-In OneCX v6, onecx-shell is responsible for loading and applying the theme globally for the chosen `workspace`. See [OneCX Theming Guide](https://onecx.github.io/docs/documentation/current/docs-guides-ui/angular/theming.html) for more information.
-
-The `ThemeService` now only exposes the `currentTheme$` property of type CurrentThemeTopic from the `@onecx/integration-interface` library. All previous theme-loading logic has been removed from the service.
-
-## [](#%5Fremove%5Fdeprecated%5Fthemeservice%5Fmembers)Remove deprecated ThemeService members
-
-* Remove `baseUrlV1` property usages
-* Remove `getThemeRef()` function calls
-* Remove `loadAndApplyTheme()` function calls
-* Remove `apply()` function calls
-
-| |  These members no longer exist in ThemeService. You only need to remove calls or references to them in your application code. |
-| ------------------------------------------------------------------------------------------------------------------------------- |
-
-In case your App applies the theme temporarily for preview purposes only, use the `apply()` function implementation provided below:
-
-Apply
-
-```typescript
-async function apply(themeService: ThemeService, theme: Theme): Promise<void> {
-  await themeService.currentTheme$.publish(theme)
-  if (theme.properties) {
-    for (const group of Object.values(theme.properties)) {
-      for (const [key, value] of Object.entries(group)) {
-        document.documentElement.style.setProperty(`--${key}`, value)
-      }
-    }
-  }
-}
 ```
 
 Update Webpack Config to Use Dynamic Shared Entries
@@ -26632,6 +26634,44 @@ import { EventsTopic } from '@onecx/integration-interface'
 
 No action is needed. Treat this as awareness-only and continue with migration steps.
 
+Split shell and apps authentication
+====================
+In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
+
+This split separates shell-specific authentication logic from regular application token-based authentication.
+
+| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+
+## [](#%5Fwhat%5Fchanged)What changed
+
+The following symbols are no longer exported from `@onecx/angular-auth`:
+
+* `AuthServiceWrapper`
+* `provideAuthService`
+* `KeycloakAuthService`
+* `DisabledAuthService`
+* `AuthService`
+
+In v8, `AuthServiceWrapper` and `provideAuthService` are provided by \`@onecx/shell-auth’s public API.
+
+| |  KeycloakAuthService, DisabledAuthService, and the AuthService interface still exist as source files within @onecx/shell-auth, but are **not** re-exported from its public index.ts. They are internal implementation details of AuthServiceWrapper and have no supported import path in v8\. Do not attempt to import them directly; consume shell authentication only through AuthServiceWrapper / provideAuthService. |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
+
+1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
+2. Uninstall `keycloak-js` dependency.  
+```bash  
+npm uninstall keycloak-js  
+```
+
+## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
+
+1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
+2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
+3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
+
 Migrate OneCX App from Angular 20 to Angular 21
 ====================
 ## [](#overview)Overview
@@ -26705,44 +26745,6 @@ Once the previous steps are completed, **the application should be upgraded to A
 * [Update imports to supported public APIs](update-public-api-imports.html)
 * [Optional: Setup Logging with debug-js namespaces](use-debug-logger-namespaces.html)
 * [Update Webpack Config](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html)
-
-Split shell and apps authentication
-====================
-In OneCX libs v8, auth implementation classes were moved out of `@onecx/angular-auth`. If your app imports auth implementation symbols directly from `@onecx/angular-auth`, your build will fail after upgrading to v8.
-
-This split separates shell-specific authentication logic from regular application token-based authentication.
-
-| |  Shell usage: use @onecx/shell-auth (includes Keycloak-specific logic). Regular OneCX Angular app usage: use only @onecx/angular-auth (token-based authentication). You do not need @onecx/shell-auth or keycloak-js unless you use standalone mode. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-
-## [](#%5Fwhat%5Fchanged)What changed
-
-The following symbols are no longer exported from `@onecx/angular-auth`:
-
-* `AuthServiceWrapper`
-* `provideAuthService`
-* `KeycloakAuthService`
-* `DisabledAuthService`
-* `AuthService`
-
-In v8, `AuthServiceWrapper` and `provideAuthService` are provided by \`@onecx/shell-auth’s public API.
-
-| |  KeycloakAuthService, DisabledAuthService, and the AuthService interface still exist as source files within @onecx/shell-auth, but are **not** re-exported from its public index.ts. They are internal implementation details of AuthServiceWrapper and have no supported import path in v8\. Do not attempt to import them directly; consume shell authentication only through AuthServiceWrapper / provideAuthService. |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#%5Fonecx%5Fangular%5Fapplications)Onecx Angular applications
-
-1. Use `@onecx/angular-auth` for interceptor/token wiring (`AngularAuthModule` / `provideTokenInterceptor`)
-2. Uninstall `keycloak-js` dependency.  
-```bash  
-npm uninstall keycloak-js  
-```
-
-## [](#%5Fonecx%5Fstandalone%5Fapplications%5Fmigration)Onecx Standalone Applications Migration
-
-1. If you use standalone-shell, replace shell auth implementation imports with `@onecx/shell-auth`.
-2. Keep `AngularAuthModule` from `@onecx/angular-auth` for regular application interceptor/token wiring.
-3. Add `@onecx/shell-auth` with keycloak-js dependency only for standalone-shell authentication.
 
 Replace removed topic publisher classes
 ====================
