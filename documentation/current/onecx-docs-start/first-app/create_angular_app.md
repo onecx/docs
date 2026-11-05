@@ -57,8 +57,8 @@ Now we can also create a details page for the items in the search results by run
 nx generate @onecx/nx-plugin:details hello
 ```
 
-| |  Details to generating a details page can be found [here](#documentation:onecx-nx-plugins:generator/details-page.adoc). |
-| ------------------------------------------------------------------------------------------------------------------------- |
+| |  Details to generating a details page can be found [here](#documentation:onecx-nx-plugins:generator/create-details.adoc). |
+| --------------------------------------------------------------------------------------------------------------------------- |
 
 #### [](#adding-create-update-page)Add a Create-Update Dialog
 
