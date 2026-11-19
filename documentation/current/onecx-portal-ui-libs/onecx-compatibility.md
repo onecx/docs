@@ -67,27 +67,7 @@ Expose styles.css of used libraries
 
 Impact: Styles of components from libraries might be incorrect
 
-* Expose library styles in project.json or angular.json.
-
-Example styles configuration
-
-```json
-...
-  "build": {
-    ...
-    "styles": [
-      ...
-      // @onecx/portal-integration-angular
-      "node_modules/@onecx/portal-integration-angular/assets/styles.scss",
-
-      // @onecx/angular-accelerator
-      "node_modules/@onecx/angular-accelerator/assets/styles.scss",
-      ...
-    ],
-    ...
-  }
-...
-```
+* Expose library styles in project.json or angular.json as described in [Expose Library Styles](../docs-guides-ui/setup/recommended/expose-component-styles/angular.html#angular-expose-library-styles).
 
 Sharing is done with '^'
 
@@ -172,53 +152,4 @@ Expose App styles.css
 
 Impact: No styles for the application are loaded
 
-* Ensure your App exposes its styles.css.
-* How the styles.css is exposed depends on the package used for building the App (NX or Angular CLI).
-* NX:
-
-project.json
-
-```json
-{
-    ...
-    "styles": [
-        {
-            "input": "./src/styles.scss",
-            "bundleName": "styles",
-            "inject": true
-        }
-    ],
-    ...
-}
-```
-
-* Angular CLI:
-
-package.json
-
-```json
-{
-  ...
-  "scripts": {
-    "postbuild": "mv \"$(find dist/my-project-name -maxdepth 1 -type f -name 'styles.*.css' | head -n 1)\" dist/my-project-name/styles.css",
-  }
-  ...
-}
-```
-
-* Adjust the build command in package.json to rename the generated styles file to styles.css because of the hash in the filename by adding`cp dist/replace_path_to/styles.*.css dist/replace_path_to/styles.css"`
-* Ensure the styles.css including all your styles is present in the build output.
-
-Example package.json
-
-```json
-{
-  ...
-  "scripts": {
-    ...
-    "build": "nx build && cp dist/my-project-name/styles.*.css dist/my-project-name/styles.css",
-    ...
-  }
-  ...
-}
-```
+* Ensure your App exposes its styles.css as described in [Expose App styles.css](../docs-guides-ui/setup/recommended/expose-component-styles/angular.html#angular-expose-app-styles).
