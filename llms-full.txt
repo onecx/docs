@@ -1389,290 +1389,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2045,6 +1761,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -8724,61 +8724,6 @@ After setting up the multi-language translations, functionalities from `@ngx-tra
 
 The currently used language can be accessed via [UserService](../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service).
 
-Remote Components in React Applications
-====================
-This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
-
-## [](#exposing-a-react-remote-component)Exposing a Remote Component
-
-A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
-
-```javascript
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-## [](#hosting-a-slot-in-react)Hosting a Slot
-
-To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
-
-```tsx
-import { withSlot, SlotComponent } from '@onecx/react-remote-components';
-
-const Example = () => (
-  <div>
-    <SlotComponent
-      name="onecx-shell-header-actions"
-      inputs={{ title: 'Remote title' }}
-      outputs={{ onSelect: (value) => console.log(value) }}
-      skeleton={<div>Loading...</div>}
-    />
-  </div>
-);
-
-export default withSlot(Example);
-```
-
-`SlotComponent` accepts:
-
-| Prop     | Type      | Description                                                          |
-| -------- | --------- | -------------------------------------------------------------------- |
-| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
-| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
-| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
-| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
-
-Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
-
-## [](#related)Related
-
-* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
-* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
-
 Remote Components in Angular Applications
 ====================
 This page covers the Angular-specific APIs for exposing and hosting Remote Components. See [Remote Components](../remote-components.html) for the shared concept and terminology.
@@ -8836,6 +8781,61 @@ Behind the scenes, `<ocx-slot>` uses `SlotService` to resolve which Remote Compo
 
 * [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
 * [Component Approach](../../setup/required/expose-remote-module/component-approach.html) — the complete, practical how-to for exposing an Angular Remote Component.
+
+Remote Components in React Applications
+====================
+This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
+
+## [](#exposing-a-react-remote-component)Exposing a Remote Component
+
+A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
+
+```javascript
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+## [](#hosting-a-slot-in-react)Hosting a Slot
+
+To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
+
+```tsx
+import { withSlot, SlotComponent } from '@onecx/react-remote-components';
+
+const Example = () => (
+  <div>
+    <SlotComponent
+      name="onecx-shell-header-actions"
+      inputs={{ title: 'Remote title' }}
+      outputs={{ onSelect: (value) => console.log(value) }}
+      skeleton={<div>Loading...</div>}
+    />
+  </div>
+);
+
+export default withSlot(Example);
+```
+
+`SlotComponent` accepts:
+
+| Prop     | Type      | Description                                                          |
+| -------- | --------- | -------------------------------------------------------------------- |
+| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
+| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
+| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
+| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
+
+Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
+
+## [](#related)Related
+
+* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
+* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
 
 Routing in Angular Applications
 ====================
@@ -11454,86 +11454,6 @@ userService.getPermissions().pipe(
 * [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the full `@onecx/angular-integration-interface` reference.
 * [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — the `usePermission` hook / `PermissionProvider` equivalent for React applications.
 
-Checking Permissions in Code
-====================
-React applications in the OneCX portal can read the current user’s permissions from the `[@onecx/react-remote-components](../../../react/libraries/react-remote-components.html)` package, which exposes a `usePermission` hook and a `PermissionProvider`. This is the React counterpart to the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Angular `PermissionService` checks\]: it lets a React component ask "which permissions does this user have?" and render conditionally in plain React code.
-
-## [](#how-it-works)How it works
-
-The `PermissionProvider` subscribes to the portal’s permission topic (`PermissionsRpcTopic`) and resolves permissions for the pair of `appId` and `productName` you ask about:
-
-```tsx
-const { permissions, getPermissions } = usePermission()
-
-const appPermissions = await getPermissions('my-app', 'my-product')
-// appPermissions === ['USER#VIEW', 'USER#EDIT', ...]
-```
-
-There are two ways to obtain the permissions:
-
-* **`getPermissions(appId, productName)`** — a `Promise<string[]>` that resolves with the list of permission keys for that application. This is the primary mechanism; call it once (typically in an effect) and store the result.
-* **`permissions`** — the accumulated list of permission messages received from the topic so far. Use this when you want the value to stay reactive to newly published permissions.
-
-The permission strings follow the same `<RESOURCE>#<ACTION>` convention used throughout OneCX (for example, `USER#EDIT`).
-
-| |  This API is scoped by appId and productName and resolves permissions over the PermissionsRpcTopic — the remote-components data path. It is a different source from the Angular UserService / PermissionService standard path documented on the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] page. Both reflect the same underlying role-based assignments, but they read them through different integrations. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#provider)Setting up the provider
-
-`usePermission` must be called inside a component that is wrapped by a `PermissionProvider` (otherwise it throws). When a remote component is rendered through the standard `withSlot` / `SlotComponent` flow, the provider is already mounted for you — so `usePermission` is available directly in those components. If you build a standalone React app that talks to the portal directly, mount the provider yourself:
-
-```tsx
-import { PermissionProvider } from '@onecx/react-remote-components'
-
-<PermissionProvider>
-  <YourApp />
-</PermissionProvider>
-```
-
-## [](#checking-permissions)Checking permissions in a component
-
-Because `getPermissions` is asynchronous, fetch the list once and then derive your rendering from it. The example below shows a button that is only rendered when the user holds the `USER#EDIT` permission:
-
-```tsx
-import { useEffect, useState } from 'react'
-import { usePermission } from '@onecx/react-remote-components'
-
-function EditButton({ appId, productName }) {
-  const { getPermissions } = usePermission()
-  const [permissions, setPermissions] = useState<string[]>()
-
-  useEffect(() => {
-    let active = true
-    getPermissions(appId, productName).then((result) => {
-      if (active) setPermissions(result)
-    })
-    return () => { active = false }
-  }, [appId, productName, getPermissions])
-
-  if (!permissions) return null
-  if (!permissions.includes('USER#EDIT')) return null
-
-  return <button>Edit</button>
-}
-```
-
-To require several permissions at once, check that the list contains all of them:
-
-```tsx
-const required = ['USER#VIEW', 'USER#EXPORT']
-const canExport = permissions.every((p) => required.includes(p))
-```
-
-| |  There is no \*ocxIfPermission\-equivalent conditional-rendering directive in the React libraries. Conditional rendering is done in plain React (as above) — see the [Conditional rendering](../angular/conditional-rendering.html)\[Angular conditional rendering\] page for the directive-based equivalent. |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#related)Related
-
-* [@onecx/react-remote-components](../../../react/libraries/react-remote-components.html) — the library page, covering the provider/hooks setup and the slot API this permission API pairs with.
-* [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the Angular `PermissionService` / `HAS_PERMISSION_CHECKER` equivalent.
-* [Conditional rendering](../angular/conditional-rendering.html)\[Conditional rendering\] — the Angular `*ocxIfPermission` / `*ocxIfNotPermission` directives.
-
 Conditional Rendering
 ====================
 ## [](#overview)Overview
@@ -11636,6 +11556,86 @@ example.html
 * [Checking permissions in code (Angular)](checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the `PermissionService` and `HAS_PERMISSION_CHECKER` checks for logic outside a template.
 * [User Service](../../../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#user-service) — the `@onecx/angular-integration-interface` service the directives resolve permissions through.
 * [Checking permissions in code (React)](../react/checking-permissions-in-code.html)\[Checking permissions in code (React)\] — reading permissions in a React application with `usePermission` / `PermissionProvider`.
+
+Checking Permissions in Code
+====================
+React applications in the OneCX portal can read the current user’s permissions from the `[@onecx/react-remote-components](../../../react/libraries/react-remote-components.html)` package, which exposes a `usePermission` hook and a `PermissionProvider`. This is the React counterpart to the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Angular `PermissionService` checks\]: it lets a React component ask "which permissions does this user have?" and render conditionally in plain React code.
+
+## [](#how-it-works)How it works
+
+The `PermissionProvider` subscribes to the portal’s permission topic (`PermissionsRpcTopic`) and resolves permissions for the pair of `appId` and `productName` you ask about:
+
+```tsx
+const { permissions, getPermissions } = usePermission()
+
+const appPermissions = await getPermissions('my-app', 'my-product')
+// appPermissions === ['USER#VIEW', 'USER#EDIT', ...]
+```
+
+There are two ways to obtain the permissions:
+
+* **`getPermissions(appId, productName)`** — a `Promise<string[]>` that resolves with the list of permission keys for that application. This is the primary mechanism; call it once (typically in an effect) and store the result.
+* **`permissions`** — the accumulated list of permission messages received from the topic so far. Use this when you want the value to stay reactive to newly published permissions.
+
+The permission strings follow the same `<RESOURCE>#<ACTION>` convention used throughout OneCX (for example, `USER#EDIT`).
+
+| |  This API is scoped by appId and productName and resolves permissions over the PermissionsRpcTopic — the remote-components data path. It is a different source from the Angular UserService / PermissionService standard path documented on the [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] page. Both reflect the same underlying role-based assignments, but they read them through different integrations. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#provider)Setting up the provider
+
+`usePermission` must be called inside a component that is wrapped by a `PermissionProvider` (otherwise it throws). When a remote component is rendered through the standard `withSlot` / `SlotComponent` flow, the provider is already mounted for you — so `usePermission` is available directly in those components. If you build a standalone React app that talks to the portal directly, mount the provider yourself:
+
+```tsx
+import { PermissionProvider } from '@onecx/react-remote-components'
+
+<PermissionProvider>
+  <YourApp />
+</PermissionProvider>
+```
+
+## [](#checking-permissions)Checking permissions in a component
+
+Because `getPermissions` is asynchronous, fetch the list once and then derive your rendering from it. The example below shows a button that is only rendered when the user holds the `USER#EDIT` permission:
+
+```tsx
+import { useEffect, useState } from 'react'
+import { usePermission } from '@onecx/react-remote-components'
+
+function EditButton({ appId, productName }) {
+  const { getPermissions } = usePermission()
+  const [permissions, setPermissions] = useState<string[]>()
+
+  useEffect(() => {
+    let active = true
+    getPermissions(appId, productName).then((result) => {
+      if (active) setPermissions(result)
+    })
+    return () => { active = false }
+  }, [appId, productName, getPermissions])
+
+  if (!permissions) return null
+  if (!permissions.includes('USER#EDIT')) return null
+
+  return <button>Edit</button>
+}
+```
+
+To require several permissions at once, check that the list contains all of them:
+
+```tsx
+const required = ['USER#VIEW', 'USER#EXPORT']
+const canExport = permissions.every((p) => required.includes(p))
+```
+
+| |  There is no \*ocxIfPermission\-equivalent conditional-rendering directive in the React libraries. Conditional rendering is done in plain React (as above) — see the [Conditional rendering](../angular/conditional-rendering.html)\[Angular conditional rendering\] page for the directive-based equivalent. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#related)Related
+
+* [@onecx/react-remote-components](../../../react/libraries/react-remote-components.html) — the library page, covering the provider/hooks setup and the slot API this permission API pairs with.
+* [Checking permissions in code (Angular)](../angular/checking-permissions-in-code.html)\[Checking permissions in code (Angular)\] — the Angular `PermissionService` / `HAS_PERMISSION_CHECKER` equivalent.
+* [Conditional rendering](../angular/conditional-rendering.html)\[Conditional rendering\] — the Angular `*ocxIfPermission` / `*ocxIfNotPermission` directives.
 
 Expose Component Styles in Angular Applications
 ====================
@@ -11975,57 +11975,6 @@ RemoteComponentConfig Structure
 | permissions | string\[\] | User permissions                                 |
 | baseUrl     | string     | URL for accessing content, e.g. '/mfe/mfe\_name' |
 
-Material
-====================
-An Angular application that uses Angular Material (`@angular/material`) or the Component Development Kit (`@angular/cdk`) must add a Webpack plugin to its Module Federation setup. The plugin rewrites the Material source at build time so that `@angular/material` and `@angular/cdk` resolve against the shared packages in the share scope instead of duplicate copies being bundled into the application. Without it, the Material output that the OneCX shell loads from `remoteEntry.js` does not render correctly. This is a required step, not an optional one.
-
-## [](#material-modifysourceplugin)Add the Webpack plugin
-
-1. Install `modify-source-webpack-plugin`:  
-```bash  
-npm install modify-source-webpack-plugin --save-dev  
-```
-2. Import `ModifySourcePlugin` and `ReplaceOperation` from `modify-source-webpack-plugin` in `webpack.config.js`.
-3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
-   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
-   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
-         * scope: `all`  
-         * match pattern: `document\.createElement\(`  
-         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
-4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
-
-Example webpack.config.js
-
-```javascript
-const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
-
-const modifyMaterialPlugin = new ModifySourcePlugin({
-  rules: [
-    {
-      test: (module) => {
-        return (
-          module.resource &&
-          (module.resource.includes('@angular/material') ||
-            module.resource.includes('@angular/cdk'))
-        )
-      },
-      operations: [
-        new ReplaceOperation(
-          'all',
-          'document\\.createElement\\(',
-          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
-        )
-      ]
-    }
-  ]
-})
-
-module.exports = {
-  ...webpackConfig,
-  plugins: [...plugins, modifyMaterialPlugin]
-}
-```
-
 Module Approach
 ====================
 This page covers exposing an Angular application as a full Angular `NgModule` webcomponent, bootstrapped via `@onecx/angular-webcomponents`.
@@ -12142,6 +12091,57 @@ function apiConfigProvider() {
     // other providers
   ]
 })
+```
+
+Material
+====================
+An Angular application that uses Angular Material (`@angular/material`) or the Component Development Kit (`@angular/cdk`) must add a Webpack plugin to its Module Federation setup. The plugin rewrites the Material source at build time so that `@angular/material` and `@angular/cdk` resolve against the shared packages in the share scope instead of duplicate copies being bundled into the application. Without it, the Material output that the OneCX shell loads from `remoteEntry.js` does not render correctly. This is a required step, not an optional one.
+
+## [](#material-modifysourceplugin)Add the Webpack plugin
+
+1. Install `modify-source-webpack-plugin`:  
+```bash  
+npm install modify-source-webpack-plugin --save-dev  
+```
+2. Import `ModifySourcePlugin` and `ReplaceOperation` from `modify-source-webpack-plugin` in `webpack.config.js`.
+3. Create a `modifyMaterialPlugin` instance with a rules array containing one rule object:  
+   * The rule must define a `test` function that returns `true` when `module.resource` exists and the resource path includes `@angular/material` or `@angular/cdk`.  
+   * The rule must include an `operations` array with a `ReplaceOperation` configured with:  
+         * scope: `all`  
+         * match pattern: `document\.createElement\(`  
+         * replacement: `document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},`
+4. Add the `modifyMaterialPlugin` instance to the Webpack `plugins` array.
+
+Example webpack.config.js
+
+```javascript
+const { ModifySourcePlugin, ReplaceOperation } = require('modify-source-webpack-plugin')
+
+const modifyMaterialPlugin = new ModifySourcePlugin({
+  rules: [
+    {
+      test: (module) => {
+        return (
+          module.resource &&
+          (module.resource.includes('@angular/material') ||
+            module.resource.includes('@angular/cdk'))
+        )
+      },
+      operations: [
+        new ReplaceOperation(
+          'all',
+          'document\\.createElement\\(',
+          'document.createElementFromMaterial({"this": this, "arguments": Array.from(arguments)},'
+        )
+      ]
+    }
+  ]
+})
+
+module.exports = {
+  ...webpackConfig,
+  plugins: [...plugins, modifyMaterialPlugin]
+}
 ```
 
 PrimeNG
@@ -16013,60 +16013,6 @@ After adaptations to the detail view and form controls, the detail component can
 
 Figure 5\. Detail UI with adapted detail view
 
-Create a Simple NgRx Page
-====================
-This guide describes how to create a simple NgRx page using the OneCX App Generator.
-
-A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
-This can be done if you have already set up an initial Application with an feature.
-
-| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
-| -------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#create-ngrx-page)Create NgRx Page
-
-Follow these steps:
-
-1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
-2. Run the following OneCX App Generator command.  
-The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
-Generate page/component  
-```bash  
-nx generate @onecx/angular-generator:ngrx-page [feature module]  
-```
-3. Follow the prompts to provide details like the page component name and the page title.  
-That’s it.
-4. Navigate in your browser to the new component using the the component name as route.
-
-## [](#example)Example
-
-To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
-
-Generate page/component
-
-```bash
-nx generate @onecx/angular-generator:ngrx-page hello-world
-```
-
-When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
-To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
-
-OneCX Local Environment with Hello Component
-
-```text
-http://onecx.localhost/onecx-shell/admin/hello-world/hello
-```
-
-![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
-
-Figure 1\. Hello Component in action
-
-Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
-
-![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
-
-Figure 2\. Generated files for the Hello Component
-
 Create a Feature Module
 ====================
 What is a Feature Module?
@@ -16170,6 +16116,60 @@ npm run test
 ![test result feature](../_images/test_result_feature.png) 
 
 Figure 2\. Test result of the generated feature module
+
+Create a Simple NgRx Page
+====================
+This guide describes how to create a simple NgRx page using the OneCX App Generator.
+
+A simple NgRx page refers to an **NgRx component** with its associated state management (actions, reducers, effects, selectors), but without specific business logic or UI elements. Only a page title is displayed.  
+This can be done if you have already set up an initial Application with an feature.
+
+| |  When we talk about creating a simple NgRx page, the generator **creates a page component** as part of a feature module. |
+| -------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#create-ngrx-page)Create NgRx Page
+
+Follow these steps:
+
+1. Open a terminal and navigate to the root directory of your OneCX application where you want to add the new NgRx page.
+2. Run the following OneCX App Generator command.  
+The feature parameter is optional and can be used to specify the feature module where the NgRx page should be created. If not provided, the generator prompt you to specify a feature module.  
+Generate page/component  
+```bash  
+nx generate @onecx/angular-generator:ngrx-page [feature module]  
+```
+3. Follow the prompts to provide details like the page component name and the page title.  
+That’s it.
+4. Navigate in your browser to the new component using the the component name as route.
+
+## [](#example)Example
+
+To create a simple NgRx page named "Hello" under the "Hello World" feature module, you would run:
+
+Generate page/component
+
+```bash
+nx generate @onecx/angular-generator:ngrx-page hello-world
+```
+
+When prompted, you would enter "Hello" as the component name and "Hello World" as the page title.  
+To access the newly created component, navigate to `<your app-base-path>/hello-world/hello` in your browser.
+
+OneCX Local Environment with Hello Component
+
+```text
+http://onecx.localhost/onecx-shell/admin/hello-world/hello
+```
+
+![ngrx page browser displaying hello world](../_images/ngrx-page_browser-displaying-hello-world.png) 
+
+Figure 1\. Hello Component in action
+
+Here is an overview of the files generated by the OneCX App Generator for the "Hello" component below the hello-world feature module:
+
+![ngrx page generated files hello world](../_images/ngrx-page_generated-files-hello-world.png) 
+
+Figure 2\. Generated files for the Hello Component
 
 Create an Entity Schema
 ====================
@@ -23744,27 +23744,6 @@ this.workspaceService.doesUrlExistFor('orders', 'orders-ui', 'order').subscribe(
 
 This example checks if a valid URL for Orders UI (UI component) of the Orders application to an order details endpoint can be constructed. If true, then Orders application is registered in the workspace and it has UI component with id `orders-ui` with configured endpoint called `order`.
 
-OneCX InteractiveDataView
-====================
-## [](#overview)Overview
-
-This document aims to showcase how to manage InteractiveDataView Component.
-
-## [](#inputs)Column group selector dialog inputs
-
-The `InteractiveDataView` hosts a column group selector dialog (shown in the `table` layout). These inputs configure that dialog and are forwarded to the hosted `CustomGroupColumnSelectorComponent`.
-
-__Table 1\. Column group selector dialog inputs__
-| Input name                         | Type    | Default | Description                                                                                                                                                                                                                                       |
-| ---------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| draggableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be dragged by the user.                                                                                                                                                                                   |
-| resizableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be resized by the user. Independent of draggableColumnGroupSelectorDialog.                                                                                                                                |
-| restoreColumnGroupSelectorOrder    | boolean | false   | When enabled, transferring columns rebuilds the active and inactive lists in the order of the configured columns, so the active columns keep the main column order after a save. When disabled, the normal pick-list transfer order is preserved. |
-
-## [](#related-interfaces)Related Interfaces
-
-* [DataTableColumn](data-table-column.html)
-
 DataTableColumn
 ====================
 ## [](#data-table-column-properties-overview)DataTableColumn properties overview
@@ -23808,6 +23787,27 @@ FilterType enum
 | ------ | ------------------------------------------------------------------------ |
 | EQUAL  | Will create a set of unique values for filtering.                        |
 | TRUTHY | Will always have two filter options which result in empty and not empty. |
+
+OneCX InteractiveDataView
+====================
+## [](#overview)Overview
+
+This document aims to showcase how to manage InteractiveDataView Component.
+
+## [](#inputs)Column group selector dialog inputs
+
+The `InteractiveDataView` hosts a column group selector dialog (shown in the `table` layout). These inputs configure that dialog and are forwarded to the hosted `CustomGroupColumnSelectorComponent`.
+
+__Table 1\. Column group selector dialog inputs__
+| Input name                         | Type    | Default | Description                                                                                                                                                                                                                                       |
+| ---------------------------------- | ------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| draggableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be dragged by the user.                                                                                                                                                                                   |
+| resizableColumnGroupSelectorDialog | boolean | true    | Whether the column selection dialog can be resized by the user. Independent of draggableColumnGroupSelectorDialog.                                                                                                                                |
+| restoreColumnGroupSelectorOrder    | boolean | false   | When enabled, transferring columns rebuilds the active and inactive lists in the order of the configured columns, so the active columns keep the main column order after a save. When disabled, the normal pick-list transfer order is preserved. |
+
+## [](#related-interfaces)Related Interfaces
+
+* [DataTableColumn](data-table-column.html)
 
 @onecx/angular-utils/cdk
 ====================
@@ -24262,34 +24262,6 @@ const config = withModuleFederationPlugin({
 });
 ```
 
-undefined
-====================
-AI Migration Agent 
-
-**Before You Start**
-
-Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html) ([published reference](https://onecx.github.io/docs/documentation/current/onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html)).
-
-**Setup**
-
-1. Clone or pull the latest version of the repository:  
-```bash  
-git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
-# or if already cloned:  
-cd onecx-ai-refactoring-agents && git pull  
-```
-2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
-
-**Usage**
-
-To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
-
-```bash
-/migrate-19
-```
-
-The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
-
 Adjust Standalone Mode
 ====================
 In OneCX v6, the `@onecx/standalone-shell` library has been renamed to `@onecx/angular-standalone-shell`.
@@ -24329,6 +24301,34 @@ export class AppModule {}
 npm uninstall --save @onecx/standalone-shell  
 ```
 * Update the webpack configuration references to `@onecx/standalone-shell` with `@onecx/angular-standalone-shell`
+
+undefined
+====================
+AI Migration Agent 
+
+**Before You Start**
+
+Make sure you have the Recommended MCP servers configured before running the migration agent. For detailed setup instructions, see the [MCP Server Setup Guide](../../../onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html) ([published reference](https://onecx.github.io/docs/documentation/current/onecx-docs-dev/ai/mcp%5Fserver%5Fsetup.html)).
+
+**Setup**
+
+1. Clone or pull the latest version of the repository:  
+```bash  
+git clone https://github.com/onecx/onecx-ai-refactoring-agents.git  
+# or if already cloned:  
+cd onecx-ai-refactoring-agents && git pull  
+```
+2. Follow the setup instructions in the repository [README](https://github.com/onecx/onecx-ai-refactoring-agents/blob/main/angular/updates/README.md).
+
+**Usage**
+
+To migrate from Angular 18 to Angular 19, use the following command in your AI assistant:
+
+```bash
+/migrate-19
+```
+
+The migration agent will guide you through the pre-migration and post-migration steps, including PrimeNG updates if applicable.
 
 Migrate OneCX App from Angular 18 to Angular 19
 ====================
@@ -25302,27 +25302,6 @@ export class Example {
 }
 ```
 
-Update Component Imports Post Migration
-====================
-The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
-
-## [](#moved-to-libraries)Components Moved to Different Libraries
-
-The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
-
-* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
-* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
-* `BasicDirective`, `RelativeDatePipe`
-* `OcxContentContainerDirective`, `OcxContentDirective`
-* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
-* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
-* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
-* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
-
-The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
-
-* `UserService`, `PortalMessageService`
-
 Update Component Imports
 ====================
 The following section covers component, service, and directive changes in OneCX v6\. Components have been deleted, reorganized across libraries or converted to remote components. The following updates can be applied before v6 migration.
@@ -25496,6 +25475,27 @@ To include the remote components in the application, deployment configuration an
      ]  
    }  
    ```
+
+Update Component Imports Post Migration
+====================
+The following section covers component, service, and directive changes in OneCX v6\. Components have been reorganized across libraries and have to be updated after v6 migration.
+
+## [](#moved-to-libraries)Components Moved to Different Libraries
+
+The imports of the following components, services and directives need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-accelerator`:
+
+* `DialogMessageContentComponent`, `DialogInlineComponent`, `DialogFooterComponent`, `DialogContentComponent`
+* `GlobalErrorComponent`, `LoadingIndicatorComponent`, `LoadingIndicatorDirective`
+* `BasicDirective`, `RelativeDatePipe`
+* `OcxContentContainerDirective`, `OcxContentDirective`
+* `ExportDataService`, `PortalDialogService`, `ImageLogoUrlUtils`
+* `DialogContentHarness`, `DialogFooterHarness`, `DialogInlineHarness`, `DialogMessageContentHarness`
+* `BreadcrumbService`, `DataTableColumn`, `ColumnType`, `ObjectDetailItem`, `RowListGridData`, `Action`, `DataAction`, `ButtonDialogButtonDetails`
+* `DialogState`,`DialogButtonClicked` ,`DialogCustomButtonsDisabled` ,`DialogPrimaryButtonDisabled` ,`DialogSecondaryButtonDisabled` ,`DialogResult` ,`DialogState` ,`enumToDropdownOptions`
+
+The imports of the following services need to be changed from `@onecx/portal-integration-angular` to `@onecx/angular-integration-interface`:
+
+* `UserService`, `PortalMessageService`
 
 Update ConfigurationService Usage
 ====================
