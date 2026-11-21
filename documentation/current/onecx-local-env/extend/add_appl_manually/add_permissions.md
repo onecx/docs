@@ -10,7 +10,7 @@ After adding the application to the workspace, you may want to assign permission
 
 If you see the following warning when you enter the page of your application, it means that you need to assign the permissions:
 
-![Example of permission missing warning](../../_images/extend/add_application_manually/permission_missing_page.png) 
+![Example of permission missing warning](../../_images/extend/add_appl_manually/permission_missing_page.png) 
 
 Figure 1\. Permission missing warning
 
@@ -21,7 +21,7 @@ This guide will show how to add `TEST#SEARCH` permission to the application and 
 * In OneCX, choose `Users and Permissions` from the left side panel, then choose `Roles and Permissions` subitem.
 * Find the required workspace (e.g. `Onecx Admin`) and click on it. (This can also be done for applications)
 
-![Select the workspace or application for which you want to create the permission](../../_images/extend/add_application_manually/permission_enter_workspace.png) 
+![Select the workspace or application for which you want to create the permission](../../_images/extend/add_appl_manually/permission_enter_workspace.png) 
 
 Figure 2\. Navigate to the workspace or application for which you want to create the permission
 
@@ -30,13 +30,13 @@ Figure 2\. Navigate to the workspace or application for which you want to create
 
 * Click `settings` icon, next to `Permissions` title.
 
-![Click the settings icon to manage permissions](../../_images/extend/add_application_manually/permission_settings_icon.png) 
+![Click the settings icon to manage permissions](../../_images/extend/add_appl_manually/permission_settings_icon.png) 
 
 Figure 3\. Click the settings icon to manage permissions
 
 * Click `+` icon, next to `Permissions` title, to create a new permission.
 
-![Click the "+" icon to create a new permission](../../_images/extend/add_application_manually/permission_add_icon.png) 
+![Click the "+" icon to create a new permission](../../_images/extend/add_appl_manually/permission_add_icon.png) 
 
 Figure 4\. Click the "+" icon to create a new permission
 
@@ -50,7 +50,7 @@ __Table 1\. Required Permission Details (example)__
 | Resource         | TEST          | Unique name of the resource that comes before the # symbol.                              |
 | Action           | SEARCH        | Unique name of the action that comes after the # symbol.                                 |
 
-![Example of filled permission details form](../../_images/extend/add_application_manually/permission_filled_permission.png) 
+![Example of filled permission details form](../../_images/extend/add_appl_manually/permission_filled_permission.png) 
 
 Figure 5\. Example permission details
 
@@ -61,6 +61,6 @@ Figure 5\. Example permission details
 * Locate the permission you just created in the list of permissions.
 * Click on the circle to make it filled, which means that the permission is assigned to the selected role.
 
-![Click the circle to assign the permission to the role](../../_images/extend/add_application_manually/permission_select.png) 
+![Click the circle to assign the permission to the role](../../_images/extend/add_appl_manually/permission_select.png) 
 
 Figure 6\. Assign the permission to the role

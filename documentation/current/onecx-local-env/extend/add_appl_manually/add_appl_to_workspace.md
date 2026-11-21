@@ -3,19 +3,19 @@
 * In OneCX on the left side panel, choose `Workspace`, then choose `Workspaces` subitem.
 * Click on the workspace you want to add the application to (e.g. `Onecx Admin`). See [OneCX Workspace](../../../onecx-workspace/index.html) documentation for more details on workspaces.
 
-![Select the workspace to which you want to add the application](../../_images/extend/add_application_manually/workspace_left_panel.png) 
+![Select the workspace to which you want to add the application](../../_images/extend/add_appl_manually/workspace_left_panel.png) 
 
 Figure 1\. Navigate to the workspace
 
 * Click `Applications` tab in the workspace view, your application should be visible in the list of available applications.
 
-![Find the "Applications" tab in the workspace view](../../_images/extend/add_application_manually/workspaces_applications.png) 
+![Find the "Applications" tab in the workspace view](../../_images/extend/add_appl_manually/workspaces_applications.png) 
 
 Figure 2\. Applications tab in the workspace
 
 * Click on the application you want to add to the workspace, then click `>` button in the middle of the view.
 
-![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_application_manually/workspace_add_app.png) 
+![Select the application and click ">" button to add it to the workspace](../../_images/extend/add_appl_manually/workspace_add_app.png) 
 
 Figure 3\. Add the application to the workspace
 

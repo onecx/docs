@@ -5,7 +5,7 @@
 * Choose application store on the left side pannel of the OneCX.
 * Click three dots in the top right corner of the application store and select `Add Application` from the dropdown menu.
 
-![Find the "Add Application" button in the top right corner of the application store](../../_images/extend/add_application_manually/application_store.png) 
+![Find the "Add Application" button in the top right corner of the application store](../../_images/extend/add_appl_manually/application_store.png) 
 
 Figure 1\. Locate the "Add Application" button
 
@@ -21,7 +21,7 @@ __Table 1\. Required Application Details (example)__
 
 * Click `Save` to add the application to the product store.
 
-![Example of filled application details form](../../_images/extend/add_application_manually/example_application_parameters.png) 
+![Example of filled application details form](../../_images/extend/add_appl_manually/example_application_parameters.png) 
 
 Figure 2\. Example application details
 
@@ -29,13 +29,13 @@ Figure 2\. Example application details
 
 * Return to the `Application Store` and click the `Apps` button in the top right corner to change the view.
 
-![Find the "Apps" button in the top right corner of the application store](../../_images/extend/add_application_manually/change_to_apps_tab.png) 
+![Find the "Apps" button in the top right corner of the application store](../../_images/extend/add_appl_manually/change_to_apps_tab.png) 
 
 Figure 3\. Apps button in the application store
 
 * Click three dots in the top right corner of the application store and select `Create UI Component` from the dropdown menu.
 
-![Find the "Create UI Component" button in the top right corner of the application store](../../_images/extend/add_application_manually/create_ui_component_pick.png) 
+![Find the "Create UI Component" button in the top right corner of the application store](../../_images/extend/add_appl_manually/create_ui_component_pick.png) 
 
 Figure 4\. Locate the "Create UI Component" button
 
@@ -52,7 +52,7 @@ __Table 2\. Required Management Details (example)__
 | Application Name | example                                                                                                                                                                            | Name of the application in the product store to which the UI component will be added. |
 | Version          | xxx                                                                                                                                                                                | Application version                                                                   |
 
-![Example of filled management details form](../../_images/extend/add_application_manually/create_ui_component_management_details.png) 
+![Example of filled management details form](../../_images/extend/add_appl_manually/create_ui_component_management_details.png) 
 
 Figure 5\. Example management details
 
@@ -70,14 +70,14 @@ __Table 3\. Remote Module Details (example)__
 | Remote Name (Optional) | example-ui from the [Important Elements of Webpack Configuration](../../../onecx-docs-overview/module-federation/webpack.html#important-elements-of-webpack-configuration) example.                                                                                              | The uniqueName of the remote module as defined in the webpack.config.js file. This is optional and only needed if the remote module has a specific name or for WebComponent (Script) technology.                     |
 | Tag Name (Optional)    | example-webcomponent from the [Bootstrap Application](../../../onecx-docs-overview/module-federation/bootstrapping.html#module-bootstrapping-and-configuration) example.                                                                                                         | The name of the custom element tag added in ngDoBootstrap method of the module.ts file.                                                                                                                              |
 
-![Example of filled remote module details form](../../_images/extend/add_application_manually/create_ui_component_remote_module.png) 
+![Example of filled remote module details form](../../_images/extend/add_appl_manually/create_ui_component_remote_module.png) 
 
 Figure 6\. Example remote module details
 
 * Click `Save` to add the UI component for the application.
 * Check that the UI component is added to the application created in the previous step. You can click on the application in the application store and click the `Components` tab to see the list of UI components added for the application.
 
-![Example of the UI component added to the application](../../_images/extend/add_application_manually/successfuly_added_ui_component.png) 
+![Example of the UI component added to the application](../../_images/extend/add_appl_manually/successfuly_added_ui_component.png) 
 
 Figure 7\. Successfully added UI component
 
