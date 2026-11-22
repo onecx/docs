@@ -1389,290 +1389,6 @@ We recommend exploring the following resources to deepen your understanding of O
 * The [OneCX Local Environment](../onecx-local-env/index.html) provides comprehensive instructions on setting up and using the local development environment, including how to run, debug, and test OneCX applications and services.
 * The [OneCX App Generator](../onecx-nx-plugins/index.html) is a powerful tool to scaffold new OneCX applications and services quickly. It helps you to create the necessary project structure, configuration files, and boilerplate code for your microfrontends and microservices, following OneCX best practices.
 
-OneCX API Guidelines
-====================
-## [](#introduction)Introduction
-
-This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
-
-## [](#general-principles)General Principles
-
-* Follow an API-first approach: design OpenAPI spec before implementation.
-* Use consistent naming and DTO patterns.
-* Prefer plural nouns for resource names.
-* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
-* Define your objects in the schemas tab and use references to them in your endpoint definitions.
-* Avoid code duplication, if possible reuse objects.
-* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
-
-## [](#api-versioning)API Versioning
-
-* Use versioning in the URL path: `/v1`, `/v2`, etc.
-* For internal APIs use `/internal/`.
-* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
-* Use the `version` tag at the top of your OpenAPI file to set the version.
-
-## [](#resource-naming)Resource Naming
-
-* Use **plural** form of entity names: `/themes`, `/users`.
-* Use up to 2 path parameters. If more are needed, use the request body.
-
-## [](#mandatory-schema-fields)Mandatory Schema Fields
-
-### [](#general)General
-
-| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
-| ----------- | ------------------------------------------------------------------------------------------------- |
-| description | Short description of the purpose of this API and which entities are targeted.                     |
-| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
-| servers     | {url}:{port} of the application                                                                   |
-| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
-| paths       | Endpoint definitions                                                                              |
-| schemas     | Object definitions                                                                                |
-
-Example using mandatory schema fields 
-
-```yml
-openapi: 3.0.3
-info:
-  title: onecx-hello-world external service V1
-  description: This API provides endpoints for managing Hello World.
-  version: 1.0.0
-servers:
-  - url: "http://onecx-hello-world:8080"
-tags:
-  - name: helloV1
-    description: Managing Hello
-  - name: worldV1
-    description: Managing World
-```
-
-### [](#endpoints)Endpoints
-
-| tags        | Use camel case for all tags like {tagName}                             |
-| ----------- | ---------------------------------------------------------------------- |
-| description | Description of the purpose of this endpoint.                           |
-| operationId | Name of the generated Java method.                                     |
-| requestBody | Definition of the required object and content-type. Not needed for GET |
-| responses   | Possible response-codes including description and object definitions.  |
-
-For response description please use the following pattern: `{Resource} {operation} {status}`
-
-Examples
-
-Theme created successfully.  
-Theme not found.
-
-## [](#dto-naming-convention)DTO Naming Convention
-
-| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
-| --------------------------------------------------------------------------------------------------------- |
-
-```yml
-<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
-```
-
-Examples
-
-CreateThemeRequest  
-GetUserResponse
-
-| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-## [](#http-methods)HTTP Methods
-
-### [](#get)GET
-
-```yml
-GET /{apiVersion}/{resources}/{id}
-```
-
-* No request body.
-* Returns `200 OK` with list or single resource.
-* Returns `404 NOT FOUND` if entity does not exist.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-  GetThemeResponse:
-   required:
-    - resource
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
-| ----------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#post)POST
-
-```yml
-POST /{apiVersion}/{resources}
-POST /{apiVersion}/{resources}/search
-```
-
-* Used for creation, search, or import.
-* Returns `201 CREATED`. Optional with location header or created resource as response.
-* Returns `400 BAD REQUEST` for invalid input or constraint violations.
-
-#### [](#search)Search
-
-* To support pagination include the following mandatory criteria:
-
-```yml
-    pageNumber:
-      format: int32
-      description: The number of page.
-      default: 0
-      type: integer
-    pageSize:
-      format: int32
-      description: The size of page
-      default: 100
-      maximum: 1000
-      type: integer
-```
-
-and the following fields in the response:
-
-```yml
-    stream:
-      type: array
-      items:
-       $ref: '#/components/schemas/ThemeAbstract'
-    totalElements:
-      format: int64
-      description: The total elements in the resource.
-      type: integer
-    number:
-      format: int32
-      type: integer
-    size:
-      format: int32
-      type: integer
-    totalPages:
-      format: int64
-      type: integer
-```
-
-| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
-| -------------------------------------------------------------------------------------------------------------------- |
-
-### [](#put)PUT
-
-```yml
-PUT /{apiVersion}/{resources}/{id}
-```
-
-* Full update of business entity.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
-* Returns `404 NOT FOUND` if the targeted entity is not found.
-* Include the actual response resource inside the `resource` field.
-
-Example
-
-```yml
-   UpdateThemeResponse:
-   type: object
-   properties:
-    resource:
-     $ref: '#/components/schemas/Theme'
-```
-
-| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#patch)PATCH
-
-```yml
-PATCH /{apiVersion}/{resources}/{id}
-```
-
-* Partial update of resource.
-* Returns `200 OK`. Optional with updated resource as response.
-* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
-
-### [](#delete)DELETE
-
-```yml
-DELETE /{apiVersion}/{resources}/{id}
-```
-
-* Idempotent deletion.
-* Returns `204 NO CONTENT`.
-* Returns `400 BAD REQUEST` for constraint violations.
-
-## [](#error-handling)Error Handling
-
-Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
-
-ProblemDetailResponse 
-
-```YML
-    ProblemDetailResponse:
-      type: object
-      properties:
-        errorCode:
-          type: string
-        detail:
-          type: string
-        params:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailParam'
-        invalidParams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ProblemDetailInvalidParam'
-    ProblemDetailParam:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-    ProblemDetailInvalidParam:
-      type: object
-      properties:
-        name:
-          type: string
-        message:
-          type: string
-```
-
-ProblemDetailResponse Example 
-
-```YML
-      responses:
-        200:
-          description: ExampleResource updated successfully
-        400:
-          description: Bad request
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProblemDetailResponse'
-```
-
-| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
-| ------------------------------------------------------------------------------------------------------- |
-
-## [](#code-style)Code Style
-
-* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
-* Use a consistent way of indentations.
-* Use camelCase for `tag` and `operationId`.
-* Use PascalCase for object names.
-
-## [](#examples)Examples
-
-Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
-
 AI: Work with Agents
 ====================
 This page provides an overview of AI agents, their benefits, and how to set them up for your projects.
@@ -2045,6 +1761,290 @@ sudo update-ca-certificates
 
 | |  If You Still face the same issue & your are using WSL, Add Mcp Server in Remote Workspace. |
 | --------------------------------------------------------------------------------------------- |
+
+OneCX API Guidelines
+====================
+## [](#introduction)Introduction
+
+This document defines the standards and best practices for designing REST APIs using OpenAPI specifications. It ensures consistency, maintainability, and clarity across all OneCX applications. However, they may not cover every possible use case or technical scenario.
+
+## [](#general-principles)General Principles
+
+* Follow an API-first approach: design OpenAPI spec before implementation.
+* Use consistent naming and DTO patterns.
+* Prefer plural nouns for resource names.
+* Use standard HTTP methods: GET, POST, PUT, PATCH, DELETE.
+* Define your objects in the schemas tab and use references to them in your endpoint definitions.
+* Avoid code duplication, if possible reuse objects.
+* Avoid the use of quotation marks for tags, descriptions etc. if not really needed.
+
+## [](#api-versioning)API Versioning
+
+* Use versioning in the URL path: `/v1`, `/v2`, etc.
+* For internal APIs use `/internal/`.
+* Make sure to include the version into the name of your OpenAPI file e.g. `hello-world-v1.yaml`.
+* Use the `version` tag at the top of your OpenAPI file to set the version.
+
+## [](#resource-naming)Resource Naming
+
+* Use **plural** form of entity names: `/themes`, `/users`.
+* Use up to 2 path parameters. If more are needed, use the request body.
+
+## [](#mandatory-schema-fields)Mandatory Schema Fields
+
+### [](#general)General
+
+| title       | {applicationName} {external \| internal} service {version}Example: onecx-help external service V1 |
+| ----------- | ------------------------------------------------------------------------------------------------- |
+| description | Short description of the purpose of this API and which entities are targeted.                     |
+| version     | Version of the OpenAPI fileExample: 1.0.0                                                         |
+| servers     | {url}:{port} of the application                                                                   |
+| tags        | List all used tags like this \- name: {tagName}   description: short description of the purpose   |
+| paths       | Endpoint definitions                                                                              |
+| schemas     | Object definitions                                                                                |
+
+Example using mandatory schema fields 
+
+```yml
+openapi: 3.0.3
+info:
+  title: onecx-hello-world external service V1
+  description: This API provides endpoints for managing Hello World.
+  version: 1.0.0
+servers:
+  - url: "http://onecx-hello-world:8080"
+tags:
+  - name: helloV1
+    description: Managing Hello
+  - name: worldV1
+    description: Managing World
+```
+
+### [](#endpoints)Endpoints
+
+| tags        | Use camel case for all tags like {tagName}                             |
+| ----------- | ---------------------------------------------------------------------- |
+| description | Description of the purpose of this endpoint.                           |
+| operationId | Name of the generated Java method.                                     |
+| requestBody | Definition of the required object and content-type. Not needed for GET |
+| responses   | Possible response-codes including description and object definitions.  |
+
+For response description please use the following pattern: `{Resource} {operation} {status}`
+
+Examples
+
+Theme created successfully.  
+Theme not found.
+
+## [](#dto-naming-convention)DTO Naming Convention
+
+| |  Use the following conventions for the naming of responses and request bodies for **all** HTTP Methods. |
+| --------------------------------------------------------------------------------------------------------- |
+
+```yml
+<Get|Create|Update|Patch|Search><ResourceName><Request|Response>
+```
+
+Examples
+
+CreateThemeRequest  
+GetUserResponse
+
+| |  Do not include the suffix DTO in your object names. This should and will be added by the generator. If you plan to just return a sub-set of a resource, e.g. as result of an /search endpoint, name your object with the suffix Abstract. Like this for example: ThemeAbstract. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#http-methods)HTTP Methods
+
+### [](#get)GET
+
+```yml
+GET /{apiVersion}/{resources}/{id}
+```
+
+* No request body.
+* Returns `200 OK` with list or single resource.
+* Returns `404 NOT FOUND` if entity does not exist.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+  GetThemeResponse:
+   required:
+    - resource
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Return a full set of business and technical related fields. Make sure to include the modificationCount field to make updates possible. |
+| ----------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#post)POST
+
+```yml
+POST /{apiVersion}/{resources}
+POST /{apiVersion}/{resources}/search
+```
+
+* Used for creation, search, or import.
+* Returns `201 CREATED`. Optional with location header or created resource as response.
+* Returns `400 BAD REQUEST` for invalid input or constraint violations.
+
+#### [](#search)Search
+
+* To support pagination include the following mandatory criteria:
+
+```yml
+    pageNumber:
+      format: int32
+      description: The number of page.
+      default: 0
+      type: integer
+    pageSize:
+      format: int32
+      description: The size of page
+      default: 100
+      maximum: 1000
+      type: integer
+```
+
+and the following fields in the response:
+
+```yml
+    stream:
+      type: array
+      items:
+       $ref: '#/components/schemas/ThemeAbstract'
+    totalElements:
+      format: int64
+      description: The total elements in the resource.
+      type: integer
+    number:
+      format: int32
+      type: integer
+    size:
+      format: int32
+      type: integer
+    totalPages:
+      format: int64
+      type: integer
+```
+
+| |  Return abstracts in your page result with a minimum set of needed fields to reduce the amount of transfered data. |
+| -------------------------------------------------------------------------------------------------------------------- |
+
+### [](#put)PUT
+
+```yml
+PUT /{apiVersion}/{resources}/{id}
+```
+
+* Full update of business entity.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` if the request fails (e.g. constraint violation)
+* Returns `404 NOT FOUND` if the targeted entity is not found.
+* Include the actual response resource inside the `resource` field.
+
+Example
+
+```yml
+   UpdateThemeResponse:
+   type: object
+   properties:
+    resource:
+     $ref: '#/components/schemas/Theme'
+```
+
+| |  Make sure to include the full business entity and the most recent modificationCount retrieved by the previous GET request to avoid optimisticlock exceptions. |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#patch)PATCH
+
+```yml
+PATCH /{apiVersion}/{resources}/{id}
+```
+
+* Partial update of resource.
+* Returns `200 OK`. Optional with updated resource as response.
+* Returns `400 BAD REQUEST` or `404 NOT FOUND`.
+
+### [](#delete)DELETE
+
+```yml
+DELETE /{apiVersion}/{resources}/{id}
+```
+
+* Idempotent deletion.
+* Returns `204 NO CONTENT`.
+* Returns `400 BAD REQUEST` for constraint violations.
+
+## [](#error-handling)Error Handling
+
+Use `ProblemDetailResponse` as defined in [RFC 7807](https://datatracker.ietf.org) for `400`.
+
+ProblemDetailResponse 
+
+```YML
+    ProblemDetailResponse:
+      type: object
+      properties:
+        errorCode:
+          type: string
+        detail:
+          type: string
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailParam'
+        invalidParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProblemDetailInvalidParam'
+    ProblemDetailParam:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+    ProblemDetailInvalidParam:
+      type: object
+      properties:
+        name:
+          type: string
+        message:
+          type: string
+```
+
+ProblemDetailResponse Example 
+
+```YML
+      responses:
+        200:
+          description: ExampleResource updated successfully
+        400:
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetailResponse'
+```
+
+| |  Do not include 401, 403, 500 errors in OpenAPI files. 401, 403 and 500 are handled by the framework. |
+| ------------------------------------------------------------------------------------------------------- |
+
+## [](#code-style)Code Style
+
+* Order endpoints this way: GET, POST, PUT, PATCH, DELETE.
+* Use a consistent way of indentations.
+* Use camelCase for `tag` and `operationId`.
+* Use PascalCase for object names.
+
+## [](#examples)Examples
+
+Take a look at the OpenAPI files of our official OneCX applications:<https://github.com/onecx>
 
 OneCX Shell Integration
 ====================
@@ -6402,6 +6402,98 @@ Note the boundary with the **[Style Isolation](style-isolation.html)** concept: 
 | |  Once the Recommended Setup **Expose Library Assets** and **Expose Component Styles** pages are published, link them here as the practical step-by-step how-to for the two exposure steps described above. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
+Authentication
+====================
+In OneCX, the shell has full control of the authentication flow and the user’s session. An integrated application never implements its own login, token storage, or session logic — it relies on the shell for all of that and limits itself to the small set of interactions described on this page.
+
+## [](#the-shell-owns-auth-model)The shell-owns-auth model
+
+The shell authenticates the user, holds the session, and keeps the access token valid for the lifetime of that session. It does this through a pluggable authentication service: by default this is Keycloak, but the shell can also be configured to use a custom authentication service (see [Custom Authentication Service](#custom-authentication-service)) or run with authentication disabled for local development (see [Disabling authentication for local development](#disabling-authentication-for-local-development)).
+
+Because the shell owns this flow end-to-end, an application never talks to the identity provider directly and never manages tokens on its own. Instead, an application is permitted to:
+
+* attach the current authentication headers to its own outgoing HTTP requests,
+* ask the shell to end the session (log out), and
+* — only if strictly necessary — read auth state directly from the shell.
+
+Each of these is covered below, from the most common (attaching headers) to the last resort (reading state directly).
+
+## [](#attaching-the-token-to-outgoing-requests)Attaching the token to outgoing requests
+
+Every application integrated with OneCX must ensure its outgoing HTTP requests carry the shell’s authentication headers. This is the most common interaction with authentication and the one every application needs. For the exact setup steps for Angular (`AngularAuthModule`) and React (`axiosFactory`), see [Configure Authentication](../setup/required/configure-authentication.html).
+
+## [](#sending-a-logout-event)Sending a logout event
+
+An application can ask the shell to end the current session by publishing a logout event on the shared events topic from `@onecx/integration-interface`, rather than implementing its own logout logic:
+
+```typescript
+import { EventsTopic, EventType } from '@onecx/integration-interface'
+
+const eventsTopic = new EventsTopic()
+eventsTopic.publish({ type: EventType.AUTH_LOGOUT_BUTTON_CLICKED })
+```
+
+The shell listens for this event and calls the configured authentication service’s logout, which ends the session (for the default Keycloak service, this redirects the user to the identity provider’s logout flow).
+
+## [](#using-the-auth-proxy-as-a-last-resort)Using the auth proxy as a last resort
+
+The shell exposes a small auth proxy on the global namespace — `window.onecxAuth.authServiceProxy.v1` — so that code that cannot go through a framework interceptor or the provided HTTP helper can still read the current auth state. It exposes exactly two operations:
+
+* `getHeaderValues(): Record<string, string>` — the current authentication headers, keyed by header name.
+* `updateTokenIfNeeded(): Promise<boolean>` — ensures the token is still valid, refreshing it first if needed.
+
+Reach for the auth proxy only when the standard header-attaching mechanism (`AngularAuthModule` interceptor or `axiosFactory`) genuinely cannot be used, for example a third-party HTTP client that does not support interceptors. `@onecx/angular-auth` and `@onecx/react-auth` both wrap this same global proxy in an `AuthProxyService` / `authServiceProxy` so application code does not have to touch `window.onecxAuth` directly:
+
+```typescript
+// Angular — inject AuthProxyService from '@onecx/angular-auth'
+await this.authProxyService.updateTokenIfNeeded()
+const headers = this.authProxyService.getHeaderValues()
+```
+
+```typescript
+// React
+import { authServiceProxy } from '@onecx/react-auth'
+
+await authServiceProxy.updateTokenIfNeeded()
+const headers = authServiceProxy.getHeaderValues()
+```
+
+The proxy is only populated once the shell has initialized; guard direct `window.onecxAuth` access accordingly if not going through one of the library wrappers.
+
+## [](#advanced-authentication-topics)Advanced authentication topics
+
+The topics below go beyond what most applications need and cover how the shell’s authentication itself is configured and refreshed.
+
+### [](#custom-authentication-service)Configuring a custom authentication service
+
+By default the shell authenticates through Keycloak. A deployment can instead configure the shell to load a custom authentication service via module federation, using the following shell environment variables:
+
+* `AUTH_SERVICE` — set to `custom` to enable a custom authentication service (`keycloak` is the default).
+* `AUTH_SERVICE_CUSTOM_URL` — the module-federation remote URL the shell loads the custom authentication service factory from.
+
+The remote exposed at that URL must default-export an authentication service factory function that returns an implementation of the shell’s authentication service contract (`init`, `getHeaderValues`, `logout`, `updateTokenIfNeeded`), and the shell calls that factory to obtain the service used for the rest of the session.
+
+### [](#disabling-authentication-for-local-development)Disabling authentication for local development
+
+Setting `AUTH_SERVICE` to `disabled` replaces the authentication service with a no-op implementation: it returns empty authentication headers and resolves immediately, without contacting an identity provider.
+
+| |  Use AUTH\_SERVICE=disabled only for local development and testing, such as running the shell without a Keycloak instance available. Never use it in a production or otherwise publicly reachable environment — it removes authentication entirely, leaving every application and backend call unprotected. |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+### [](#logout)Logout
+
+Logout is always driven through the configured authentication service, either because the user triggered it in the shell itself or because an application published the logout event described in [Sending a logout event](#sending-a-logout-event). There is no application-level logout API beyond publishing that event — the shell’s authentication service is responsible for actually clearing the session.
+
+### [](#token-refresh)Token refresh
+
+The shell keeps the access token valid transparently: both the Angular HTTP interceptor and the React `axiosFactory` call `updateTokenIfNeeded()` before every outgoing request, refreshing the token first if it is close to expiry. Application code does not need to schedule its own token refresh — it only needs to go through one of the mechanisms in [Attaching the token to outgoing requests](#attaching-the-token-to-outgoing-requests), or call `updateTokenIfNeeded()` itself if it uses the auth proxy directly.
+
+## [](#related)Related
+
+* [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
+* [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
+* [Permissions Handling](../features/permissions.html) — rendering UI conditionally based on the permissions the shell exposes for the current user.
+
 Concepts
 ====================
 This section holds OneCX’s core platform concepts as short, public, technology-agnostic overviews, suitable for any OneCX developer. Each page introduces a concept and links out to the internal developer docs for the full deep dive.
@@ -6504,98 +6596,6 @@ This negotiation is governed by **share scopes** — named groupings that determ
 * [Configure Remote Package Sharing](../setup/required/configure-remote-package-sharing.html) — the practical how-to for configuring share scopes and shared dependencies.
 * [Module Federation in OneCX](../module-federation/index.html) — deep internal reference covering preloaders, dependency sharing, and slot components in implementation detail.
 * [Webpack Module Federation](https://webpack.js.org/concepts/module-federation/) and [Module Federation](https://module-federation.io/) — external documentation for the underlying technology.
-
-Authentication
-====================
-In OneCX, the shell has full control of the authentication flow and the user’s session. An integrated application never implements its own login, token storage, or session logic — it relies on the shell for all of that and limits itself to the small set of interactions described on this page.
-
-## [](#the-shell-owns-auth-model)The shell-owns-auth model
-
-The shell authenticates the user, holds the session, and keeps the access token valid for the lifetime of that session. It does this through a pluggable authentication service: by default this is Keycloak, but the shell can also be configured to use a custom authentication service (see [Custom Authentication Service](#custom-authentication-service)) or run with authentication disabled for local development (see [Disabling authentication for local development](#disabling-authentication-for-local-development)).
-
-Because the shell owns this flow end-to-end, an application never talks to the identity provider directly and never manages tokens on its own. Instead, an application is permitted to:
-
-* attach the current authentication headers to its own outgoing HTTP requests,
-* ask the shell to end the session (log out), and
-* — only if strictly necessary — read auth state directly from the shell.
-
-Each of these is covered below, from the most common (attaching headers) to the last resort (reading state directly).
-
-## [](#attaching-the-token-to-outgoing-requests)Attaching the token to outgoing requests
-
-Every application integrated with OneCX must ensure its outgoing HTTP requests carry the shell’s authentication headers. This is the most common interaction with authentication and the one every application needs. For the exact setup steps for Angular (`AngularAuthModule`) and React (`axiosFactory`), see [Configure Authentication](../setup/required/configure-authentication.html).
-
-## [](#sending-a-logout-event)Sending a logout event
-
-An application can ask the shell to end the current session by publishing a logout event on the shared events topic from `@onecx/integration-interface`, rather than implementing its own logout logic:
-
-```typescript
-import { EventsTopic, EventType } from '@onecx/integration-interface'
-
-const eventsTopic = new EventsTopic()
-eventsTopic.publish({ type: EventType.AUTH_LOGOUT_BUTTON_CLICKED })
-```
-
-The shell listens for this event and calls the configured authentication service’s logout, which ends the session (for the default Keycloak service, this redirects the user to the identity provider’s logout flow).
-
-## [](#using-the-auth-proxy-as-a-last-resort)Using the auth proxy as a last resort
-
-The shell exposes a small auth proxy on the global namespace — `window.onecxAuth.authServiceProxy.v1` — so that code that cannot go through a framework interceptor or the provided HTTP helper can still read the current auth state. It exposes exactly two operations:
-
-* `getHeaderValues(): Record<string, string>` — the current authentication headers, keyed by header name.
-* `updateTokenIfNeeded(): Promise<boolean>` — ensures the token is still valid, refreshing it first if needed.
-
-Reach for the auth proxy only when the standard header-attaching mechanism (`AngularAuthModule` interceptor or `axiosFactory`) genuinely cannot be used, for example a third-party HTTP client that does not support interceptors. `@onecx/angular-auth` and `@onecx/react-auth` both wrap this same global proxy in an `AuthProxyService` / `authServiceProxy` so application code does not have to touch `window.onecxAuth` directly:
-
-```typescript
-// Angular — inject AuthProxyService from '@onecx/angular-auth'
-await this.authProxyService.updateTokenIfNeeded()
-const headers = this.authProxyService.getHeaderValues()
-```
-
-```typescript
-// React
-import { authServiceProxy } from '@onecx/react-auth'
-
-await authServiceProxy.updateTokenIfNeeded()
-const headers = authServiceProxy.getHeaderValues()
-```
-
-The proxy is only populated once the shell has initialized; guard direct `window.onecxAuth` access accordingly if not going through one of the library wrappers.
-
-## [](#advanced-authentication-topics)Advanced authentication topics
-
-The topics below go beyond what most applications need and cover how the shell’s authentication itself is configured and refreshed.
-
-### [](#custom-authentication-service)Configuring a custom authentication service
-
-By default the shell authenticates through Keycloak. A deployment can instead configure the shell to load a custom authentication service via module federation, using the following shell environment variables:
-
-* `AUTH_SERVICE` — set to `custom` to enable a custom authentication service (`keycloak` is the default).
-* `AUTH_SERVICE_CUSTOM_URL` — the module-federation remote URL the shell loads the custom authentication service factory from.
-
-The remote exposed at that URL must default-export an authentication service factory function that returns an implementation of the shell’s authentication service contract (`init`, `getHeaderValues`, `logout`, `updateTokenIfNeeded`), and the shell calls that factory to obtain the service used for the rest of the session.
-
-### [](#disabling-authentication-for-local-development)Disabling authentication for local development
-
-Setting `AUTH_SERVICE` to `disabled` replaces the authentication service with a no-op implementation: it returns empty authentication headers and resolves immediately, without contacting an identity provider.
-
-| |  Use AUTH\_SERVICE=disabled only for local development and testing, such as running the shell without a Keycloak instance available. Never use it in a production or otherwise publicly reachable environment — it removes authentication entirely, leaving every application and backend call unprotected. |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-
-### [](#logout)Logout
-
-Logout is always driven through the configured authentication service, either because the user triggered it in the shell itself or because an application published the logout event described in [Sending a logout event](#sending-a-logout-event). There is no application-level logout API beyond publishing that event — the shell’s authentication service is responsible for actually clearing the session.
-
-### [](#token-refresh)Token refresh
-
-The shell keeps the access token valid transparently: both the Angular HTTP interceptor and the React `axiosFactory` call `updateTokenIfNeeded()` before every outgoing request, refreshing the token first if it is close to expiry. Application code does not need to schedule its own token refresh — it only needs to go through one of the mechanisms in [Attaching the token to outgoing requests](#attaching-the-token-to-outgoing-requests), or call `updateTokenIfNeeded()` itself if it uses the auth proxy directly.
-
-## [](#related)Related
-
-* [Configure Authentication](../setup/required/configure-authentication.html) — the required setup how-to for attaching authentication headers.
-* [@onecx/react-auth](../react/libraries/react-auth.html) — full reference for the React auth proxy and `axiosFactory`.
-* [Permissions Handling](../features/permissions.html) — rendering UI conditionally based on the permissions the shell exposes for the current user.
 
 Remote Components
 ====================
@@ -6949,6 +6949,36 @@ The responsibility of a OneCX-compatible application is to expose its translatio
 | |  Once the Recommended Setup **Expose Library Assets** page is published, link it here as the practical step-by-step how-to for exposing library translations. Exposing application translations is already covered by the Angular Setup page and the React reference linked above. |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 
+Display Messages
+====================
+In a OneCX deployment the application’s content is rendered inside the OneCX shell, which owns the page chrome. Instead of building and styling message UI of its own, an application can **display a message** and leave the rendering to the shell: the app triggers the message, the shell shows it. OneCX does not prescribe **when** or **how often** an application should display a message for a page event — the feature simply removes the need for every application to ship its own message UI.
+
+## [](#display-messages-how-it-works)How it works
+
+An application triggers a message by publishing it on the shared [MessageTopic](../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic). Each message carries:
+
+* a **severity** — `success`, `info`, `warning`, or `error`; and
+* an optional, **translated** summary and detail.
+
+The summary and detail are not passed as literal text: the app supplies translation **keys** (and optional parameters), and the framework resolves them with the application’s translation setup before the message is published. This is the same mechanism the [Translations](../concepts/translations.html) concept uses for application content, so a message reads in the user’s current language.
+
+The application does **not** own the display. After the message is published on the topic, the OneCX shell (or the standalone shell viewport, for standalone applications) subscribes to that topic and renders the message with a PrimeNG toast component. The message therefore appears through the shell’s UI and inherits the shell’s look and feel; the application only ever produces the message, it never builds or positions the toast.
+
+## [](#display-messages-angular)Angular applications
+
+Angular applications display messages through the `PortalMessageService` (from `@onecx/angular-integration-interface`). Inject the service and call one of the severity methods — `success()`, `info()`, `warning()`, or `error()` — passing a message object holding the translation keys and parameters. See the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html) for usage and the full list of message properties.
+
+## [](#display-messages-react)React applications
+
+React applications display messages through the `PortalMessageProvider` and the `usePortalMessage` hook (from `@onecx/react-integration-interface`). Wrap the application (or the relevant subtree) in `PortalMessageProvider`, then read the `success`, `info`, `warning`, and `error` helpers from the hook in any component. See the [Portal Message Provider](../react/libraries/react-integration-interface.html#portal-message-provider) documentation for the full provider and hook API.
+
+## [](#display-messages-related)Related
+
+* [PortalMessageService](../../onecx-portal-ui-libs/service/portal-message-service.html) — the Angular service that publishes messages, including the full message-property reference.
+* [React Portal Message Provider](../react/libraries/react-integration-interface.html#portal-message-provider) — the React provider and `usePortalMessage` hook.
+* [MessageTopic](../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic) — the shared topic the application publishes messages on.
+* [Translations](../concepts/translations.html) — how the summary and detail translation keys are resolved.
+
 Environment Variables
 ====================
 OneCX UI applications read **environment variables** as runtime configuration values: endpoints, auth settings, feature flags, and similar values that may differ between deployments. Unlike build-time constants, these values can change after the application has been built, so they are delivered to the running browser at startup.
@@ -7225,35 +7255,19 @@ The React `CONFIG_KEY` enum is a subset of the Angular one, so only the platform
 * [AppStateService](../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#app-state-service) — runtime UI state (not configuration).
 * [React integration interface](../react/libraries/react-integration-interface.html) — React equivalents for reading these values.
 
-Display Messages
+Features
 ====================
-In a OneCX deployment the application’s content is rendered inside the OneCX shell, which owns the page chrome. Instead of building and styling message UI of its own, an application can **display a message** and leave the rendering to the shell: the app triggers the message, the shell shows it. OneCX does not prescribe **when** or **how often** an application should display a message for a page event — the feature simply removes the need for every application to ship its own message UI.
+This section holds standalone pages describing platform features an application may choose to adopt. Unlike the Setup tiers, adopting a feature has no correctness impact if skipped — the application still loads, runs, and behaves correctly without it. Each page is independent of the others.
 
-## [](#display-messages-how-it-works)How it works
+## [](#features-pages)Pages
 
-An application triggers a message by publishing it on the shared [MessageTopic](../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic). Each message carries:
-
-* a **severity** — `success`, `info`, `warning`, or `error`; and
-* an optional, **translated** summary and detail.
-
-The summary and detail are not passed as literal text: the app supplies translation **keys** (and optional parameters), and the framework resolves them with the application’s translation setup before the message is published. This is the same mechanism the [Translations](../concepts/translations.html) concept uses for application content, so a message reads in the user’s current language.
-
-The application does **not** own the display. After the message is published on the topic, the OneCX shell (or the standalone shell viewport, for standalone applications) subscribes to that topic and renders the message with a PrimeNG toast component. The message therefore appears through the shell’s UI and inherits the shell’s look and feel; the application only ever produces the message, it never builds or positions the toast.
-
-## [](#display-messages-angular)Angular applications
-
-Angular applications display messages through the `PortalMessageService` (from `@onecx/angular-integration-interface`). Inject the service and call one of the severity methods — `success()`, `info()`, `warning()`, or `error()` — passing a message object holding the translation keys and parameters. See the [PortalMessageService documentation](../../onecx-portal-ui-libs/service/portal-message-service.html) for usage and the full list of message properties.
-
-## [](#display-messages-react)React applications
-
-React applications display messages through the `PortalMessageProvider` and the `usePortalMessage` hook (from `@onecx/react-integration-interface`). Wrap the application (or the relevant subtree) in `PortalMessageProvider`, then read the `success`, `info`, `warning`, and `error` helpers from the hook in any component. See the [Portal Message Provider](../react/libraries/react-integration-interface.html#portal-message-provider) documentation for the full provider and hook API.
-
-## [](#display-messages-related)Related
-
-* [PortalMessageService](../../onecx-portal-ui-libs/service/portal-message-service.html) — the Angular service that publishes messages, including the full message-property reference.
-* [React Portal Message Provider](../react/libraries/react-integration-interface.html#portal-message-provider) — the React provider and `usePortalMessage` hook.
-* [MessageTopic](../../onecx-portal-ui-libs/libraries/integration-interface.html#message-topic) — the shared topic the application publishes messages on.
-* [Translations](../concepts/translations.html) — how the summary and detail translation keys are resolved.
+* [Multi-language](multi-language.html) — how an Angular application opts into fallback languages so a missing translation key resolves to a supported language instead of showing the raw key.
+* [Display Messages](display-messages.html) — how an application triggers a message and leaves its rendering to the shell, instead of shipping its own message UI.
+* [Permissions Handling](permissions.html) — how an application reacts to the permissions the platform assigns a user by rendering UI conditionally.
+* [PrimeNG Theming Customization](primeng/theming-customization.html) — how to override PrimeNG design tokens at the application level so one application styles PrimeNG differently from every other application on the page.
+* [Source Maps](development/source-maps.html) — how to enable source maps so browser developer tools can show the original source instead of the compiled build output.
+* [Environment Variables](environment-variables.html) — how an application reads runtime configuration values (endpoints, auth settings, feature flags) that can change after the build.
+* NgRx State Management — a practical guide to adopting the `@onecx/ngrx-*` libraries in an Angular application, pairing with [State Management](../concepts/state-management.html). This page is being authored and will be linked once it is published.
 
 Multi-language
 ====================
@@ -7315,20 +7329,6 @@ An application identifier is registered automatically from the application’s e
 
 * [Translations](../concepts/translations.html) — the underlying translation-lookup mechanism this feature falls back on.
 * [Multi-language Translations — Setup](../angular/translation/multi-language-setup.html) — full Angular setup, including where the missing-translation handler is wired in.
-
-Features
-====================
-This section holds standalone pages describing platform features an application may choose to adopt. Unlike the Setup tiers, adopting a feature has no correctness impact if skipped — the application still loads, runs, and behaves correctly without it. Each page is independent of the others.
-
-## [](#features-pages)Pages
-
-* [Multi-language](multi-language.html) — how an Angular application opts into fallback languages so a missing translation key resolves to a supported language instead of showing the raw key.
-* [Display Messages](display-messages.html) — how an application triggers a message and leaves its rendering to the shell, instead of shipping its own message UI.
-* [Permissions Handling](permissions.html) — how an application reacts to the permissions the platform assigns a user by rendering UI conditionally.
-* [PrimeNG Theming Customization](primeng/theming-customization.html) — how to override PrimeNG design tokens at the application level so one application styles PrimeNG differently from every other application on the page.
-* [Source Maps](development/source-maps.html) — how to enable source maps so browser developer tools can show the original source instead of the compiled build output.
-* [Environment Variables](environment-variables.html) — how an application reads runtime configuration values (endpoints, auth settings, feature flags) that can change after the build.
-* NgRx State Management — a practical guide to adopting the `@onecx/ngrx-*` libraries in an Angular application, pairing with [State Management](../concepts/state-management.html). This page is being authored and will be linked once it is published.
 
 NgRx
 ====================
@@ -8782,61 +8782,6 @@ Behind the scenes, `<ocx-slot>` uses `SlotService` to resolve which Remote Compo
 * [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
 * [Component Approach](../../setup/required/expose-remote-module/component-approach.html) — the complete, practical how-to for exposing an Angular Remote Component.
 
-Remote Components in React Applications
-====================
-This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
-
-## [](#exposing-a-react-remote-component)Exposing a Remote Component
-
-A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
-
-```javascript
-const mfConfig = {
-  name: 'vite-example-ui',
-  filename: 'remoteEntry.js',
-  exposes: {
-    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
-  },
-};
-```
-
-## [](#hosting-a-slot-in-react)Hosting a Slot
-
-To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
-
-```tsx
-import { withSlot, SlotComponent } from '@onecx/react-remote-components';
-
-const Example = () => (
-  <div>
-    <SlotComponent
-      name="onecx-shell-header-actions"
-      inputs={{ title: 'Remote title' }}
-      outputs={{ onSelect: (value) => console.log(value) }}
-      skeleton={<div>Loading...</div>}
-    />
-  </div>
-);
-
-export default withSlot(Example);
-```
-
-`SlotComponent` accepts:
-
-| Prop     | Type      | Description                                                          |
-| -------- | --------- | -------------------------------------------------------------------- |
-| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
-| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
-| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
-| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
-
-Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
-
-## [](#related)Related
-
-* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
-* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
-
 Routing in Angular Applications
 ====================
 This page covers the Angular-specific routing guidelines. See [Routing](../routing.html) for the shared routing requirements and reasons behind them.
@@ -8936,6 +8881,61 @@ The [WorkspaceService](../../../onecx-portal-ui-libs/libraries/angular-integrati
 
 This approach ensures that applications remain decoupled from static configurations and are fully integrated into the OneCX workspace model.
 
+Remote Components in React Applications
+====================
+This page covers the React-specific APIs for exposing and hosting Remote Components, provided by `@onecx/react-remote-components`. See [Remote Components](../remote-components.html) for the shared concept and terminology.
+
+## [](#exposing-a-react-remote-component)Exposing a Remote Component
+
+A React Remote Component is exposed the same way as any other module federation remote: its bootstrap file is added to the `exposes` map in the application’s module federation configuration.
+
+```javascript
+const mfConfig = {
+  name: 'vite-example-ui',
+  filename: 'remoteEntry.js',
+  exposes: {
+    './ViteRemote': './src/remotes/vite-remote/bootstrap.ts',
+  },
+};
+```
+
+## [](#hosting-a-slot-in-react)Hosting a Slot
+
+To render a Slot inside a React application, wrap the component tree with `PermissionProvider` and `SlotProvider` — either directly or via the `withSlot` higher-order component — and render `SlotComponent`:
+
+```tsx
+import { withSlot, SlotComponent } from '@onecx/react-remote-components';
+
+const Example = () => (
+  <div>
+    <SlotComponent
+      name="onecx-shell-header-actions"
+      inputs={{ title: 'Remote title' }}
+      outputs={{ onSelect: (value) => console.log(value) }}
+      skeleton={<div>Loading...</div>}
+    />
+  </div>
+);
+
+export default withSlot(Example);
+```
+
+`SlotComponent` accepts:
+
+| Prop     | Type      | Description                                                          |
+| -------- | --------- | -------------------------------------------------------------------- |
+| name     | string    | Required. The name of the Slot to resolve Remote Components for.     |
+| inputs   | object    | Data passed down to every Remote Component rendered inside the slot. |
+| outputs  | object    | Callbacks bound to every Remote Component rendered inside the slot.  |
+| skeleton | ReactNode | Placeholder rendered while Remote Component(s) are loading.          |
+
+Behind the scenes, `SlotComponent` resolves which Remote Component(s), if any, are assigned to the named slot for the current workspace via the Remote Components Topic, loads each one via module federation at runtime (registering it with `registerRemotes()` and fetching it with `loadRemote()`), and mounts it — applying the same `data-style-id`/`data-style-isolation` attributes used for [style isolation](../style-isolation.html) on any other application content. `useSlot` and `usePermission` are also available when a component needs direct access to the slot or permission APIs outside of `SlotComponent`.
+
+## [](#related)Related
+
+* [Remote Components](../remote-components.html) — the shared concept, terminology, and workspace-administration behavior.
+* [@onecx/react-remote-components](../../react/libraries/react-remote-components.html) — the full library reference, including initialization, registration, and Next.js/Vite notes.
+
 Routing in React Applications
 ====================
 This page covers the React-specific routing guidelines. See [Routing](../routing.html) for the shared routing requirements and reasons behind them.
@@ -8967,49 +8967,6 @@ const AppRoutes = () => {
 ```
 
 See [@onecx/react-webcomponents](../../react/libraries/react-webcomponents.html) for the full library reference.
-
-Source Maps
-====================
-Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files — TypeScript, SCSS, or templates. They let you debug an application more effectively, because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to read stack traces, inspect application behavior, and identify the root cause of issues.
-
-Source maps are a development-time aid: they are not required for the application to run, and are usually enabled while developing and turned off for production. This page explains how to enable them and how to decide where to enable them.
-
-## [](#recommendation-for-source-map-usage)Recommendation for source map usage
-
-For consuming applications, source maps should usually be:
-
-* enabled in development
-* optionally enabled in test or staging environments
-* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
-
-## [](#how-to-enable-source-maps)How to enable source maps
-
-The exact configuration depends on how each application is built.
-
-For Angular applications, see the official Angular documentation:
-
-* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
-
-For Nx-based applications, see the official Nx documentation:
-
-* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
-
-## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
-
-It is recommended to also enable source maps in the shell during development, so that the shell and the integrated application can be debugged together.
-
-Because packages are shared at runtime between the shell and applications, having source maps enabled in the shell gives better insight into the shared dependencies and their interactions. It also avoids the minification issues that can arise when the shell is built without source maps while the application is built with them.
-
-See the [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) guide for how to enable source maps in the shell.
-
-## [](#security-and-operations-note)Security and operations note
-
-| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
-| ----------------------------------------------------------------------------------------------------------------- |
-
-## [](#related)Related
-
-* [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) — how to enable source maps in the OneCX shell.
 
 NgRx Guidelines
 ====================
@@ -9220,6 +9177,49 @@ For the legacy `.eslintrc` setup and for overriding rule severities, see the [ng
 For a further introduction, please checkout the [NgRX documentation](https://ngrx.io/).
 
 Furthermore, the following [video tutorial](https://app.pluralsight.com/library/courses/rxjs-angular-reactive-development/table-of-contents) might be helpful.
+
+Source Maps
+====================
+Source maps are additional files generated during the build process that map the compiled JavaScript code back to the original source files — TypeScript, SCSS, or templates. They let you debug an application more effectively, because browser developer tools can show the original source code instead of only the transformed build output. This makes it easier to read stack traces, inspect application behavior, and identify the root cause of issues.
+
+Source maps are a development-time aid: they are not required for the application to run, and are usually enabled while developing and turned off for production. This page explains how to enable them and how to decide where to enable them.
+
+## [](#recommendation-for-source-map-usage)Recommendation for source map usage
+
+For consuming applications, source maps should usually be:
+
+* enabled in development
+* optionally enabled in test or staging environments
+* disabled in production, unless there is a specific need for them and the security implications have been carefully considered
+
+## [](#how-to-enable-source-maps)How to enable source maps
+
+The exact configuration depends on how each application is built.
+
+For Angular applications, see the official Angular documentation:
+
+* [Angular source map configuration](https://angular.dev/reference/configs/workspace-config#source-map-configuration)
+
+For Nx-based applications, see the official Nx documentation:
+
+* [sourceMap option for Nx webpack browser executor](https://nx.dev/technologies/angular/api/executors/webpack-browser#options)
+
+## [](#enabling-source-maps-in-the-shell)Enabling source maps in the shell
+
+It is recommended to also enable source maps in the shell during development, so that the shell and the integrated application can be debugged together.
+
+Because packages are shared at runtime between the shell and applications, having source maps enabled in the shell gives better insight into the shared dependencies and their interactions. It also avoids the minification issues that can arise when the shell is built without source maps while the application is built with them.
+
+See the [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) guide for how to enable source maps in the shell.
+
+## [](#security-and-operations-note)Security and operations note
+
+| |  Source maps may expose implementation details. Do not enable public production access without explicit review. |
+| ----------------------------------------------------------------------------------------------------------------- |
+
+## [](#related)Related
+
+* [Enable shell source maps](../../../onecx-shell/enable-shell-source-maps.html) — how to enable source maps in the OneCX shell.
 
 Lazy loading tabs
 ====================
@@ -9598,86 +9598,6 @@ The navigation guards are now synchronized between all microfrontends. This mean
 #### [](#initial-microfrontend-load)Initial microfrontend load
 
 During the initial load of the application, it is likely that there are existing microfrontends that already approved the navigation that led to the current route. There is a scenario where the microfrontend that is being loaded initially has a guard that rejects the current navigation. In this case, the navigation will be aborted, and the application will revert to the previous state before the initial load.
-
-@onecx/react-auth
-====================
-## [](#overview)Overview
-
-This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
-
-## [](#axios-factory)axiosFactory Function
-
-The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
-
-```javascript
-export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
-  baseURL
-) => {
-  // Implementation
-};
-```
-
-* baseURL: An optional parameter specifying the base URL for HTTP requests.
-* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
-* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
-
-## [](#example-usage)Example Usage
-
-```javascript
-// Create an axios instance with a base URL
-const apiClient = axiosFactory('https://api.example.com');
-
-// Make a GET request
-apiClient.get('/data')
-  .then(response => {
-    console.log('Data received:', response.data);
-  })
-  .catch(error => {
-    console.error('Error fetching data:', error);
-  });
-
-// Make a POST request with authorization headers
-apiClient.post('/submit', { name: 'John Doe' })
-  .then(response => {
-    console.log('Submission successful:', response.data);
-  })
-  .catch(error => {
-    console.error('Error submitting data:', error);
-  });
-```
-
-## [](#auth-proxy-service)Auth Proxy Service
-
-The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
-
-Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
-
-```ts
-if (!window.onecxAuth?.authServiceProxy) {
-  // handle missing auth proxy (e.g., show fallback or defer logic)
-  return;
-}
-```
-
-```ts
-const { authServiceProxy } = window.onecxAuth;
-
-// Ensure token is still valid before a guarded action
-await authServiceProxy.v1.updateTokenIfNeeded();
-
-// Read user / permissions (depending on shell implementation)
-const user = await authServiceProxy.v1.getUser();
-const permissions = await authServiceProxy.v1.getPermissions();
-```
-
-Example usage with axiosFactory:
-
-```ts
-const apiClient = axiosFactory('/api');
-
-await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
-const response = await apiClient.get('/profile');
-```
 
 @onecx/react-integration-interface
 ====================
@@ -10153,6 +10073,86 @@ __Table 13\. Workspace Hook methods__
 | -------------------------------------------------------------------------------------------------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | getUrl(productName: string, appId: string, endpointName?: string, endpointParameters?:Record<string, unknown>) | Observable<string>  | Constructs a valid url for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource.       |
 | doesUrlExistFor(productName: string, appId: string, endpointName?: string)                                     | Observable<boolean> | Checks if a valid url exists for a desired Application in context of the current Workspace. It is possible to use [Route](../../../onecx-portal-ui-libs/libraries/integration-interface.html#Route-object) endpoints to further customize an accessed resource. |
+
+@onecx/react-auth
+====================
+## [](#overview)Overview
+
+This document provides an overview of the `axiosFactory` helper that creates an `axios` instance which auto-injects authorization headers from `window.onecxAuth`.
+
+## [](#axios-factory)axiosFactory Function
+
+The axiosFactory function creates an axios instance with additional functionality, such as automatically adding authorization headers. It is particularly useful in applications that require authentication for every HTTP request.
+
+```javascript
+export const axiosFactory: (baseURL?: string) => AuthenticatedAxiosInstance = (
+  baseURL
+) => {
+  // Implementation
+};
+```
+
+* baseURL: An optional parameter specifying the base URL for HTTP requests.
+* An interceptor calls `window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded()` and injects headers from `getHeaderValues()`.
+* Requests matching the `WHITELIST` (currently `assets`) are not attached with tokens.
+
+## [](#example-usage)Example Usage
+
+```javascript
+// Create an axios instance with a base URL
+const apiClient = axiosFactory('https://api.example.com');
+
+// Make a GET request
+apiClient.get('/data')
+  .then(response => {
+    console.log('Data received:', response.data);
+  })
+  .catch(error => {
+    console.error('Error fetching data:', error);
+  });
+
+// Make a POST request with authorization headers
+apiClient.post('/submit', { name: 'John Doe' })
+  .then(response => {
+    console.log('Submission successful:', response.data);
+  })
+  .catch(error => {
+    console.error('Error submitting data:', error);
+  });
+```
+
+## [](#auth-proxy-service)Auth Proxy Service
+
+The library exposes the OneCX auth proxy that lives under `window.onecxAuth.authServiceProxy`. It lets you query auth state, user info, and trigger token refresh when needed.
+
+Note that the auth proxy is only available after the shell has been initialized. To safely access the auth proxy, you should check if it is available before using it.
+
+```ts
+if (!window.onecxAuth?.authServiceProxy) {
+  // handle missing auth proxy (e.g., show fallback or defer logic)
+  return;
+}
+```
+
+```ts
+const { authServiceProxy } = window.onecxAuth;
+
+// Ensure token is still valid before a guarded action
+await authServiceProxy.v1.updateTokenIfNeeded();
+
+// Read user / permissions (depending on shell implementation)
+const user = await authServiceProxy.v1.getUser();
+const permissions = await authServiceProxy.v1.getPermissions();
+```
+
+Example usage with axiosFactory:
+
+```ts
+const apiClient = axiosFactory('/api');
+
+await window.onecxAuth.authServiceProxy.v1.updateTokenIfNeeded();
+const response = await apiClient.get('/profile');
+```
 
 @onecx/react-remote-components
 ====================
@@ -10673,34 +10673,6 @@ This tier applies to both paths of building a OneCX UI:
 * [Expose Library Assets](expose-library-assets.html) — how to expose the static assets (e.g. icons) of the OneCX libraries an application depends on, since Micro Frontends are loaded relative to the shell.
 * [Adapt Routing](adapt-routing.html) — introduces why routing needs adaptation since Micro Frontends are relative to the shell; links to [Routing](../../concepts/routing.html) for the full deep dive.
 
-Configure Authentication
-====================
-Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
-
-## [](#angular-applications)Angular Applications
-
-Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s bootstrap providers. It registers an HTTP interceptor that automatically attaches the required authentication headers to outgoing requests.
-
-### [](#regular-apps-must-not-install-idp-client)Do not install the IDP client in a regular application
-
-The shell owns the identity provider (IDP) client. A regular OneCX Angular application must not install `keycloak-js` or depend on `@onecx/shell-auth`; the shell is responsible for the Keycloak-specific authentication logic.
-
-* Use only `@onecx/angular-auth` (token-based authentication) for the application’s interceptor and token wiring.
-* Do not install `keycloak-js`:  
-```bash  
-npm uninstall keycloak-js  
-```
-
-Only a standalone application that runs the shell locally needs `@onecx/shell-auth` and `keycloak-js`, and even then it keeps `AngularAuthModule` from `@onecx/angular-auth` for the application’s token wiring.
-
-## [](#react-applications)React Applications
-
-React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
-
-## [](#advanced-topics)Advanced Topics
-
-For the shell-owns-auth model, sending a logout event, using the auth proxy directly, configuring a custom authentication service, and token refresh, see [Authentication](../../concepts/authentication.html).
-
 Configure Remote Package Sharing
 ====================
 Module Federation allows applications to share dependencies at runtime, but it requires a consistent configuration of shared modules and their versions. This is mandatory Module Federation configuration — without it, remote loading is broken, not merely degraded.
@@ -10796,6 +10768,34 @@ The OneCX shell operates with the following share scopes:
 For Angular 21 and newer applications, the shell expects them to be loaded into the `angular_X` share scope corresponding to their Angular version. For applications integrated with older shell versions, the expected share scope is `default`. If no scope is specified for an application, it is loaded into the `default` share scope by default.
 
 For details on the migration of Angular 21+ applications to the correct share scope, see the [Migrate to Shell v3](../../../onecx-docs-dev/shell-integration/shell-v3-migration.html) page in the OneCX documentation.
+
+Configure Authentication
+====================
+Every application integrated with OneCX must ensure that all outgoing HTTP requests carry the shell’s authentication headers.
+
+## [](#angular-applications)Angular Applications
+
+Import `AngularAuthModule` from `@onecx/angular-auth` in the application’s bootstrap providers. It registers an HTTP interceptor that automatically attaches the required authentication headers to outgoing requests.
+
+### [](#regular-apps-must-not-install-idp-client)Do not install the IDP client in a regular application
+
+The shell owns the identity provider (IDP) client. A regular OneCX Angular application must not install `keycloak-js` or depend on `@onecx/shell-auth`; the shell is responsible for the Keycloak-specific authentication logic.
+
+* Use only `@onecx/angular-auth` (token-based authentication) for the application’s interceptor and token wiring.
+* Do not install `keycloak-js`:  
+```bash  
+npm uninstall keycloak-js  
+```
+
+Only a standalone application that runs the shell locally needs `@onecx/shell-auth` and `keycloak-js`, and even then it keeps `AngularAuthModule` from `@onecx/angular-auth` for the application’s token wiring.
+
+## [](#react-applications)React Applications
+
+React applications must use an HTTP client setup that attaches the shell authentication headers to outgoing requests. For the OneCX React helper library, see [@onecx/react-auth](../../react/libraries/react-auth.html).
+
+## [](#advanced-topics)Advanced Topics
+
+For the shell-owns-auth model, sending a logout event, using the auth proxy directly, configuring a custom authentication service, and token refresh, see [Authentication](../../concepts/authentication.html).
 
 Expose a Remote Module
 ====================
@@ -43089,36 +43089,6 @@ undefined
 
 undefined
 ====================
-| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
-| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0    |
-| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0    |
-| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0    |
-| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0    |
-| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0    |
-| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0    |
-| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0    |
-| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0    |
-| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0    |
-| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1 |
-| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1 |
-| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.3.1 |
-| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1 |
-| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1 |
-| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.3.1 |
-| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1 |
-| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |          |
-| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.3.1 |
-| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1 |
-| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1 |
-| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1 |
-| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0    |
-| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |          |
-| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1 |
-| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |          |
-
-undefined
-====================
 [Link to Docker registry](https://github.com/onecx/onecx-workspace-svc/pkgs/container/onecx-workspace-svc)
 
 ## [](#%5Fdefault%5Fproperties)Default properties
@@ -43221,6 +43191,36 @@ app:
 
 undefined
 ====================
+| Extensions                             | Documentation                                                                                      | Configuration                                                                                                                                    | Version  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | -------- |
+| tkit-quarkus-data-import               | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-data-import.html)  | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-data-import.adoc)                | 5.1.0    |
+| tkit-quarkus-jpa                       | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa.html)          | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa.adoc)                        | 5.1.0    |
+| tkit-quarkus-log-cdi                   | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-cdi.html)      | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-cdi.adoc)                    | 5.1.0    |
+| tkit-quarkus-log-rs                    | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-rs.html)       | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-rs.adoc)                     | 5.1.0    |
+| tkit-quarkus-log-json                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-log-json.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-log-json.adoc)                   | 5.1.0    |
+| tkit-quarkus-rest                      | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest.html)         | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest.adoc)                       | 5.1.0    |
+| onecx-tenant                           | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-tenant.html)         | [Link](https://github.com/onecx/onecx-quarkus/blob/3.0.0/docs/modules/onecx-quarkus/pages/includes/onecx-tenant.adoc)                            | 3.0.0    |
+| tkit-quarkus-jpa-tenant                | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-jpa-tenant.html)   | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-jpa-tenant.adoc)                 | 5.1.0    |
+| tkit-quarkus-rest-context              | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-rest-context.html) | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-rest-context.adoc)               | 5.1.0    |
+| quarkus-oidc                           | [Link](https://quarkus.io/guides/security-oidc-bearer-token-authentication-tutorial)               | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-oidc.adoc)                           | 3.33.3.1 |
+| quarkus-arc                            | [Link](https://quarkus.io/guides/cdi-reference)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-arc.adoc)                            | 3.33.3.1 |
+| quarkus-liquibase                      | [Link](https://quarkus.io/guides/liquibase)                                                        | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-liquibase.adoc)                      | 3.33.3.1 |
+| quarkus-smallrye-health                | [Link](https://quarkus.io/guides/smallrye-health)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-health.adoc)                | 3.33.3.1 |
+| quarkus-micrometer-registry-prometheus | [Link](https://quarkus.io/guides/telemetry-micrometer)                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-micrometer-registry-prometheus.adoc) | 3.33.3.1 |
+| quarkus-hibernate-orm                  | [Link](https://quarkus.io/guides/hibernate-orm)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-orm.adoc)                  | 3.33.3.1 |
+| quarkus-rest                           | [Link](https://quarkus.io/guides/rest)                                                             | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-rest.adoc)                           | 3.33.3.1 |
+| quarkus-rest-jackson                   | [Link](https://quarkus.io/guides/rest-json)                                                        | 3.33.3.1                                                                                                                                         |          |
+| quarkus-jdbc-postgresql                | [Link](https://quarkus.io/guides/datasource)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-jdbc-postgresql.adoc)                | 3.33.3.1 |
+| quarkus-smallrye-openapi               | [Link](https://quarkus.io/guides/openapi-swaggerui)                                                | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-smallrye-openapi.adoc)               | 3.33.3.1 |
+| quarkus-hibernate-validator            | [Link](https://quarkus.io/guides/validation)                                                       | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-hibernate-validator.adoc)            | 3.33.3.1 |
+| quarkus-opentelemetry                  | [Link](https://quarkus.io/guides/opentelemetry)                                                    | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-opentelemetry.adoc)                  | 3.33.3.1 |
+| tkit-quarkus-security                  | [Link](https://1000kit.github.io/tkit-quarkus/current/tkit-quarkus/tkit-quarkus-security.html)     | [Link](https://github.com/1000kit/tkit-quarkus/blob/5.1.0/docs/modules/tkit-quarkus/pages/includes/tkit-quarkus-security.adoc)                   | 5.1.0    |
+| onecx-core                             | [Link](https://onecx.github.io/docs/onecx-quarkus/current/onecx-quarkus/onecx-core.html)           | 3.0.0                                                                                                                                            |          |
+| quarkus-container-image-docker         | [Link](https://quarkus.io/guides/container-image)                                                  | [Link](https://github.com/quarkusio/quarkusio.github.io/blob/develop/%5Fgenerated-doc/latest/config/quarkus-container-image-docker.adoc)         | 3.33.3.1 |
+| tkit-quarkus-oidc-health               | 5.1.0                                                                                              |                                                                                                                                                  |          |
+
+undefined
+====================
  Configuration property fixed at build time - All other configuration properties are overridable at runtime
 
 | Configuration property                                                                                                                                                                                                                                                          | Type               | Default                        |
@@ -43237,10 +43237,6 @@ undefined
 | [onecx.workspace.token.issuer.public-key-location.enabled](#onecx-workspace-svc%5Fonecx-workspace-token-issuer-public-key-location-enabled) Status if public key is enabled Environment variable: ONECX\_WORKSPACE\_TOKEN\_ISSUER\_PUBLIC\_KEY\_LOCATION\_ENABLED               | boolean            | false                          |
 | [onecx.workspace.token.claim.separator](#onecx-workspace-svc%5Fonecx-workspace-token-claim-separator) Separator Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_SEPARATOR                                                                                                 | string             |                                |
 | [onecx.workspace.token.claim.path](#onecx-workspace-svc%5Fonecx-workspace-token-claim-path) Claim path Environment variable: ONECX\_WORKSPACE\_TOKEN\_CLAIM\_PATH                                                                                                               | string             | realm\_access/roles            |
-
-undefined
-====================
-
 
 undefined
 ====================
@@ -43385,6 +43381,10 @@ app:
         description: OneCX Workspace Backend For Frontend
         name: OneCX Workspace BFF
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -44147,10 +44147,6 @@ OneCX Service
 ====================
 This OneCX product/application is a collection of microservices with various functionalities.
 
-undefined
-====================
-
-
 OneCX Service Smart Redirect
 ====================
 ## [](#%5Fconfiguration)Configuration
@@ -44214,6 +44210,10 @@ app:
   image:
     repository: "onecx/onecx-service-redirect"
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -44519,10 +44519,6 @@ For detailed usage instructions and API documentation, please refer to the respe
 
 tbd
 
-undefined
-====================
-
-
 OneCX Document Backend Service
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-svc/pkgs/container/onecx-document-management-svc)
@@ -44601,6 +44597,10 @@ app:
     enabled: true
   product: false
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
@@ -44819,10 +44819,6 @@ cd onecx-document-management-dev
 docker compose stop
 ```
 
-undefined
-====================
-
-
 OneCX Document Backend for Frontend
 ====================
 [Link to Docker registry](https://github.com/onecx/onecx-document-management-bff/pkgs/container/onecx-document-management-bff)
@@ -44918,6 +44914,10 @@ app:
             defaultClientScopes: [ ocx-doc:all, ocx-doc:read, ocx-doc:write, ocx-pm:read, ocx-fs:write, ocx-fs:read, ocx-fs:delete ]
   product: false
 ```
+
+undefined
+====================
+
 
 undefined
 ====================
