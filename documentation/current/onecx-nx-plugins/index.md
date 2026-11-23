@@ -1,6 +1,8 @@
-# OneCX UI App Generator
+# OneCX UI App Generators
 
-The OneCX UI App Generator is a powerful tool that simplifies the development of UI applications within the OneCX framework. It automates the creation of key UI components, ensuring consistency and adherence to best practices.
+The OneCX UI App Generators are powerful tools that simplify the development of UI applications within the OneCX framework. They automate the creation of key UI components, ensuring consistency and adherence to best practices.
+
+We support Angular and React.
 
 **In addition to generation,** significant parts still need to be created or modified manually by the user. Such parts are highlighted in the documentation as **ACTION**. These actions indicate where and what adjustments are necessary to complete the generated code.
 
@@ -15,7 +17,7 @@ In case you want to take part of the development of the generator or want to use
 
 ### [](#environment-setup)Environment Setup
 
-Make sure your development environment is set up correctly before using the OneCX UI App Generator.  
+Make sure your development environment is set up correctly before using the OneCX UI App Generators.  
 The following tools must be installed and versions verified:
 
 * **npm** version should be >= 10.2.4
@@ -52,7 +54,7 @@ npm install
 
 Angular and Nx
 
-The OneCX UI App Generator is built on top of [Angular](https://angular.de/) and [Nx](https://nx.dev/), so a basic understanding of these technologies is essential to effectively use the generator and customize the generated code.
+The Angular App Generator is built on top of [Angular](https://angular.de/) and [Nx](https://nx.dev/), so a basic understanding of these technologies is essential to effectively use the generators and customize the generated code.
 
 Familiarity with [Angular](https://angular.de/) concepts such as components, modules, services, and state management (e.g., [NgRx](https://ngrx.io/)) will help you understand the structure of the generated code and how to extend it.
 
