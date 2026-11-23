@@ -5,9 +5,9 @@ Here a selection of important resources to get you started:
 
 * [Documentation](../onecx-docs-doc/index.html)
 * [Local Environment](../onecx-local-env/index.html)
-* [Quarkus](quarkus.html)
-* [UI App Generator](../onecx-nx-plugins/index.html)
+* [UI App Generators](../onecx-nx-plugins/index.html)
 * [UI Troubleshooting](../docs-guides-ui/troubleshooting/index.html)
+* [Quarkus](quarkus.html)
 
 ## [](#purpose-value)Purpose & Value
 
@@ -32,17 +32,13 @@ Here a selection of important resources to get you started:
 * Builder: app creation (manual/CLI), hot reload, multiple apps.
 * Integrator: interplay of UIs and services, routing, profiles.
 
-## [](#quick-start-links)Quick Start Links
+## [](#quick-start-developer-links)Quick Start Developer Links
 
-* Getting Started: see ./index.adoc\[OneCX Getting Started\]
-* First Application (overview): ./first-app/create\_angular\_app.adoc\[First Angular App\]
-* Manual setup: ./first-app/app\_setup\_manual.adoc\[Manual App Setup\]
-* CLI setup: ./first-app/app\_setup\_cli.adoc\[App Setup via CLI\]
-* Hot reload: ./first-app/enable\_hot\_reload.adoc\[Enable Hot Reload\]
-* Multiple apps: ./first-app/run\_multiple\_apps.adoc\[Run Multiple Apps\]
-* Image build (manual): ./first-app/image\_build\_manual.adoc\[Manual Image Build\]
-* Image build (automatic): ./first-app/image\_build\_automatic.adoc\[Automatic Image Build\]
-* Test core apps: ./first-app/testing\_existing\_core\_apps.adoc\[Testing Existing Core Apps\]
+* [Getting Started](../onecx-docs-start/index.html)
+* [First Angular App](../onecx-docs-start/first-app/create%5Fangular%5Fapp.html)
+* [Enable Hot Reload](../onecx-docs-start/first-app/enable%5Fhot%5Freload.html)
+* [Image Build](../onecx-docs-start/first-app/image%5Fbuild%5Fautomatic.html)
+* [Testing Core Apps](../onecx-docs-start/first-app/testing%5Fexisting%5Fcore%5Fapps.html)
 
 ## [](#practical-tips)Practical Tips
 
