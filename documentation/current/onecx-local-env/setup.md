@@ -2,7 +2,7 @@
 
 This guide provides instructions for setting up and installing **onecx-local-env**, the local development environment for OneCX. Once setup is done the environment can be started, see {ole\_run\_onecx}.
 
-If you want to setup a development environment for writing OneCX documentation, please refer to the {onecx\_docs\_setup\_ref} guide instead.
+If you want to setup a development environment for writing OneCX documentation, please refer to the [OneCX Documentation](../onecx-docs-doc/index.html) guide instead.
 
 ## [](#prerequisites)Prerequisites
 
