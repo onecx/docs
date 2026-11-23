@@ -8,7 +8,16 @@ In this document we are only referring to the OneCX Data Orchestrator User Inter
 
 To start developing the OneCX Data Orchestrator User Interface, you need to set up your local development environment. Follow the instructions in [Setup OneCX Local Environment](../onecx-local-env/setup.html).
 
-Next steps: \* Clone the repository \* Install dependencies \* Run the development server \* Run the mock server \* Start OneCX locally \* Integrate the App into OneCX \* Access OneCX in your browser \* Navigate to the OneCX Data Orchestrator UI within OneCX
+Next steps:
+
+* Clone the repository
+* Install dependencies
+* Run the development server
+* Run the mock server
+* Start OneCX locally
+* Integrate the App into OneCX
+* Access OneCX in your browser
+* Navigate to the OneCX Data Orchestrator UI within OneCX
 
 ### [](#clone-the-repository)Clone the Repository
 
