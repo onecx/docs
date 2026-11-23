@@ -34,20 +34,17 @@ An application’s environment variables come from an `env.json` file that the b
 
 The major requirement is that an `env.json` file is **available to be fetched** by the application at runtime — `AppConfigService` reads its values from that file, so without it there is nothing to read. See [AppConfigService](../../onecx-portal-ui-libs/libraries/angular-integration-interface.html#app-config-service) for the full mechanics of how the service fetches the file.
 
-1. Create `src/assets/env.json` in the application. The file is a JSON object of string keys and string values:
-
-Example `src/assets/env.json`
-
-```json
-{
-  "API_URL": "https://api.example.com",
-  "SEARCH_BASE_URL": "https://search.example.com",
-  "ENABLE_DARK_MODE": "true"
-}
+1. Create `src/assets/env.json` in the application. The file is a JSON object of string keys and string values:  
+Example `src/assets/env.json`  
+```json  
+{  
+  "API_URL": "https://api.example.com",  
+  "SEARCH_BASE_URL": "https://search.example.com",  
+  "ENABLE_DARK_MODE": "true"  
+}  
 ```
-
-1. The Angular build copies `src/assets/` to the build output, so the file is available at `{baseUrl}/assets/env.json` at runtime. Because the file is a **deployment artifact**, it can be produced or rewritten at deploy time (for example by a container entrypoint that substitutes deployment-specific values).
-2. `AppConfigService` reads the file from `{baseUrl}/assets/env.json`, so the path must resolve from the application’s own base URL.
+2. The Angular build copies `src/assets/` to the build output, so the file is available at `{baseUrl}/assets/env.json` at runtime. Because the file is a **deployment artifact**, it can be produced or rewritten at deploy time (for example by a container entrypoint that substitutes deployment-specific values).
+3. `AppConfigService` reads the file from `{baseUrl}/assets/env.json`, so the path must resolve from the application’s own base URL.
 
 ### [](#environment-variables-mfe-read)Reading the values
 

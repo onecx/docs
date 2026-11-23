@@ -106,7 +106,7 @@ To prevent style leakage and ensure visual consistency, the application employs 
 
 To address this, a **Mutation Observer** is implemented within the application. This observer monitors the DOM for dynamically added style elements and ensures that they are **appropriately scoped**, maintaining isolation and preventing unintended style overrides across micro-frontends.
 
-The implementation details live in the `@onecx/react-integration-functionalities` package (see [react-integration-functionalities](#libraries/react-integration-functionalities.adoc)).
+The implementation details live in the `@onecx/react-integration-interface` package (see [react-integration-interface](libraries/react-integration-interface.html)).
 
 The following snippet shows the core logic of the Mutation Observer used for style scoping:
 
