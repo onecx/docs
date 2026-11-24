@@ -39,7 +39,7 @@ Key points:
 * Bump to libraries v9.0.0 and the Angular 22 toolchain.
 * The Shell adds an Angular 22 preloader.
 
-For the full, step-by-step guide to migrating an application to Angular 22 with the Optimus UI change, see the [Angular 22 migration guide](../onecx-portal-ui-libs/migrations/angular-22/migration-plan.html).
+For the full, step-by-step guide to migrating an application to Angular 22 with the Optimus UI change, see the [Angular 22 migration guide](#documentation:onecx-portal-ui-libs:migrations/angular-22/migration-plan.adoc).
 
 ### [](#onecx-libs-angular-23)Angular 23, Angular Material + Tailwind CSS
 

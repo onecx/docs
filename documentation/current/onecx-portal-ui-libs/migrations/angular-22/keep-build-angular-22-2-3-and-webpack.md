@@ -1,0 +1,35 @@
+# Keep build-angular at 22.2.3 and webpack at 5.111.0
+
+This step documents two **deliberate toolchain pins** that must be kept after the Angular 22 upgrade:
+
+| Package                       | Pinned Version | Pin Style          |
+| ----------------------------- | -------------- | ------------------ |
+| @angular-devkit/build-angular | 22.2.3         | Exact (caret-less) |
+| webpack                       | 5.111.0        | Exact (caret-less) |
+
+Both pins are **interlocked**: `@angular-devkit/build-angular` `22.2.3` hard-depends on `webpack` `5.111.0`. They must move together — pinning one and floating the other re-introduces the failure this step exists to prevent.
+
+## [](#%5Fwhy%5Fthe%5Fpins%5Fexist)Why the pins exist
+
+`@module-federation/enhanced` resolves `webpack/lib/util/memoize` at runtime (via `normalizeWebpackPath`, not a hardcoded path or a class import). `webpack` `5.111.0` is the last known-good version for that import.
+
+Moving to a newer `@angular-devkit/build-angular` or a newer `webpack` breaks the module-federation build of the application: the build succeeds for the single-bundle paths but fails (or silently misbehaves) when module federation is involved, because the memoize utility that `@module-federation/enhanced` looks up no longer resolves the same way.
+
+| |  If a future @angular-devkit/build-angular release or a newer webpack 5.x patch fixes the module-federation breakage, the pins can be relaxed. Until then, keep both at the exact versions above. |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+## [](#%5Fwhat%5Fto%5Fkeep)What to keep
+
+* `@angular-devkit/build-angular` pinned at exactly `22.2.3` (no caret).
+* `webpack` pinned at exactly `5.111.0` (no caret).
+* `@module-federation/enhanced` at a version compatible with `webpack` `5.111.0`.
+
+If `nx migrate` or an `@angular/*` upgrade proposes to move either of the two pinned packages, accept the Angular-side version but re-pin `webpack` at `5.111.0` and `@angular-devkit/build-angular` at `22.2.3` afterwards.
+
+## [](#%5Fverification)Verification
+
+After applying the pins:
+
+1. `npm ls @angular-devkit/build-angular webpack` reports exactly `22.2.3` and `5.111.0` (no `^` ranges, no nested newer copies).
+2. The application builds with module federation enabled.
+3. The module-federation build resolves `webpack/lib/util/memoize` without errors.
