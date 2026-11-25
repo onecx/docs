@@ -12,7 +12,7 @@ This tier applies to both paths of building a OneCX UI:
 
 ## [](#required-setup-pages)Pages
 
-* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
+* [Platform & Package Compatibility Requirements](platform-package-compatibility.html) — the Angular and React version, package-version, and package-sharing constraints an app must satisfy to be compatible with the shell.
 * [Expose a Remote Module](expose-remote-module.html) — how to expose an application’s module or component via Module Federation so the shell can load it.  
    * [Module Approach](expose-remote-module/module-approach.html)  
    * [Component Approach](expose-remote-module/component-approach.html)

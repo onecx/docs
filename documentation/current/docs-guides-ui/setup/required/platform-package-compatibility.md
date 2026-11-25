@@ -36,6 +36,21 @@ __Table 4\. Compatible package versions for Angular 21 (libs version 8.x)__
 | ngx-build-plus      | ^21.0.0             |
 | primeng             | ^21.0.0             |
 
+## [](#react-version-compatibility)React Version Compatibility
+
+The shell loads React applications through its React 19 preloader, so a React application must use React 19, in a version equal to or lower than the one provided by the shell. The OneCX React libraries (`@onecx/react-*`) are available from libs version 8.x and require React 19.
+
+* Check the shell version and ensure the app uses an equal or lower React version. See [Shell Version Information](../../../onecx-shell-ui/onecx-shell-ui-docs.html#shell-version-information) for how to check the shell’s supported version.
+
+__Table 5\. Compatible package versions for React 19 (libs version 8.x and 9.x)__
+| Package       | Compatible Versions |
+| ------------- | ------------------- |
+| react         | ^19.2.4             |
+| react-dom     | ^19.2.4             |
+| react-router  | ^7.13.0             |
+| react-i18next | ^16.5.4             |
+| primereact    | 10.9.7              |
+
 ## [](#package-sharing-convention)Package Sharing Convention
 
 Use the caret (`^`) range for all shared package versions in `package.json`, except `rxjs`, which should use tilde (`~`).
