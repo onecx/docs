@@ -27,6 +27,21 @@ Status is Released or Planned. For a planned item, the date is the current ETA.
 | Angular 22 (Optimus UI)                      | Planned    | 11.2026  |
 | Angular 23 (Angular Material + Tailwind CSS) | Planned    | 2027     |
 
+### [](#libs-support-policy)Release and support policy
+
+This policy defines which releases of the OneCX UI libraries (`@onecx/*`) receive changes.
+
+| **Type of change**                        | **Releases that receive it**                                                        |
+| ----------------------------------------- | ----------------------------------------------------------------------------------- |
+| New features                              | Only the latest release                                                             |
+| Bug fixes                                 | Only the latest release                                                             |
+| Accessibility (a11y) fixes                | Only the latest release                                                             |
+| Security fixes in the libraries' own code | Every release whose underlying framework version (Angular or React) is still in LTS |
+
+* Applications on an older release have to upgrade to the latest release to receive features, bug fixes and a11y fixes.
+* Once the underlying framework version of a release leaves LTS, that release no longer receives security fixes.
+* Security issues in third-party dependencies of the libraries are not covered by the LTS rule above.
+
 ### [](#onecx-libs-angular-22)Angular 22, Optimus UI
 
 The `@onecx/*` UI libraries move from **PrimeNG** to **Optimus UI** in **version 9.0.0**. Optimus UI is an open-source fork of PrimeNG that keeps its API. OneCX keeps its own libraries open source, and applications stay close to the PrimeNG APIs they already use.
